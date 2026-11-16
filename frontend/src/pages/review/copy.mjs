@@ -38,16 +38,19 @@ export function resultLine(review) {
   return `${head} ${plural(c.ahead.gap, "point")} behind ${c.ahead.name} in P${c.ahead.position}.`;
 }
 
-// The headline beside the big number.
+// The headline beside the big number. The number already says the place,
+// so the headline says what the place is worth: the title, or the gap to the
+// car ahead.
 export function resultHeadline(review) {
-  const { position } = review.championship;
-  const { complete, roundsRun } = review.season;
+  const { position, ahead, behind } = review.championship;
+  const { complete } = review.season;
   if (!position) return "Not classified";
-  if (!complete) return position === 1 ? `Leading after round ${roundsRun}` : `${nth(position)} after round ${roundsRun}`;
-  if (position === 1) return "Champion";
-  if (position === 2) return "Runner-up";
-  if (position === 3) return "Third in the championship";
-  return `${nth(position)} in the championship`;
+  if (position === 1) {
+    if (complete) return "Champion";
+    return behind ? `Leading by ${plural(behind.gap, "point")}` : "Leading the table";
+  }
+  if (!ahead) return `${nth(position)} in the championship`;
+  return ahead.gap === 0 ? `Level on points with P${ahead.position}` : `${plural(ahead.gap, "point")} off P${ahead.position}`;
 }
 
 // The championship line through the season, in one sentence: where it began,
@@ -58,7 +61,7 @@ export function journeyLine(review) {
   const first = j[0];
   const last = j[j.length - 1];
   const peak = review.championship.peak;
-  const end = review.season.complete ? "at the end" : `after round ${last.round}`;
+  const end = review.season.complete ? "at the end" : `after ${roundName(last)}`;
   const bits = [`P${first.position} after ${roundName(first)}, P${last.position} ${end}.`];
   if (peak && peak.position < last.position && peak.position < first.position) bits.push(`Best place: P${peak.position} after ${roundName(peak)}.`);
   const led = review.championship.roundsLed || 0;
@@ -66,28 +69,30 @@ export function journeyLine(review) {
   return bits.join(" ");
 }
 
-// The driver next in the table, and how the two of them compared on track.
-export function neighbourLine(n, { ahead = true } = {}) {
-  if (!n) return null;
-  const where = ahead ? `${n.name} finished P${n.position}, ${plural(n.gap, "point")} up.` : `${n.name} finished P${n.position}, ${plural(n.gap, "point")} back.`;
-  if (!n.races) return where;
-  return `${where} Ahead on track in ${n.ahead} of the ${plural(n.races, "race")} both finished.`;
+// The driver next in the table and how the two compared on track. The
+// counts are the reviewed driver's (`ahead` = races they finished ahead in),
+// so the driver the page is about is the one named as ahead.
+export function neighbourLine(n, me) {
+  if (!n || !n.races) return null;
+  return `Against ${n.name}, P${n.position}: ${me} finished ahead in ${n.ahead} of the ${plural(n.races, "race")} both finished.`;
 }
 
-// Under the round-by-round sheet: how many rounds paid, the retirements, the
-// dropped rounds.
+// "R1 Melbourne", "R1 Melbourne and R7 Spa", "R1 A, R4 B and R7 C"
+const listOf = (items) => (items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`);
+
+// Under the round-by-round sheet: what the sheet's columns do not say on
+// their own. The retirements, the rounds not started, the dropped rounds.
 export function roundsLine(review) {
   const rounds = review.rounds || [];
   if (!rounds.length) return null;
-  const scored = rounds.filter((r) => r.points > 0).length;
-  const bits = [`Points in ${scored} of ${plural(rounds.length, "round")}.`];
-  const dnf = rounds.filter((r) => r.status === "DNF" || r.status === "DSQ");
-  if (dnf.length === 1) bits.push(`The one ${dnf[0].status} was ${roundName(dnf[0])}.`);
-  else if (dnf.length > 1) bits.push(`${dnf.length} retirements: ${dnf.map(roundName).join(", ")}.`);
-  const missed = rounds.filter((r) => r.status === "DNS").length;
-  if (missed) bits.push(`Missed ${plural(missed, "round")}.`);
+  const bits = [];
+  const out = rounds.filter((r) => r.status === "DNF" || r.status === "DSQ");
+  if (out.length) bits.push(`${out.length === 1 ? `Out of ${roundName(out[0])}` : `Out of ${listOf(out.map(roundName))}`} (${out.map((r) => r.status).join(", ")}).`);
+  const missed = rounds.filter((r) => r.status === "DNS");
+  if (missed.length) bits.push(`Did not start ${listOf(missed.map(roundName))}.`);
   const dropped = rounds.filter((r) => r.dropped);
-  if (dropped.length) bits.push(`Dropped under the rules: ${dropped.map(roundName).join(", ")}.`);
+  if (dropped.length) bits.push(`Dropped under the rules: ${listOf(dropped.map(roundName))}.`);
+  if (!bits.length) bits.push(`Started and finished all ${plural(rounds.length, "round")}.`);
   return bits.join(" ");
 }
 
@@ -96,7 +101,7 @@ export function bestLine(best) {
   if (!best) return null;
   const race = best.sprint ? "the sprint" : null;
   const from = best.grid > 0 ? `Started P${best.grid}, finished P${best.position}` : `Finished P${best.position}`;
-  return `${from}${race ? ` in ${race}` : ""}. ${plural(best.points, "point")}.`;
+  return `${from}${race ? ` in ${race}` : ""}.`;
 }
 
 export function climbLine(climb) {
@@ -104,19 +109,22 @@ export function climbLine(climb) {
   return `${roundName(climb)}: P${climb.grid} to P${climb.position}, ${plural(climb.gained, "place")} made up.`;
 }
 
-// The contact chapter's summary.
-export function contactLine(contact) {
+// The contact chapter's line: where the contact came, which the counts in
+// the rows beside it do not say.
+export function contactLine(contact, rounds = []) {
   if (!contact) return null;
-  const bits = [`${plural(contact.cars, "contact")} with other cars in ${plural(contact.races, "race")}, ${contact.scenery} with the scenery.`];
-  if (contact.clean > 0) bits.push(`${contact.clean} of the ${contact.races} without touching another car.`);
-  return bits.join(" ");
+  if (!contact.cars) return `No contact with another car in ${plural(contact.rounds ?? contact.races, "round")} on file.`;
+  const hit = rounds.filter((r) => r.contacts > 0).sort((a, b) => b.contacts - a.contacts || a.round - b.round);
+  if (hit.length <= 3) return `The contact with other cars came in ${listOf(hit.map((r) => `${roundName(r)} (${r.contacts})`))}.`;
+  const top = hit[0];
+  return `The most in one round: ${top.contacts}, in ${roundName(top)}. Contact in ${hit.length} of the ${plural(contact.rounds ?? contact.races, "round")} on file.`;
 }
 
 // A team-mate duel as three score lines.
 export function duelLines(mate) {
   const lines = [];
-  if (mate.races > 0) lines.push({ key: "races", label: "Races", me: mate.ahead, them: mate.behind, note: `of ${plural(mate.races, "race")} both finished` });
-  if (mate.starts > 0) lines.push({ key: "grid", label: "Grid", me: mate.qualiAhead, them: mate.qualiBehind, note: `of ${plural(mate.starts, "start")}` });
+  if (mate.races > 0) lines.push({ key: "races", label: "At the flag", me: mate.ahead, them: mate.behind, note: `ahead, ${plural(mate.races, "race")} both finished` });
+  if (mate.starts > 0) lines.push({ key: "grid", label: "On the grid", me: mate.qualiAhead, them: mate.qualiBehind, note: `ahead, ${plural(mate.starts, "start")} on different slots` });
   lines.push({ key: "points", label: "Points", me: mate.myPoints, them: mate.points, note: null });
   return lines;
 }
@@ -126,5 +134,7 @@ export function sourceLine(review) {
   const rounds = review.rounds?.length || 0;
   const withTel = (review.rounds || []).filter((r) => r.contacts != null).length;
   const base = `From the league's results for ${plural(rounds, "round")}`;
-  return withTel ? `${base}, and the race server's files for ${withTel} of them. Contacts under 10 km/h are not counted.` : `${base}.`;
+  return withTel
+    ? `${base}, and the race server's files for ${withTel} of them. Contact with a car under 10 km/h and with the scenery under 15 km/h is not counted.`
+    : `${base}.`;
 }
