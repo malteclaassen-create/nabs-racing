@@ -6,10 +6,10 @@ import { readableInkOn, readableAccent } from "../../components/ui.jsx";
 
 const INK = "#0b0b0c";
 const PAPER = "#f6f5f1";
-const ON_TEAM = new Set(["intro", "best", "journey", "honours"]);
+const ON_TEAM = new Set(["intro", "best", "led", "journey", "hits", "honours"]);
 // A few slides are white with black type, so the story does not sit on black
 // the whole way through.
-const ON_PAPER = new Set(["training", "team", "limits"]);
+const ON_PAPER = new Set(["training", "passes", "team", "limits"]);
 const LEAGUE = "#F4AFC6";
 
 // The colour a driver's story is told in: the team's, or the league's pink

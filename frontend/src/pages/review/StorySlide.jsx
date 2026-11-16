@@ -5,9 +5,8 @@
 // it, a word picked out with a marker in the team colour, small labels set
 // against huge words. The circuits stand in for album covers.
 //
-// When the person looking is not the driver, the same lines carry the
-// driver's name instead of "you" (review.own, from the backend). Every
-// figure is real (review/storySlides.mjs, review/copy.mjs).
+// The story always talks to "you", whoever opens it: it is told the way a
+// Wrapped is, to the one whose season it is. Every figure is real (review/storySlides.mjs, review/copy.mjs).
 import { Children, Fragment, cloneElement, isValidElement, createContext, useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MEDAL, readableInkOn } from "../../components/ui.jsx";
@@ -31,10 +30,10 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const times = (n) => (n === 1 ? "once" : n === 2 ? "twice" : `${n} times`);
 const fmt = (n) => Number(n || 0).toLocaleString("en-GB");
 
-// "You" for the driver, the name for everyone else.
+// The story is always told to "you".
+// eslint-disable-next-line no-unused-vars
 export function voiceOf(review) {
-  const name = review.driver?.name || "This driver";
-  return review.own ? { You: "You", you: "you", Your: "Your", your: "your", are: "are" } : { You: name, you: name, Your: `${name}'s`, your: `${name}'s`, are: "is" };
+  return { You: "You", you: "you", Your: "Your", your: "your", are: "are" };
 }
 
 // --- type ----------------------------------------------------------------------------
@@ -220,7 +219,7 @@ function Board({ board, review, d = 0 }) {
               <span className="wr-big wr-num w-7 shrink-0 text-right text-[1.3rem] leading-none">{r.rank}</span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-[14px] font-extrabold uppercase leading-tight">{r.you && review.own ? "You" : r.name}</span>
+                  <span className="truncate text-[14px] font-extrabold uppercase leading-tight">{r.you ? "You" : r.name}</span>
                   <span className="wr-num shrink-0 text-[14px] font-extrabold leading-tight">{fmt(r.value)}</span>
                 </span>
                 <span
@@ -268,27 +267,60 @@ function Intro({ review }) {
   const { season, driver } = review;
   const num = /\d+$/.exec(String(season.label))?.[0] || "";
   const head = num ? String(season.label).slice(0, -num.length).trim() : season.label;
+  const wide = useContext(Wide);
+  const logo = driver.team && driver.team.tier !== 0 && (
+    // The logo on its own light tile: a team logo in the team colour would
+    // vanish on a slide painted in that same colour.
+    <div className="st-land inline-flex shrink-0 items-center justify-center rounded-2xl p-3" style={{ "--d": "1100ms", background: "#f6f5f1", boxShadow: "0 1px 0 rgba(0,0,0,0.08)" }}>
+      <TeamLogo id={driver.team.id} name={driver.team.name} color={driver.team.color} logoUrl={driver.team.logoUrl} size={wide ? 96 : 64} />
+    </div>
+  );
+  const facts = (
+    <>
+      {season.roundsRun} rounds
+      {driver.team?.name ? ` · ${driver.team.name}` : ""}
+      {season.complete ? "" : " · so far"}
+    </>
+  );
+  // On a wide screen the season runs right across the window, the figure
+  // as tall as it gets, and the driver sits under it as one line.
+  if (wide) {
+    return (
+      <Card>
+        <Kicker d={100}>This was your</Kicker>
+        <div className="flex items-end" style={{ gap: "3cqi" }}>
+          <div className="min-w-0 flex-1 pb-[1.2cqh]">
+            <Fill text={head} d={250} />
+          </div>
+          {num && <Echo value={num} d={500} size="min(46cqh, 30cqi)" className="shrink-0" />}
+        </div>
+        <div className="mt-[5cqh] flex items-center gap-6">
+          {logo}
+          <div className="min-w-0">
+            <div className="st-in wr-big truncate uppercase leading-none" style={{ "--d": "1300ms", fontSize: "min(5.6cqi, 9cqh)" }}>
+              {driver.name}
+            </div>
+            <Kicker d={1500} className="mt-3 lv-mute">
+              {facts}
+            </Kicker>
+          </div>
+        </div>
+      </Card>
+    );
+  }
   return (
     <Card>
-      <Kicker d={100}>{review.own ? "This was your" : `This was ${v.your}`}</Kicker>
+      <Kicker d={100}>This was your</Kicker>
       <Fill text={head} d={250} />
       {num && <Echo value={num} d={500} size="min(92cqi, 52cqh)" />}
       <Aside>
       <div className="mt-auto">
-        {driver.team && driver.team.tier !== 0 && (
-          // The logo on its own light tile: a team logo in the team colour
-          // would vanish on a slide painted in that same colour.
-          <div className="st-land mb-4 inline-flex items-center justify-center rounded-2xl p-3" style={{ "--d": "1100ms", background: "#f6f5f1", boxShadow: "0 1px 0 rgba(0,0,0,0.08)" }}>
-            <TeamLogo id={driver.team.id} name={driver.team.name} color={driver.team.color} logoUrl={driver.team.logoUrl} size={64} />
-          </div>
-        )}
+        {logo && <div className="mb-4">{logo}</div>}
         <Line d={1300}>
           <Mark>{driver.name}</Mark>
         </Line>
         <Kicker d={1500} className="mt-3 lv-mute">
-          {season.roundsRun} rounds
-          {driver.team?.name ? ` · ${driver.team.name}` : ""}
-          {season.complete ? "" : " · so far"}
+          {facts}
         </Kicker>
       </div>
       </Aside>
@@ -460,7 +492,7 @@ function Limits({ slide, review }) {
   const rows = [
     {
       k: "me",
-      label: review.own ? "You" : review.driver.name,
+      label: "You",
       value: mine,
       you: true,
     },
@@ -830,7 +862,7 @@ function Team({ slide, review }) {
   const [head, ...rest] = lines;
   return (
     <Card>
-      <Fill text={review.own ? "You" : review.driver.name} d={100} />
+      <Fill text="You" d={100} />
       <Kicker d={250} className="lv-mute">
         against
       </Kicker>
@@ -1103,7 +1135,7 @@ function Final({ slide, review, onReplay }) {
       <div data-st-keep className="st-wide st-wide-final relative z-10 grid min-h-0 flex-1">
         <div className="st-col flex min-h-0 flex-col justify-center">{card}</div>
         <div className="st-col flex min-h-0 flex-col justify-center">
-          <Fill text={review.own ? "That was your" : `That was ${voiceOf(review).your}`} d={300} />
+          <Fill text="That was your" d={300} />
           <Fill text={review.season.label} d={450} outline />
           <div className="mt-6">{actions}</div>
         </div>
@@ -1135,7 +1167,7 @@ function Quiz({ slide, review, onNext }) {
   return (
     <Card>
       <Kicker d={100}>Quick question</Kicker>
-      <Fill text={review.own ? "Guess your" : `Guess ${v.your}`} d={250} />
+      <Fill text="Guess your" d={250} />
       <Fill text="best race" d={400} outline />
       <Aside>
       <div data-st-keep className="mt-auto space-y-2.5">
@@ -1204,6 +1236,156 @@ function Tease({ text }) {
   );
 }
 
+// "That put you in the top 8% of the league", or where the rank put you.
+function RankLine({ rank, what, d }) {
+  if (!rank) return null;
+  const share = topShare(rank);
+  return (
+    <Line d={d} size="min(5.4cqi, 3cqh)">
+      {rank.rank === 1 ? (
+        <>
+          <Mark>{rank.shared ? "Joint most" : "The most"}</Mark> in the league.
+        </>
+      ) : share <= 25 ? (
+        <>
+          That is the <Mark>top {share}%</Mark> of the league.
+        </>
+      ) : (
+        rankWords(rank, what)
+      )}
+    </Line>
+  );
+}
+
+// Passes made on track, with a bar a round; the round with the most stands
+// out in the team colour.
+function Passes({ slide }) {
+  const wide = useContext(Wide);
+  const per = slide.perRound.filter((p) => p.n != null);
+  const max = Math.max(1, ...per.map((p) => p.n));
+  const top = per.reduce((a, b) => (b.n > (a?.n ?? -1) ? b : a), null);
+  return (
+    <Card>
+      <Fill text="You passed" d={100} />
+      <Echo value={fmt(slide.value)} d={350} />
+      <Fill text="cars" d={800} outline />
+      <RankLine rank={slide.rank} what="overtakes" d={1100} />
+      <Aside>
+        <div className="mt-auto">
+          <div className={`flex items-end gap-1.5 ${wide ? "h-64" : "h-28"}`}>
+            {slide.perRound.map((p, k) => (
+              <div key={p.round} className="flex h-full min-w-0 flex-1 flex-col justify-end">
+                {p.n != null ? (
+                  <span
+                    className="st-grow-y block w-full rounded-t-[3px]"
+                    style={{ "--d": `${1300 + k * 60}ms`, height: `${Math.max(4, (p.n / max) * 100)}%`, background: p === top ? "var(--g-mark)" : "var(--g-fg)" }}
+                  />
+                ) : (
+                  <span className="block h-[5px] w-full rounded-full" style={{ boxShadow: "inset 0 0 0 1.5px var(--g-mute)" }} />
+                )}
+              </div>
+            ))}
+          </div>
+          {top && (
+            <Kicker d={1900} className="mt-3 lv-mute normal-case tracking-normal">
+              Most in one race: {top.n} at {top.track}.
+            </Kicker>
+          )}
+        </div>
+      </Aside>
+    </Card>
+  );
+}
+
+// Laps in the lead, under a chequered flag.
+function Led({ slide }) {
+  const wide = useContext(Wide);
+  const flag = <Thing kind="flag" d={200} className="st-3d h-full w-full" label="A chequered flag" fallback={null} />;
+  const where = slide.where.slice(0, 3);
+  return (
+    <Card>
+      <Kicker d={100}>Out in front</Kicker>
+      <Fill text="You led" d={200} />
+      <Echo value={fmt(slide.value)} d={450} />
+      <Fill text={slide.value === 1 ? "lap" : "laps"} d={850} outline maxHeight={170} />
+      {wide ? (
+        <Aside>
+          <div className="st-fill st-3d relative min-h-0 flex-1">
+            <div className="absolute inset-0">{flag}</div>
+          </div>
+        </Aside>
+      ) : (
+        <div className="relative -mx-4 min-h-[7rem] flex-1">
+          <div className="absolute inset-0">{flag}</div>
+        </div>
+      )}
+      {where.length > 0 && (
+        <Line d={1200} size="min(5cqi, 2.8cqh)">
+          {where.map((w, k) => (
+            <span key={w.round}>
+              {k > 0 ? ", " : ""}
+              {k === 0 ? <Mark>{w.track}</Mark> : w.track} {w.laps}
+            </span>
+          ))}
+          .
+        </Line>
+      )}
+      <RankLine rank={slide.rank} what="laps led" d={1400} />
+    </Card>
+  );
+}
+
+// Contact with other cars and with the scenery, against the field.
+function Hits({ slide, review }) {
+  const one = (n) => (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, "");
+  const rows = [
+    { k: "me", label: "You", value: slide.perRace, you: true },
+    slide.fieldPerRace != null ? { k: "field", label: "The field", value: slide.fieldPerRace } : null,
+  ].filter((r) => r && r.value != null);
+  const max = Math.max(0.1, ...rows.map((r) => r.value));
+  const cleaner = slide.fieldPerRace != null && slide.perRace != null && slide.perRace < slide.fieldPerRace;
+  return (
+    <Card>
+      <Fill text="You touched" d={100} />
+      <Echo value={fmt(slide.cars)} d={350} />
+      <Fill text={slide.cars === 1 ? "other car" : "other cars"} d={800} outline />
+      {slide.scenery > 0 && (
+        <Line d={1100} size="min(5.4cqi, 3cqh)">
+          And the scenery <Mark>{times(slide.scenery)}</Mark>.
+        </Line>
+      )}
+      <Aside>
+        <div className="mt-auto space-y-3">
+          <Kicker d={1400} className="lv-mute">
+            Car contact a race
+          </Kicker>
+          {rows.map((r, k) => (
+            <div key={r.k} className="st-in" style={{ "--d": `${1500 + k * 200}ms` }}>
+              <div className="flex items-baseline justify-between text-[14px] font-extrabold uppercase">
+                <span className="truncate">{r.label}</span>
+                <span className="wr-num">{one(r.value)}</span>
+              </div>
+              <div className="mt-1 h-3 overflow-hidden rounded-full" style={{ background: "var(--g-faint)" }}>
+                <span className="st-grow-x block h-full rounded-full" style={{ "--d": `${1600 + k * 200}ms`, width: `${Math.max(3, (r.value / max) * 100)}%`, background: r.you ? "var(--g-pop)" : "var(--g-fg)" }} />
+              </div>
+            </div>
+          ))}
+          {rows.length > 1 && (
+            <Line d={2000} className="pt-1" size="min(5cqi, 2.8cqh)">
+              {cleaner ? <>Cleaner than the field.</> : <>Busier than the field.</>}
+            </Line>
+          )}
+          {review.contact?.races ? (
+            <Kicker d={2200} className="lv-mute normal-case tracking-normal">
+              Over {plural(review.contact.races, "race")} the race server counted.
+            </Kicker>
+          ) : null}
+        </div>
+      </Aside>
+    </Card>
+  );
+}
+
 const SLIDES = {
   quiz: Quiz,
   intro: Intro,
@@ -1219,6 +1401,9 @@ const SLIDES = {
   journey: Journey,
   team: Team,
   contact: Contact,
+  passes: Passes,
+  led: Led,
+  hits: Hits,
   honours: Honours,
   final: Final,
 };

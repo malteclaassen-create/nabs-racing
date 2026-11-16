@@ -15,7 +15,7 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 // The figures worth a line on the "against the field" slide, best ranked
 // first, at most three; only figures the season has and a rank to set them
 // against.
-function fieldFigures(review) {
+function fieldFigures(review, skip = new Set()) {
   const s = review.stats || {};
   const r = review.ranks || {};
   const all = [
@@ -24,7 +24,7 @@ function fieldFigures(review) {
     { k: "fastestLaps", label: "Fastest laps", value: s.fastestLaps, rank: r.fastestLaps },
     { k: "poles", label: "Poles", value: s.poles, rank: r.poles },
     { k: "wins", label: "Wins", value: s.wins, rank: r.wins },
-  ].filter((f) => f.value > 0 && f.rank);
+  ].filter((f) => f.value > 0 && f.rank && !skip.has(f.k));
   return all.sort((a, b) => a.rank.rank / a.rank.of - b.rank.rank / b.rank.of).slice(0, 3);
 }
 
@@ -128,6 +128,16 @@ export function storySlides(review) {
   // No "quickest lap" slide: the quickest lap of a season is on the shortest
   // circuit for nearly everyone, so it said the same thing in every story.
 
+  // Passes made on track, round by round, where the race server counted them.
+  if (stats.overtakes >= 5) {
+    slides.push({
+      key: "passes",
+      value: stats.overtakes,
+      rank: review.ranks?.overtakes || null,
+      perRound: rounds.map((r) => ({ round: r.round, track: r.track, n: r.overtakes ?? null })),
+    });
+  }
+
   const podiums = podiumsOf(rounds);
   if (podiums.length) {
     const rank = rankText(review.ranks?.podiums);
@@ -141,7 +151,19 @@ export function storySlides(review) {
     });
   }
 
-  const figures = fieldFigures(review);
+  // Laps in the lead, and where they were led.
+  if (stats.lapsLed > 0) {
+    slides.push({
+      key: "led",
+      value: stats.lapsLed,
+      rank: review.ranks?.lapsLed || null,
+      where: rounds.filter((r) => r.lapsLed > 0).map((r) => ({ round: r.round, track: r.track, laps: r.lapsLed })).sort((a, b) => b.laps - a.laps),
+    });
+  }
+
+  // The figures that have a slide of their own stay out of this one.
+  const own = new Set(slides.map((x) => x.key));
+  const figures = fieldFigures(review, new Set([own.has("passes") && "overtakes", own.has("led") && "lapsLed"].filter(Boolean)));
   if (figures.length >= 2) {
     slides.push({
       key: "field",
@@ -162,7 +184,7 @@ export function storySlides(review) {
   const mate = mainMate(review);
   if (mate) {
     const diff = (mate.myPoints ?? 0) - (mate.points ?? 0);
-    const leader = diff >= 0 ? driver.name : mate.name;
+    const leader = diff >= 0 ? "You" : mate.name;
     slides.push({
       key: "team",
       eyebrow: `Team-mate · ${driver.team?.name || "the team"}`,
@@ -171,6 +193,12 @@ export function storySlides(review) {
       lines: duelLines(mate),
       line: diff === 0 ? "Level on points." : `${leader} ${season.complete ? "finished" : "is"} ${plural(Math.abs(diff), "point")} ahead.`,
     });
+  }
+
+  // How often the car touched another one, and the scenery, against the field.
+  if (review.contact && review.contact.races >= 2 && review.contact.cars > 0) {
+    const k = review.contact;
+    slides.push({ key: "hits", cars: k.cars, scenery: k.scenery || 0, perRace: k.perRace, fieldPerRace: k.fieldPerRace, races: k.races });
   }
 
   if (review.contact && review.contact.races >= 2) {

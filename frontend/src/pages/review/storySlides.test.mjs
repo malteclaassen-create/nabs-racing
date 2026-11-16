@@ -35,7 +35,7 @@ const review = (over = {}) => ({
 });
 
 test("a full season runs intro to final, one moment per slide", () => {
-  assert.deepEqual(storySlides(review()).map((s) => s.key), ["intro", "rounds", "top", "quiz", "best", "climb", "podiums", "field", "journey", "team", "contact", "final"]);
+  assert.deepEqual(storySlides(review()).map((s) => s.key), ["intro", "rounds", "top", "quiz", "best", "climb", "passes", "podiums", "led", "field", "journey", "team", "hits", "contact", "final"]);
 });
 
 test("slides whose moment the season does not have are left out", () => {
@@ -56,9 +56,9 @@ test("podiums count sprints too, in round order", () => {
   assert.equal(slide.line, "joint 2nd of 73 in the field.");
 });
 
-test("the field slide picks the best ranked figures, at most three", () => {
+test("the field slide picks the best ranked figures, leaving out those with a slide of their own", () => {
   const f = storySlides(review()).find((s) => s.key === "field");
-  assert.deepEqual(f.figures.map((x) => x.k), ["fastestLaps", "overtakes", "lapsLed"]);
+  assert.deepEqual(f.figures.map((x) => x.k), ["fastestLaps", "wins"]);
   assert.equal(f.figures[0].rankText, "joint 1st of 73");
 });
 
@@ -77,7 +77,7 @@ test("the summary grid never has a hole", () => {
 
 test("the team-mate slide says who is ahead on points", () => {
   const t = storySlides(review()).find((s) => s.key === "team");
-  assert.equal(t.line, "Maltegoat finished 12 points ahead.");
+  assert.equal(t.line, "You finished 12 points ahead.");
 });
 
 test("a running season says so", () => {
@@ -96,7 +96,7 @@ test("the top results rank best place first, sprints included", () => {
 test("training, tyres and track limits join when the season has them, a quickest lap does not", () => {
   const r = { ...review(), training: { laps: 900, weeks: 10, rank: { rank: 1, of: 40 } }, boards: { training: { of: 40, rows: [] } }, tyres: [{ tyre: "M", laps: 90, share: 60 }], limits: { cuts: 12, penalties: 3, races: 6 } };
   r.stats = { ...r.stats, bestLap: { bestLapMs: 92000, track: "Monza", number: 4 } };
-  assert.deepEqual(storySlides(r).map((s) => s.key), ["intro", "rounds", "training", "top", "quiz", "best", "climb", "podiums", "field", "tyres", "journey", "team", "contact", "limits", "final"]);
+  assert.deepEqual(storySlides(r).map((s) => s.key), ["intro", "rounds", "training", "top", "quiz", "best", "climb", "passes", "podiums", "led", "field", "tyres", "journey", "team", "hits", "contact", "limits", "final"]);
 });
 
 test("the best-race question has the answer among other circuits finished on, and needs two of them", () => {

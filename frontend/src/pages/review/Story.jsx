@@ -19,7 +19,7 @@ import "./story.css";
 
 // How long a slide stays before the next one, in ms. Longer where there is
 // more to read.
-const DURATION = { quiz: 15000, intro: 5200, rounds: 7500, training: 8500, field: 8500, journey: 8000, team: 8000, honours: 7500, podiums: 7000, tyres: 7500, limits: 7500 };
+const DURATION = { quiz: 15000, intro: 5200, rounds: 7500, training: 8500, field: 8500, journey: 8000, team: 8000, honours: 7500, podiums: 7000, tyres: 7500, limits: 7500, passes: 7500, led: 7500, hits: 7500 };
 const durationOf = (slide) => (DURATION[slide.key] || 6500) + (hasTease(slide.key) && !motionOff() ? TEASE_MS : 0);
 const HOLD_MS = 200;
 
@@ -162,7 +162,7 @@ export default function Story({ review, slides, onClose }) {
       aria-modal="true"
       aria-label={`${review.season.label} in review, ${review.driver.name}`}
     >
-      <button type="button" className="st-side" onClick={prev} disabled={i === 0} aria-label="Previous slide">
+      <button type="button" className="st-side st-side-prev" onClick={prev} disabled={i === 0} aria-label="Previous slide">
         <ChevronLeft size={20} strokeWidth={2.25} />
       </button>
       <div
@@ -222,7 +222,7 @@ export default function Story({ review, slides, onClose }) {
           ))}
         </Wide.Provider>
       </div>
-      <button type="button" className="st-side" onClick={next} disabled={i === last} aria-label="Next slide">
+      <button type="button" className="st-side st-side-next" onClick={next} disabled={i === last} aria-label="Next slide">
         <ChevronRight size={20} strokeWidth={2.25} />
       </button>
     </div>,

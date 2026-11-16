@@ -363,7 +363,77 @@ function trophyThing({ scene }) {
   };
   return { fit, update, still: 5, ready };
 }
-const THINGS = { track: trackThing, medals: medalsThing, trophy: trophyThing };
+// --- the chequered flag -------------------------------------------------------------------
+
+function chequer() {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 352;
+  const g = c.getContext("2d");
+  const cols = 8;
+  const rows = 6;
+  const w = c.width / cols;
+  const h = c.height / rows;
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < cols; x += 1) {
+      g.fillStyle = (x + y) % 2 ? "#141416" : "#f6f5f1";
+      g.fillRect(x * w, y * h, w + 1, h + 1);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+// A chequered flag on a pole: it is run up the pole, then waves, the cloth
+// rippling away from the pole and the free end moving the most.
+function flagThing({ scene }) {
+  keyLight(scene, [2, 3.5, 3], 1.6);
+  const group = new THREE.Group();
+  scene.add(group);
+  const W = 1.5;
+  const H = 1.0;
+  const cloth = new THREE.PlaneGeometry(W, H, 48, 24);
+  cloth.translate(W / 2, 0, 0);
+  const base = cloth.attributes.position.array.slice();
+  const flag = new THREE.Mesh(cloth, new THREE.MeshStandardMaterial({ map: chequer(), roughness: 0.62, metalness: 0, side: THREE.DoubleSide }));
+  flag.castShadow = true;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.5, 24), new THREE.MeshStandardMaterial({ color: SILVER, metalness: 1, roughness: 0.3 }));
+  pole.position.set(-0.03, -0.2, 0);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.055, 24, 16), new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.2 }));
+  cap.position.set(-0.03, 1.07, 0);
+  const holder = new THREE.Group();
+  holder.add(flag);
+  group.add(pole, cap, holder);
+  group.position.x = -0.6;
+  group.rotation.y = 0.35;
+
+  const fit = (cam, aspect) => {
+    const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+    const d = Math.max(1.5 / tv, 1.25 / (tv * aspect)) * 1.02;
+    cam.position.set(0, 0.25, d);
+    cam.lookAt(0, 0.12, 0);
+  };
+  const pos = cloth.attributes.position;
+  const update = (t) => {
+    // Run up the pole.
+    holder.position.y = -1.0 + 1.5 * easeOut(t / 1.1);
+    const amp = 0.06 + 0.06 * easeOut(t / 1.2);
+    for (let i = 0; i < pos.count; i += 1) {
+      const x = base[i * 3];
+      const y = base[i * 3 + 1];
+      const k = x / W;
+      pos.array[i * 3 + 2] = Math.sin(x * 4.2 - t * 5.2 + y * 0.9) * amp * k + Math.sin(x * 2.1 - t * 3.1) * amp * 0.6 * k;
+      pos.array[i * 3 + 1] = y - k * k * 0.06;
+    }
+    pos.needsUpdate = true;
+    cloth.computeVertexNormals();
+  };
+  return { fit, update, still: 4 };
+}
+
+const THINGS = { track: trackThing, medals: medalsThing, trophy: trophyThing, flag: flagThing };
 
 export default function Object3D({ kind, data, delay = 0, className = "", style, fallback = null, label }) {
   const box = useRef(null);
