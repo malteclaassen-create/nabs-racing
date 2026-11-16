@@ -52,6 +52,23 @@ export function topResults(rounds, n = 5) {
   return all.sort((a, b) => a.position - b.position || b.points - a.points || a.round - b.round).slice(0, n);
 }
 
+// The four circuits of the "guess the best race" question: the best one and
+// up to three other circuits finished on, spread over the season, in an order
+// set by the names so the answer is not always in the same place.
+export function quizOptions(review) {
+  const best = review.best;
+  if (!best?.track) return null;
+  const others = [];
+  for (const r of review.rounds || []) {
+    if (r.status === "FINISHED" && r.track && r.track !== best.track && !others.includes(r.track)) others.push(r.track);
+  }
+  if (others.length < 2) return null;
+  const n = Math.min(3, others.length);
+  const pick = Array.from({ length: n }, (_, k) => others[Math.floor((k * others.length) / n)]);
+  const key = (t) => [...`${t}${review.season?.label || ""}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
+  return [best.track, ...pick].sort((a, b) => key(a) - key(b));
+}
+
 // The team-mate the season is best told against: the one shared the most
 // races with.
 function mainMate(review) {
@@ -88,6 +105,9 @@ export function storySlides(review) {
 
   const top = topResults(rounds);
   if (top.length >= 3) slides.push({ key: "top", eyebrow: "Top results", list: top });
+
+  const quiz = quizOptions(review);
+  if (quiz) slides.push({ key: "quiz", answer: review.best.track, position: review.best.position, options: quiz });
 
   if (review.best) {
     slides.push({

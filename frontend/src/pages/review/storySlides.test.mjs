@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { storySlides, summaryGrid, podiumsOf, topResults } from "./storySlides.mjs";
+import { storySlides, summaryGrid, podiumsOf, topResults, quizOptions } from "./storySlides.mjs";
 
 const review = (over = {}) => ({
   season: { label: "Season 7", complete: true, roundsRun: 10, totalRounds: 10 },
@@ -35,7 +35,7 @@ const review = (over = {}) => ({
 });
 
 test("a full season runs intro to final, one moment per slide", () => {
-  assert.deepEqual(storySlides(review()).map((s) => s.key), ["intro", "rounds", "top", "best", "climb", "podiums", "field", "journey", "team", "contact", "final"]);
+  assert.deepEqual(storySlides(review()).map((s) => s.key), ["intro", "rounds", "top", "quiz", "best", "climb", "podiums", "field", "journey", "team", "contact", "final"]);
 });
 
 test("slides whose moment the season does not have are left out", () => {
@@ -96,5 +96,13 @@ test("the top results rank best place first, sprints included", () => {
 test("training, the fastest lap, tyres and track limits join when the season has them", () => {
   const r = { ...review(), training: { laps: 900, weeks: 10, rank: { rank: 1, of: 40 } }, boards: { training: { of: 40, rows: [] } }, tyres: [{ tyre: "M", laps: 90, share: 60 }], limits: { cuts: 12, penalties: 3, races: 6 } };
   r.stats = { ...r.stats, bestLap: { bestLapMs: 92000, track: "Monza", number: 4 } };
-  assert.deepEqual(storySlides(r).map((s) => s.key), ["intro", "rounds", "training", "top", "best", "climb", "fastest", "podiums", "field", "tyres", "journey", "team", "contact", "limits", "final"]);
+  assert.deepEqual(storySlides(r).map((s) => s.key), ["intro", "rounds", "training", "top", "quiz", "best", "climb", "fastest", "podiums", "field", "tyres", "journey", "team", "contact", "limits", "final"]);
+});
+
+test("the best-race question has the answer among other circuits finished on, and needs two of them", () => {
+  const q = quizOptions(review());
+  assert.equal(q.length, 3);
+  assert.ok(q.includes("Jeddah"));
+  assert.deepEqual([...q].sort(), ["Jeddah", "Mugello", "Spa"]);
+  assert.equal(quizOptions(review({ rounds: [{ round: 6, track: "Jeddah", status: "FINISHED", position: 1 }, { round: 7, track: "Spa", status: "FINISHED", position: 9 }] })), null);
 });

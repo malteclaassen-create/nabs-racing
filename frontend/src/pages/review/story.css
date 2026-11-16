@@ -131,21 +131,31 @@
   65% { opacity: 1; transform: translateY(-2%) scale(1.03); }
   100% { opacity: 1; transform: none; }
 }
-.st-in { animation: st-rise 560ms cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: var(--d, 0ms); }
-.st-land { animation: st-land 760ms cubic-bezier(0.3, 1.25, 0.5, 1) both; animation-delay: var(--d, 0ms); }
+.st-in { animation: st-rise 560ms cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--d, 0ms) + var(--d0, 0ms)); }
+.st-land { animation: st-land 760ms cubic-bezier(0.3, 1.25, 0.5, 1) both; animation-delay: calc(var(--d, 0ms) + var(--d0, 0ms)); }
+
+/* A slide's opening line: alone on the frame, then it lifts away and the
+   slide comes in under it (StorySlide's TEASE_MS, the --d0 every delay adds). */
+@keyframes st-tease {
+  0% { opacity: 0; transform: translateY(28px); }
+  14% { opacity: 1; transform: none; }
+  78% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-36px) scale(1.04); visibility: hidden; }
+}
+.st-tease { animation: st-tease 2100ms cubic-bezier(0.3, 0.6, 0.2, 1) both; }
 
 /* A line draws itself once, from its start. */
 @keyframes st-draw {
   from { stroke-dashoffset: 1; }
   to { stroke-dashoffset: 0; }
 }
-.st-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: st-draw 1400ms cubic-bezier(0.33, 0.1, 0.25, 1) forwards; animation-delay: var(--d, 250ms); }
+.st-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: st-draw 1400ms cubic-bezier(0.33, 0.1, 0.25, 1) forwards; animation-delay: calc(var(--d, 250ms) + var(--d0, 0ms)); }
 
 /* Bars grow from their start. */
 @keyframes st-grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes st-grow-y { from { transform: scaleY(0); } to { transform: scaleY(1); } }
-.st-grow-x { transform-origin: left; animation: st-grow-x 900ms cubic-bezier(0.33, 0.1, 0.25, 1) both; animation-delay: var(--d, 0ms); }
-.st-grow-y { transform-origin: bottom; animation: st-grow-y 700ms cubic-bezier(0.22, 0.61, 0.24, 1) both; animation-delay: var(--d, 0ms); }
+.st-grow-x { transform-origin: left; animation: st-grow-x 900ms cubic-bezier(0.33, 0.1, 0.25, 1) both; animation-delay: calc(var(--d, 0ms) + var(--d0, 0ms)); }
+.st-grow-y { transform-origin: bottom; animation: st-grow-y 700ms cubic-bezier(0.22, 0.61, 0.24, 1) both; animation-delay: calc(var(--d, 0ms) + var(--d0, 0ms)); }
 
 /* The figure as a pattern: rows of it sliding past, one row each way, as
    Wrapped turns the year into a texture. */
@@ -179,8 +189,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .st-in, .st-land, .st-draw, .st-grow-x, .st-grow-y, .wr-pattern > div { animation: none !important; opacity: 1; stroke-dashoffset: 0; transform: none; }
+  .st-tease { display: none; }
   .st-frame { transition: none; }
 }
+.fx-lite .st-tease { display: none; }
 .fx-lite .st-in, .fx-lite .st-land, .fx-lite .st-draw, .fx-lite .st-grow-x, .fx-lite .st-grow-y, .fx-lite .wr-pattern > div { animation: none !important; opacity: 1; stroke-dashoffset: 0; transform: none; }
 
 /* ------------------------------------------------------------- type play */
@@ -214,5 +226,5 @@
   -webkit-text-stroke: 2px var(--g-pop);
 }
 @keyframes wr-step { from { transform: translate(0, 0); opacity: 0; } to { transform: translate(var(--sx), var(--sy)); opacity: 1; } }
-.wr-echo > .wr-ghost { animation: wr-step 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: var(--d, 0ms); transform: translate(var(--sx), var(--sy)); }
+.wr-echo > .wr-ghost { animation: wr-step 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--d, 0ms) + var(--d0, 0ms)); transform: translate(var(--sx), var(--sy)); }
 @media (prefers-reduced-motion: reduce) { .wr-echo > .wr-ghost { animation: none; } }
