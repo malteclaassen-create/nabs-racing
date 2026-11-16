@@ -29,6 +29,7 @@ import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { DATA_ROOT } from "./dataDirs.js";
 import { LIVE_SERVERS } from "./liveServers.js";
+import { realRoad } from "./realTracks.js";
 
 // ---------------------------------------------------------------------------
 // The map.png is NOT the road. Assetto Corsa renders it from the track's AI
@@ -176,8 +177,9 @@ const AI_HEADER = 16, AI_POINT = 20, AI_EXTRA = 72;
 // keeps a 7 km circuit under 40 KB.
 const ROAD_STEP_M = 3;
 // Bumped when the road is built differently, so a road.json kept from before
-// is built again rather than served (2: edges cleaned up, see cleanSides).
-const ROAD_VERSION = 2;
+// is built again rather than served (2: edges cleaned up, see cleanSides;
+// 3: the real circuit where there is one, see lib/realTracks.js).
+const ROAD_VERSION = 3;
 // The widest half-road worth believing. Some AI files measure the edge into
 // a run-off or a paddock for a stretch (Singapore: 90 m a side for 200 m),
 // which would draw a fin the size of the circuit's infield.
@@ -496,7 +498,10 @@ export async function ensureTrackRoad(track, layout) {
     const base = `${String(server.origin).replace(/\/+$/, "")}/content/tracks`;
     const folders = layout ? [`${base}/${enc(track)}/${enc(layout)}`, `${base}/${enc(track)}`] : [`${base}/${enc(track)}`];
     for (const folder of folders) {
-      const lane = roadFromAi(parseFastLane(await get(`${folder}/ai/fast_lane.ai`, "buf")));
+      const points = parseFastLane(await get(`${folder}/ai/fast_lane.ai`, "buf"));
+      // The real circuit when there is one that fits (lib/realTracks.js),
+      // else the edges from the AI file.
+      const lane = realRoad(points) || roadFromAi(points);
       if (!lane) continue;
       const pit = roadFromAi(parseFastLane(await get(`${folder}/ai/pit_lane.ai`, "buf")), { closed: false, fallbackHalfWidth: 3 });
       const road = { v: ROAD_VERSION, track: lane, pit };
