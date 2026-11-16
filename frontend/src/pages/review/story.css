@@ -259,3 +259,21 @@
 /* A 3D object (review/Object3D.jsx) in the right column is drawn at its
    real size: its canvas measures the box it sits in. */
 .st-aside:has(.st-3d) { zoom: 1; }
+
+/* ---------------------------------------------------------------- rhythm */
+/* One set of gaps for every slide, so no two slides space their words
+   differently. A small label sits close to what it introduces, stacked
+   poster lines sit close to each other, and every other step from one
+   block to the next (poster line, hero figure, sentence) is the same size.
+   Zero specificity (:where), so a slide that means a different gap still
+   says so with its own margin class. */
+.st-frame {
+  --gap-xs: clamp(7px, 2.4cqi, 13px);
+  --gap-s: clamp(8px, 2.2cqi, 12px);
+  --gap-m: clamp(14px, 3.6cqi, 22px);
+}
+:where(.wr-line, .wr-echo, .st-say, .st-kick) + :where(.st-kick),
+:where(.st-kick) + :where(.wr-line, .wr-echo, .st-say) { margin-top: var(--gap-s); }
+:where(.wr-line) + :where(.wr-line) { margin-top: var(--gap-xs); }
+:where(.wr-line, .wr-echo, .st-say) + :where(.wr-echo, .st-say),
+:where(.wr-echo, .st-say) + :where(.wr-line) { margin-top: var(--gap-m); }

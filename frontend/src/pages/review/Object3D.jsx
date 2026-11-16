@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { circuitFor } from "../../data/circuits.js";
 import { motionOff } from "../../hooks/motion.js";
 
@@ -296,30 +297,32 @@ function medalsThing({ scene, data, setCamera }) {
 
 // --- the trophy -----------------------------------------------------------------------------
 
-// The league's trophy (public/models/trophy, CC0), gold on the slide, turning,
-// with a few small shapes in the accent drifting round it.
-function trophyThing({ scene, pal }) {
+// The league's trophy (public/models/trophy, CC0): polished gold on a dark
+// base, rising into place and then turning slowly, nothing else around it.
+// The model comes faceted; its normals are smoothed so the cup reads as
+// polished metal rather than a low-poly toy.
+function trophyThing({ scene }) {
   keyLight(scene, [1.4, 3.5, 2.4], 1.4);
-  shadowGround(scene, 6, 0.24);
+  shadowGround(scene, 6, 0.18);
   const group = new THREE.Group();
   scene.add(group);
-  const bits = Array.from({ length: 7 }, (_, k) => {
-    const geo = k % 2 ? new THREE.OctahedronGeometry(0.06) : new THREE.TetrahedronGeometry(0.07);
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: k % 3 ? pal.pop : pal.fg, roughness: 0.35, metalness: 0.2 }));
-    m.castShadow = true;
-    scene.add(m);
-    return m;
-  });
   const ready = new GLTFLoader().loadAsync("/models/trophy/trophy.glb").then((gltf) => {
     gltf.scene.traverse((o) => {
       if (!o.isMesh) return;
       o.castShadow = true;
       const n = o.name.toLowerCase();
+      const metal = n.includes("cup") || n.includes("plate");
+      if (metal) {
+        o.geometry.deleteAttribute("normal");
+        const smooth = mergeVertices(o.geometry, 1e-4);
+        smooth.computeVertexNormals();
+        o.geometry = smooth;
+      }
       o.material = n.includes("cup")
-        ? new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.2 })
+        ? new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.16 })
         : n.includes("plate")
-          ? new THREE.MeshStandardMaterial({ color: SILVER, metalness: 1, roughness: 0.3 })
-          : new THREE.MeshStandardMaterial({ color: 0x17171a, metalness: 0.2, roughness: 0.5 });
+          ? new THREE.MeshStandardMaterial({ color: SILVER, metalness: 1, roughness: 0.25 })
+          : new THREE.MeshStandardMaterial({ color: 0x141416, metalness: 0.1, roughness: 0.55 });
     });
     group.add(gltf.scene);
   });
@@ -330,20 +333,14 @@ function trophyThing({ scene, pal }) {
     cam.lookAt(0, 0.5, 0);
   };
   const update = (t) => {
-    const s = easeBack(t / 0.9);
-    group.scale.setScalar(Math.max(0.001, s));
-    group.rotation.y = -0.6 + t * 0.55;
-    group.position.y = Math.sin(t * 1.4) * 0.02;
-    bits.forEach((m, k) => {
-      const a = t * (0.35 + k * 0.04) + (k * Math.PI * 2) / bits.length;
-      m.position.set(Math.cos(a) * 0.62, 0.25 + ((k * 0.37) % 0.9) + Math.sin(t + k) * 0.05, Math.sin(a) * 0.62);
-      m.rotation.set(t * 0.9 + k, t * 0.7, 0);
-      m.scale.setScalar(easeOut((t - 0.4 - k * 0.08) / 0.6));
-    });
+    const rise = easeOut(t / 1.1);
+    group.scale.setScalar(0.92 + 0.08 * rise);
+    group.position.y = (1 - rise) * -0.12;
+    group.visible = t > 0;
+    group.rotation.y = -0.5 + t * 0.32;
   };
   return { fit, update, still: 5, ready };
 }
-
 const THINGS = { track: trackThing, medals: medalsThing, trophy: trophyThing };
 
 export default function Object3D({ kind, data, delay = 0, className = "", style, fallback = null, label }) {

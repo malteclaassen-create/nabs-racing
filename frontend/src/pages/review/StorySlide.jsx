@@ -42,7 +42,7 @@ export function voiceOf(review) {
 // A poster line: capitals set edge to edge across the frame. The SVG's text
 // is given the full width to fill; a line too short to fill it without
 // looking stretched (a single figure) keeps its own width instead.
-function Fill({ text, d = 0, outline = false, className = "", maxHeight = 520, align = "left", style }) {
+function Fill({ text, d = 0, outline = false, className = "", maxHeight = 270, align = "left", style }) {
   const t = String(text ?? "").toUpperCase();
   // A wide column is wider than it is tall next to the rest of the slide, so
   // a short word may not grow as tall as it would in a phone frame.
@@ -57,7 +57,7 @@ function Fill({ text, d = 0, outline = false, className = "", maxHeight = 520, a
   const h = Math.round(size * 0.74);
   const x = align === "right" && !stretch ? 1000 - natural : 0;
   return (
-    <div className={`st-in ${className}`} style={{ "--d": `${d}ms`, ...style }}>
+    <div className={`wr-line st-in ${className}`} style={{ "--d": `${d}ms`, ...style }}>
       <svg viewBox={`0 0 1000 ${h}`} className={`wr-fill ${outline ? "is-outline" : ""}`} role="img" aria-label={text}>
         <text x={x} y={h} fontSize={size} {...(stretch ? { textLength: 1000, lengthAdjust: "spacingAndGlyphs" } : {})}>
           {t}
@@ -129,14 +129,14 @@ export const topShare = (rank) => (rank ? Math.max(1, Math.ceil((rank.rank / ran
 
 // A small label, the quiet voice set against the loud one.
 const Kicker = ({ d = 0, className = "", children }) => (
-  <div className={`st-in text-[13px] font-bold uppercase tracking-[0.14em] ${className}`} style={{ "--d": `${d}ms`, fontFamily: "Inter, sans-serif" }}>
+  <div className={`st-kick st-in text-[13px] font-bold uppercase tracking-[0.14em] ${className}`} style={{ "--d": `${d}ms`, fontFamily: "Inter, sans-serif" }}>
     {children}
   </div>
 );
 
 // A plain sentence with a word or two picked out by the marker.
 const Line = ({ d = 0, className = "", children, size = "min(6.6cqi, 3.6cqh)" }) => (
-  <div className={`st-in font-extrabold leading-[1.25] ${className}`} style={{ "--d": `${d}ms`, fontSize: size }}>
+  <div className={`st-say st-in font-extrabold leading-[1.25] ${className}`} style={{ "--d": `${d}ms`, fontSize: size }}>
     {children}
   </div>
 );
@@ -271,8 +271,8 @@ function Intro({ review }) {
   return (
     <Card>
       <Kicker d={100}>{review.own ? "This was your" : `This was ${v.your}`}</Kicker>
-      <Fill text={head} d={250} className="mt-3" />
-      {num && <Echo value={num} d={500} size="min(92cqi, 52cqh)" className="-mt-2" />}
+      <Fill text={head} d={250} />
+      {num && <Echo value={num} d={500} size="min(92cqi, 52cqh)" />}
       <Aside>
       <div className="mt-auto">
         {driver.team && driver.team.tier !== 0 && (
@@ -328,7 +328,7 @@ function Rounds({ review }) {
   return (
     <Card>
       <Fill text={`${v.You} started`} d={100} />
-      <Echo value={s.starts} d={350} className="mt-3" />
+      <Echo value={s.starts} d={350} />
       <Fill text={`of ${n} rounds`} d={800} outline />
       <Aside>
       <div className="mt-auto">
@@ -374,9 +374,9 @@ function Training({ slide, review }) {
   return (
     <Card>
       <Kicker d={100}>Between the races, {v.you} put in</Kicker>
-      <Echo value={fmt(slide.value)} d={300} className="mt-3" />
+      <Echo value={fmt(slide.value)} d={300} />
       <Fill text="training laps" d={750} outline />
-      <Line d={1000} className="mt-3" size="min(5.4cqi, 3cqh)">
+      <Line d={1000} size="min(5.4cqi, 3cqh)">
         Over <Mark>{plural(slide.weeks, "race week")}</Mark>.
       </Line>
       <Aside>
@@ -416,8 +416,8 @@ function Tyres({ slide, review }) {
   return (
     <Card>
       <Kicker d={100}>{v.You} spent most race laps on</Kicker>
-      <Fill text={`${name}s`} d={250} className="mt-3" />
-      <Echo value={`${top.share}%`} d={500} className="mt-3" />
+      <Fill text={`${name}s`} d={250} />
+      <Echo value={`${top.share}%`} d={500} />
       <Line d={900} size="min(5.4cqi, 3cqh)">
         of them, <Mark>{plural(top.laps, "lap")}</Mark>.
       </Line>
@@ -467,7 +467,7 @@ function Limits({ slide, review }) {
   return (
     <Card>
       <Fill text={`${v.You} cut the track`} d={100} />
-      <Echo value={slide.cuts} d={350} className="mt-3" size="min(44cqi, 22cqh)" />
+      <Echo value={slide.cuts} d={350} size="min(44cqi, 22cqh)" />
       <Fill text={slide.cuts === 1 ? "time" : "times"} d={750} outline maxHeight={170} />
       <div className="mt-4 flex flex-wrap gap-1.5">
         {Array.from({ length: Math.min(slide.cuts, 60) }, (_, k) => (
@@ -520,28 +520,24 @@ function Top({ slide, review }) {
       <Fill text={`${v.Your} top`} d={100} />
       <Fill text="results" d={250} outline />
       <Aside>
-        <ol className={`flex min-h-0 flex-col gap-2.5 ${wide ? "" : "mt-6 flex-1 justify-end"}`}>
+        <ol className={`flex min-h-0 flex-col ${wide ? "" : "mt-6 flex-1 justify-end"}`}>
           {slide.list.map((t, k) => (
             <li
               key={`${t.round}-${t.sprint}`}
-              className="st-in flex min-h-0 flex-1 items-center gap-3.5 rounded-2xl px-3 py-2.5"
-              style={{
-                "--d": `${550 + k * 150}ms`,
-                maxHeight: "7rem",
-                ...(k === 0 ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" } : { background: "var(--g-faint)" }),
-              }}
+              className="st-in flex min-h-0 flex-1 items-center gap-4 border-t py-3"
+              style={{ "--d": `${550 + k * 150}ms`, maxHeight: "6.5rem", borderColor: "var(--g-faint)" }}
             >
-              <span className="wr-big wr-num w-9 shrink-0 text-center leading-none" style={{ fontSize: "min(11cqi, 5.4cqh)" }}>
+              <span className="wr-big wr-num w-9 shrink-0 text-center leading-none" style={{ fontSize: "min(11cqi, 5.4cqh)", ...(k === 0 ? { color: "var(--g-mark)" } : null) }}>
                 {k + 1}
               </span>
-              <span className="wr-cover shrink-0 rounded-xl" style={{ width: "min(15cqi, 7.4cqh)", ...(k === 0 ? { background: "var(--g-mark-fg)", color: "var(--g-mark)" } : null) }}>
+              <span className="wr-cover shrink-0 rounded-lg" style={{ width: "min(14cqi, 7cqh)", ...(k === 0 ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" } : null) }}>
                 <Outline track={t.track} className="h-[72%] w-[72%]" d={650 + k * 150} width={7} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="wr-big block truncate uppercase leading-none" style={{ fontSize: "min(6.6cqi, 3.3cqh)" }}>
                   {t.track}
                 </span>
-                <span className="mt-1.5 block truncate text-[13px] font-bold opacity-75" style={{ fontFamily: "Inter, sans-serif" }}>
+                <span className="mt-1.5 block truncate text-[13px] font-bold lv-mute" style={{ fontFamily: "Inter, sans-serif" }}>
                   {t.sprint ? "Sprint · " : `Round ${t.round} · `}
                   {plural(t.points, "point")}
                 </span>
@@ -586,7 +582,7 @@ function Best({ review }) {
   return (
     <Card>
       <Kicker d={100}>{v.Your} best race</Kicker>
-      <Echo value={`P${b.position}`} d={600} size="min(48cqi, 24cqh)" className="mt-3" />
+      <Echo value={`P${b.position}`} d={600} size="min(48cqi, 24cqh)" />
       {wide ? (
         <Aside>
           <div className="st-fill st-3d relative min-h-0 flex-1">
@@ -598,8 +594,8 @@ function Best({ review }) {
           <div className="absolute inset-0">{picture}</div>
         </div>
       )}
-      <Fill text={b.track} d={1300} className="mt-3" />
-      <Line d={1550} className="mt-3" size="min(5.6cqi, 3cqh)">
+      <Fill text={b.track} d={1300} />
+      <Line d={1550} size="min(5.6cqi, 3cqh)">
         {b.grid > 0 ? (
           <>
             From <Mark>P{b.grid} on the grid</Mark>, round {b.round}.
@@ -617,7 +613,7 @@ function Climb({ review }) {
   const c = review.climb;
   const wide = useContext(Wide);
   const fromTo = (
-    <div className="st-in flex items-baseline gap-3 wr-big wr-num" style={{ "--d": "1100ms", fontSize: wide ? "min(14cqi, 9cqh)" : "min(12cqi, 6cqh)" }}>
+    <div className="st-in flex items-baseline gap-3 wr-big wr-num" style={{ "--d": "1100ms", fontSize: "min(12cqi, 6cqh)" }}>
       <span className="lv-mute">P{c.grid}</span>
       <span className="text-[0.55em]">to</span>
       <span style={{ color: "var(--g-mark)" }}>P{c.position}</span>
@@ -626,20 +622,20 @@ function Climb({ review }) {
   return (
     <Card>
       <Fill text={`${v.You} made up`} d={100} />
-      <Echo value={`+${c.gained}`} d={350} className="mt-4" />
-      <Fill text="places" d={800} className="mt-4" outline />
+      <Echo value={`+${c.gained}`} d={350} />
+      <Fill text="places" d={800} outline />
       {wide ? (
         <>
-          <Line d={1400} className="mt-6">
+          <Line d={1400}>
             In one race, at <Mark>{c.track}</Mark>.
           </Line>
+          <div className="mt-6">{fromTo}</div>
           <Aside>
             <div className="st-fill st-3d relative min-h-0 flex-1">
               <div className="absolute inset-0">
                 <Circuit3D track={c.track} d={500} className="h-full w-full" />
               </div>
             </div>
-            <div className="mt-4 flex justify-center">{fromTo}</div>
           </Aside>
         </>
       ) : (
@@ -666,8 +662,8 @@ function Podiums({ slide, review }) {
   const n = slide.podiums.length;
   const wide = useContext(Wide);
   const shown = slide.podiums.slice(0, 8);
-  // On a phone four medals sit two by two, so each is big enough to read.
-  const cols = wide || shown.length > 4 ? Math.min(4, shown.length) : Math.min(2, shown.length);
+  // Up to four medals sit two by two, so each is big enough to read.
+  const cols = shown.length > 4 ? Math.min(4, shown.length) : Math.min(2, shown.length);
   const rows = [];
   for (let k = 0; k < shown.length; k += cols) rows.push(shown.slice(k, k + cols));
   const flat = (
@@ -755,8 +751,8 @@ function Field({ slide, review }) {
       <Kicker d={450} className="mt-6 lv-mute">
         That made {v.you}
       </Kicker>
-      {rank.shared && <Fill text="joint" d={600} className="mt-2" outline maxHeight={150} />}
-      <Echo value={nth(rank.rank)} d={750} size={slide.board ? "min(40cqi, 18cqh)" : "min(54cqi, 28cqh)"} className="mt-1" />
+      {rank.shared && <Fill text="joint" d={600} outline maxHeight={150} />}
+      <Echo value={nth(rank.rank)} d={750} size={slide.board ? "min(40cqi, 18cqh)" : "min(54cqi, 28cqh)"} />
       <Line d={1150}>
         out of <Mark>{rank.of} drivers</Mark>.
       </Line>
@@ -807,8 +803,8 @@ function Journey({ slide, review }) {
   return (
     <Card>
       <Kicker d={100}>{done ? `${v.You} finished the season` : `After round ${last.round}, ${v.you} ${v.are}`}</Kicker>
-      <Echo value={slide.value} d={300} className="mt-3" />
-      <Fill text="in the championship" d={750} className="mt-4" outline />
+      <Echo value={slide.value} d={300} />
+      <Fill text="in the championship" d={750} outline />
       <Aside>
       <div className="st-in mt-auto" style={{ "--d": "1100ms" }}>
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" role="img" aria-label="Place in the championship after each round">
@@ -833,10 +829,10 @@ function Team({ slide, review }) {
   return (
     <Card>
       <Fill text={review.own ? "You" : review.driver.name} d={100} />
-      <Kicker d={250} className="mt-2 lv-mute">
+      <Kicker d={250} className="lv-mute">
         against
       </Kicker>
-      <Fill text={mate.name} d={350} className="mt-2" outline />
+      <Fill text={mate.name} d={350} outline />
       {head && (
         <div className="mt-5 flex items-end gap-4">
           <Echo value={`${head.me}-${head.them}`} d={600} size="min(40cqi, 22cqh)" />
@@ -880,8 +876,8 @@ function Contact({ review }) {
     <Card>
       <Fill text={`${v.You} kept it`} d={100} />
       <Fill text="clean in" d={250} outline />
-      <Echo value={k.clean} d={500} className="mt-4" />
-      <Line d={900} className="mt-3">
+      <Echo value={k.clean} d={500} />
+      <Line d={900}>
         <Mark>{k.clean === 1 ? "round" : "rounds"}</Mark> without touching another car.
       </Line>
       <Aside>
@@ -1003,7 +999,7 @@ function Final({ slide, review, onReplay }) {
   const top = slide.top || [];
   const card = (
       <div
-        className="st-land flex min-h-0 flex-1 flex-col rounded-xl p-4"
+        className="st-land flex shrink-0 flex-col rounded-xl p-5"
         style={{
           "--d": "100ms",
           background: "var(--g-fg)",
@@ -1055,7 +1051,7 @@ function Final({ slide, review, onReplay }) {
             </ol>
           </div>
         </div>
-        <div className="mt-auto grid grid-cols-2 gap-4 pt-4">
+        <div className="mt-6 grid grid-cols-2 gap-4 border-t pt-4" style={{ borderColor: "color-mix(in srgb, currentColor 14%, transparent)" }}>
           <div>
             <div className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
               Points
@@ -1103,7 +1099,7 @@ function Final({ slide, review, onReplay }) {
   if (wide) {
     return (
       <div data-st-keep className="st-wide st-wide-final relative z-10 grid min-h-0 flex-1">
-        <div className="st-col flex min-h-0 flex-col">{card}</div>
+        <div className="st-col flex min-h-0 flex-col justify-center">{card}</div>
         <div className="st-col flex min-h-0 flex-col justify-center">
           <Fill text={review.own ? "That was your" : `That was ${voiceOf(review).your}`} d={300} />
           <Fill text={review.season.label} d={450} outline />
@@ -1113,7 +1109,7 @@ function Final({ slide, review, onReplay }) {
     );
   }
   return (
-    <div data-st-keep className="relative z-10 flex min-h-0 flex-1 flex-col px-5 pb-5 pt-[4.4rem] sm:px-6">
+    <div data-st-keep className="relative z-10 flex min-h-0 flex-1 flex-col justify-center px-5 pb-6 pt-[4.4rem] sm:px-6">
       {card}
       {actions}
     </div>
@@ -1137,7 +1133,7 @@ function Quiz({ slide, review, onNext }) {
   return (
     <Card>
       <Kicker d={100}>Quick question</Kicker>
-      <Fill text={review.own ? "Guess your" : `Guess ${v.your}`} d={250} className="mt-3" />
+      <Fill text={review.own ? "Guess your" : `Guess ${v.your}`} d={250} />
       <Fill text="best race" d={400} outline />
       <Aside>
       <div data-st-keep className="mt-auto space-y-2.5">
