@@ -547,13 +547,19 @@ export default function Welcome() {
 
   // Season-aware copy: everything below adapts to the season being shown, so
   // the page needs no edits when a new season (new game, new rules) starts.
-  // During a season changeover the active season may already be the new one
-  // while no round has run yet — in that gap the era copy keeps naming the
-  // PREVIOUS season's cars, and only flips to the new era once the first round
-  // of the new season is in the books.
-  const hasRunThisSeason = champRaces.some((r) => r.isCompleted);
+  // The car era moves on as soon as the old season is over, not only once the
+  // new one has run a round: once the running season's last championship round
+  // is in, the next season's car shows as soon as that season is published
+  // with its game filled in. A freshly activated season with nothing run yet
+  // shows its own car straight away. Until a season has its game typed in,
+  // it can't name a car, so the era stays on the one before it.
+  const seasonDone = champRaces.length > 0 && champRaces.every((r) => r.isCompleted);
+  const nextSeason = seasonDone
+    ? seasons.find((s) => s.number === (season?.number ?? 0) + 1 && s.isPublic !== false && s.game)
+    : null;
   const prevSeason = seasons.find((s) => s.number === (season?.number ?? 0) - 1);
-  const eraSeason = hasRunThisSeason ? season : prevSeason || season;
+  const eraSeason = nextSeason || (season?.game ? season : prevSeason || season);
+  const eraIsNext = !!nextSeason;
   const { era, platform } = seasonGameParts(eraSeason);
   const carsLabel = era || "Formula 1";
   // seasonGameParts already guarantees a platform (falls back to "Assetto
@@ -860,7 +866,9 @@ export default function Welcome() {
           <div className="hero-hud absolute inset-0 z-10 bg-gradient-to-t from-ink/85 to-transparent" />
           <div className="hero-hud absolute inset-x-5 bottom-4 z-20 flex items-end justify-between gap-3 text-white">
             <div className="min-w-0">
-              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand">This season&rsquo;s cars</div>
+              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-brand">
+                {eraIsNext ? "Next season’s cars" : "This season’s cars"}
+              </div>
               <div className="truncate font-display text-xl font-black uppercase tracking-tight">{carsLabel}</div>
             </div>
             {showPlatform && (
