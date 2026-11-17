@@ -23,6 +23,7 @@ import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import TrackStrengths from "../components/TrackStrengths.jsx";
+import RatingSeasons from "../components/RatingSeasons.jsx";
 import RivalsGapChart from "../components/RivalsGapChart.jsx";
 import DriverRaceByRace from "../components/DriverRaceByRace.jsx";
 import { countryFor } from "../data/driverCountries.js";
@@ -2191,6 +2192,10 @@ export default function DriverProfile({ previewId, preview }) {
       {!previewId && (
         <TrackStrengths key={driver.id} driver={driver} color={color} standings={standingsData.standings} />
       )}
+
+      {/* How the ratings moved season by season (finished seasons only, so it
+          never shows the private live numbers). Hidden below two seasons. */}
+      {!previewId && cardsEnabled && <RatingSeasons key={`rs-${driver.id}`} driverId={driver.id} color={color} />}
 
       {/* Career across linked seasons (only when this driver spans more than one) */}
       <CareerBlock
