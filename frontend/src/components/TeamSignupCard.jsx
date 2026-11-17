@@ -82,12 +82,8 @@ export default function TeamSignupCard() {
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   return (
-    <section className="reveal relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-lg shadow-ink/5 sm:p-6">
-      <div
-        className="pointer-events-none absolute inset-0 opacity-70"
-        style={{ background: "radial-gradient(120% 140% at 90% 0%, rgb(var(--c-brand) / 0.18), transparent 55%)" }}
-      />
-      <div className="relative">
+    <section className="reveal rounded-2xl border border-border bg-card p-5 shadow-lg shadow-ink/5 sm:p-6">
+      <div>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-eyebrow">
