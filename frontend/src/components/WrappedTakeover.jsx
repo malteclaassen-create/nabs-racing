@@ -167,6 +167,25 @@ export function WrappedTakeover({ wrapped, onClose }) {
 export function WrappedButton({ wrapped, label = "Your Wrapped", small = false, reveal = false }) {
   const colour = teamColourOf(wrapped);
   const navigate = useNavigate();
+  // The sweep is an introduction: once a member has seen it on this device,
+  // the button simply stands there, like the Discord one.
+  const sweptKey = `nabs_wrapped_swept_${wrapped.driverId}`;
+  const [sweep] = useState(() => {
+    if (!reveal) return false;
+    try {
+      return localStorage.getItem(sweptKey) !== "1";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    if (!sweep) return;
+    try {
+      localStorage.setItem(sweptKey, "1");
+    } catch {
+      /* private window: it sweeps in again next time */
+    }
+  }, [sweep, sweptKey]);
   const button = (
     <Link
       to={wrappedPath(wrapped)}
@@ -187,7 +206,7 @@ export function WrappedButton({ wrapped, label = "Your Wrapped", small = false, 
       {label}
     </Link>
   );
-  if (!reveal) return button;
+  if (!sweep) return button;
   // `reveal`: the same band that crosses the big Wrapped card crosses the
   // button, in a deep shade of the team colour (seen on a light page and a
   // dark one), and the button is there once it has passed.
