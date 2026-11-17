@@ -69,7 +69,7 @@ router.get("/", optionalUser, async (req, res, next) => {
 router.put("/", requireUser, async (req, res, next) => {
   try {
     const signup = await openSignupFor(req);
-    if (!signup) return res.status(409).json({ error: "The team sign-up is closed." });
+    if (!signup) return res.status(409).json({ error: "The sign-up is closed." });
     const form = parseSignupForm(req.body);
     const { entry } = await dbSaveSignup(prisma, {
       seriesId: signup.seriesId,
@@ -87,7 +87,7 @@ router.put("/", requireUser, async (req, res, next) => {
 router.delete("/", requireUser, async (req, res, next) => {
   try {
     const signup = await openSignupFor(req);
-    if (!signup) return res.status(409).json({ error: "The team sign-up is closed." });
+    if (!signup) return res.status(409).json({ error: "The sign-up is closed." });
     await dbWithdrawSignup(prisma, { seriesId: signup.seriesId, label: signup.label, discordId: req.user.discordId });
     res.json({ ok: true });
   } catch (e) {

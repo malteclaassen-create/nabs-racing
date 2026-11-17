@@ -38,7 +38,7 @@ function Settings({ data, onSaved }) {
 
   return (
     <div className="card p-5">
-      <CardHead eyebrow="Team sign-up" title={s.open ? "Open" : "Closed"}>
+      <CardHead eyebrow="Sign-up" title={s.open ? "Open" : "Closed"}>
         <span className={`rounded-full px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider ${s.open ? "bg-emerald-500/15 text-ok" : "bg-surface2 text-light"}`}>
           {s.open ? "On the home page" : "Not shown"}
         </span>

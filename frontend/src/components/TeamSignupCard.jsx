@@ -65,7 +65,7 @@ export default function TeamSignupCard() {
   }
 
   async function withdraw() {
-    if (!(await ask({ title: "Take your team sign-up back?", danger: true, confirmLabel: "Take it back" }))) return;
+    if (!(await ask({ title: "Take your sign-up back?", danger: true, confirmLabel: "Take it back" }))) return;
     setBusy(true);
     setError(null);
     try {
@@ -90,7 +90,7 @@ export default function TeamSignupCard() {
               {data.seriesName ? `${data.seriesName} · ` : ""}
               {label}
             </div>
-            <h2 className="mt-1 font-display text-xl font-black uppercase tracking-tight text-dark sm:text-2xl">Team sign-up</h2>
+            <h2 className="mt-1 font-display text-xl font-black uppercase tracking-tight text-dark sm:text-2xl">Sign-up</h2>
             <p className="mt-1 max-w-xl text-sm text-medium">
               Tell us which team you want to drive for and who your teammate is. On your own for now? Just put yourself down.
             </p>
@@ -114,7 +114,7 @@ export default function TeamSignupCard() {
                 </button>
               ) : (
                 <button onClick={openForm} className="btn-primary text-sm">
-                  Sign up a team
+                  Sign up
                 </button>
               )}
             </div>
