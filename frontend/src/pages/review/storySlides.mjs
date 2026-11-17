@@ -369,9 +369,17 @@ export { nth, roundName };
 export function seasonList(slide, review) {
   const s = review.stats;
   const one = (n, a, b) => (n === 1 ? a : b);
+  // A Tier 2 driver's wins and podiums are counted in Tier 2, with their
+  // place in it first: P11 overall reads differently next to P2 in Tier 2.
+  const T = review.tier?.position ? review.tier : null;
+  const tierName = T ? `Tier ${T.tier}` : "";
+  const wins = T ? T.wins ?? 0 : s.wins;
+  const podiums = T ? T.podiums ?? 0 : s.podiums;
   const out = [
-    { k: "wins", value: s.wins, label: one(s.wins, "win", "wins") },
-    { k: "podiums", value: s.podiums, label: one(s.podiums, "podium", "podiums") },
+    T ? { k: "tierpos", value: `P${T.position}`, label: `in ${tierName}` } : null,
+    // Under "P2 in Tier 2" the short form is enough, and fits a phone.
+    { k: "wins", value: wins, label: `${T ? `T${T.tier} ` : ""}${one(wins, "win", "wins")}` },
+    { k: "podiums", value: podiums, label: `${T ? `T${T.tier} ` : ""}${one(podiums, "podium", "podiums")}` },
     s.poles > 0 ? { k: "poles", value: s.poles, label: one(s.poles, "pole", "poles") } : null,
     s.fastestLaps > 0 ? { k: "fl", value: s.fastestLaps, label: one(s.fastestLaps, "fastest lap", "fastest laps") } : null,
     s.overtakes > 0 ? { k: "ot", value: s.overtakes, label: one(s.overtakes, "overtake", "overtakes") } : null,

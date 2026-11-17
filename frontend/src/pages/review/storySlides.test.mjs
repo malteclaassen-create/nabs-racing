@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { storySlides, summaryGrid, podiumsOf, topResults, quizOptions, pickPhoto, bestRun } from "./storySlides.mjs";
+import { storySlides, summaryGrid, podiumsOf, topResults, quizOptions, pickPhoto, bestRun, seasonList } from "./storySlides.mjs";
 
 const review = (over = {}) => ({
   season: { label: "Season 7", complete: true, roundsRun: 10, totalRounds: 10 },
@@ -144,4 +144,12 @@ test("a Tier 2 driver is ranked among Tier 2 and gets a Tier 2 slide", () => {
   // Laps led: 4th of 64 in the league says more than 9th of 40 in Tier 2.
   assert.equal(s.find((x) => x.key === "led").scope, null);
   assert.equal(s.find((x) => x.key === "passes").scope, "Tier 2");
+});
+
+test("a Tier 2 driver's card counts wins and podiums in Tier 2", () => {
+  const r = review();
+  const plain = seasonList({}, r).map((g) => g.label);
+  assert.ok(plain.includes("wins") || plain.includes("win"));
+  const t2 = seasonList({}, { ...r, tier: { tier: 2, position: 2, wins: 3, podiums: 1 } });
+  assert.deepEqual(t2.slice(0, 3).map((g) => `${g.value} ${g.label}`), ["P2 in Tier 2", "3 T2 wins", "1 T2 podium"]);
 });
