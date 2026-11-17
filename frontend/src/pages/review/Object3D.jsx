@@ -317,48 +317,31 @@ function medalsThing({ scene, data, setCamera, el }) {
 
 // --- the trophy -----------------------------------------------------------------------------
 
-// A plain cup, the kind on every shelf: a black two-step plinth with a
-// silver plate, a turned gold stem with a knot, a round bowl with a rolled
-// lip and two handles. Built from simple shapes so it reads as a trophy, not
-// as a particular model; it rises into place and turns slowly.
-function trophyThing({ scene }) {
+// A plain cup, the kind on every shelf: a turned stem with a knot, a round
+// bowl with a rolled lip and two handles, standing on its own foot. It is
+// painted in the slide's own colour with three hard bands of light, like a
+// printed picture, not polished gold; it rises into place and turns slowly.
+function trophyThing({ scene, pal }) {
   keyLight(scene, [1.4, 3.5, 2.4], 1.4);
   shadowGround(scene, 6, 0.18);
   const group = new THREE.Group();
   scene.add(group);
-  const gold = new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.17 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x141416, metalness: 0.15, roughness: 0.5 });
-  const plate = new THREE.MeshStandardMaterial({ color: SILVER, metalness: 1, roughness: 0.28 });
-  const add = (geo, mat, y = 0) => {
+  const bands = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1, THREE.RedFormat);
+  bands.minFilter = bands.magFilter = THREE.NearestFilter;
+  bands.needsUpdate = true;
+  const gold = new THREE.MeshToonMaterial({ color: pal.fg, gradientMap: bands });
+  // The outline below was drawn for a cup on a plinth; it stands on the
+  // ground now.
+  const body = new THREE.Group();
+  body.position.y = -0.235;
+  group.add(body);
+  const add = (geo, mat) => {
     const m = new THREE.Mesh(geo, mat);
-    m.position.y = y;
     m.castShadow = true;
     m.receiveShadow = true;
-    group.add(m);
+    body.add(m);
     return m;
   };
-
-  // The plinth: a wide step and a narrower one on it, edges slightly eased.
-  const step = (w, h, d) => {
-    const shape = new THREE.Shape();
-    const r = 0.012;
-    shape.moveTo(-w / 2 + r, -d / 2);
-    shape.lineTo(w / 2 - r, -d / 2);
-    shape.quadraticCurveTo(w / 2, -d / 2, w / 2, -d / 2 + r);
-    shape.lineTo(w / 2, d / 2 - r);
-    shape.quadraticCurveTo(w / 2, d / 2, w / 2 - r, d / 2);
-    shape.lineTo(-w / 2 + r, d / 2);
-    shape.quadraticCurveTo(-w / 2, d / 2, -w / 2, d / 2 - r);
-    shape.lineTo(-w / 2, -d / 2 + r);
-    shape.quadraticCurveTo(-w / 2, -d / 2, -w / 2 + r, -d / 2);
-    const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.006, bevelSegments: 2, curveSegments: 4 });
-    g.rotateX(-Math.PI / 2);
-    return g;
-  };
-  add(step(0.6, 0.14, 0.6), dark, 0);
-  add(step(0.46, 0.08, 0.46), dark, 0.15);
-  const tag = add(new THREE.BoxGeometry(0.34, 0.07, 0.008), plate, 0.075);
-  tag.position.z = 0.304;
 
   // The gold body, turned on a lathe from one outline (radius, height).
   const outline = [
@@ -413,9 +396,9 @@ function trophyThing({ scene }) {
   }
   const fit = (cam, aspect) => {
     const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
-    const d = Math.max(0.68 / tv, 0.62 / (tv * aspect));
-    cam.position.set(0, 0.62 + d * 0.22, d);
-    cam.lookAt(0, 0.5, 0);
+    const d = Math.max(0.52 / tv, 0.56 / (tv * aspect));
+    cam.position.set(0, 0.4 + d * 0.18, d);
+    cam.lookAt(0, 0.36, 0);
   };
   const update = (t) => {
     const rise = easeOut(t / 1.1);

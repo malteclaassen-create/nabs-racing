@@ -1044,6 +1044,10 @@ function Contact({ review }) {
 
 // The season's honours under a turning trophy: the trophy fills the frame,
 // the titles are set big under it (on a wide screen, beside it).
+// The trophy on the honours slide: a plain cup in the slide's own colours,
+// shaded in hard bands like a printed picture rather than polished gold.
+const TrophyArt = () => <Thing kind="trophy" d={150} className="st-3d h-full w-full" label="A trophy" fallback={null} />;
+
 function Honours({ slide, review }) {
   const v = voiceOf(review);
   const wide = useContext(Wide);
@@ -1073,7 +1077,7 @@ function Honours({ slide, review }) {
       ))}
     </div>
   );
-  const trophy = <Thing kind="trophy" d={150} className="st-3d h-full w-full" label="A trophy" fallback={null} />;
+  const trophy = <TrophyArt />;
   return (
     <Card>
       {wide ? (
