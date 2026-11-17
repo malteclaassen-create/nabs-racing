@@ -10,6 +10,7 @@ import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
 import { getTrackStrengths } from "../services/trackStrengthService.js";
 import { getSeasonReview, reviewVisibleTo, MIN_ROUNDS } from "../services/seasonReviewService.js";
 import { isSeasonComplete } from "../lib/seasonComplete.js";
+import { recordWrappedOpen, recordWrappedProgress } from "../lib/wrappedViews.js";
 
 const router = Router();
 
@@ -89,8 +90,33 @@ router.get("/:id/season-review", optionalUser, async (req, res, next) => {
     } catch {
       own = false;
     }
+    // A member opening their own Wrapped is noted for the admin's
+    // System > Wrapped view (lib/wrappedViews.js); a failure there never
+    // stops the story.
+    if (own && req.user?.discordId) {
+      recordWrappedOpen(prisma, { seasonId: driver.seasonId, discordId: req.user.discordId, driverId: rowId, name: req.user.discordName || null }).catch(() => {});
+    }
     res.setHeader("Cache-Control", "private, max-age=60");
     res.json({ review: { ...review, own } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/drivers/:id/season-review/seen { slide, slides } -> { ok }
+// How far a member got through their own Wrapped (the furthest slide), for
+// the admin's System > Wrapped view. Anyone else's progress is ignored.
+router.post("/:id/season-review/seen", optionalUser, async (req, res, next) => {
+  try {
+    if (!req.user?.discordId) return res.json({ ok: false });
+    const rowId = await rowFor(req);
+    const driver = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { seasonId: true } }) : null;
+    if (!driver) return res.json({ ok: false });
+    const mine = await resolveDriverId(prisma, req.user);
+    const own = !!mine && (mine === rowId || (await getLinkedDriverIds(prisma, mine)).includes(rowId));
+    if (!own) return res.json({ ok: false });
+    await recordWrappedProgress(prisma, { seasonId: driver.seasonId, discordId: req.user.discordId, slide: req.body?.slide, slides: req.body?.slides });
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }

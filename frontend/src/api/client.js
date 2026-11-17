@@ -558,6 +558,8 @@ export const api = {
   driverRating: (id) => request(`/drivers/${id}/rating`, { auth: true }),
   // One driver row's season told in chapters (backend services/seasonReviewService.js).
   driverSeasonReview: (id) => request(`/drivers/${encodeURIComponent(id)}/season-review`, { auth: true }),
+  // How far a member got through their own Wrapped (admin System > Wrapped).
+  wrappedSeen: (id, slide, slides) => request(`/drivers/${encodeURIComponent(id)}/season-review/seen`, { method: "POST", body: { slide, slides }, auth: true }),
   adminSeasonReview: () => request("/admin/season-review", { auth: true }),
   setSeasonReviewMode: (mode) => request("/admin/season-review", { method: "PUT", body: { mode }, auth: true }),
   // The public profile page: `id` may be the person's handle (name in url
@@ -963,6 +965,7 @@ export const api = {
     }
   },
   adminTraffic: () => request("/admin/traffic", { auth: true }),
+  adminWrappedViews: (seasonId) => request(`/admin/wrapped-views${seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ""}`, { auth: true }),
 
   // social links (public read + admin manage)
   socialLinks: () => request("/settings/social"),

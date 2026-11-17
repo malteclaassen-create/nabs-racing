@@ -8,7 +8,7 @@
 // figures only, so the story is the same whoever opens it, apart from "you"
 // for the driver themself.
 // ---------------------------------------------------------------------------
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
@@ -38,6 +38,21 @@ export default function SeasonReview() {
     };
   }, [id]);
 
+  // A member watching their own Wrapped: the furthest slide they reach is
+  // sent once per new slide, for the admin's System > Wrapped view.
+  const furthest = useRef(-1);
+  useEffect(() => {
+    furthest.current = -1;
+  }, [id]);
+  const progress = useCallback(
+    (slide, total) => {
+      if (slide <= furthest.current) return;
+      furthest.current = slide;
+      api.wrappedSeen(id, slide, total).catch(() => {});
+    },
+    [id]
+  );
+
   const seasonLabel = review?.season?.label || "Season";
   useSpecificTitle(review?.driver ? `${review.driver.name} · ${seasonLabel} Wrapped` : "Season Wrapped");
 
@@ -66,5 +81,5 @@ export default function SeasonReview() {
       </div>
     );
   }
-  return <Story review={review} slides={slides} onClose={close} />;
+  return <Story review={review} slides={slides} onClose={close} onProgress={review.own ? progress : undefined} />;
 }

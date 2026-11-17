@@ -45,6 +45,7 @@ import { overdueRounds } from "../lib/overdueRounds.js";
 import { writeSeasonHero, writeSeasonCar, writeSeasonPreviewLoop } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
+import { getWrappedViews } from "../lib/wrappedViews.js";
 import { leagueSince, setLeagueSince } from "../lib/leagueStats.js";
 import {
   dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload, ensureReplaysFolder,
@@ -1865,6 +1866,16 @@ router.delete("/market/:offerId", async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // TRAFFIC (admin Traffic tab) — the self-hosted visit counter's numbers.
 // ---------------------------------------------------------------------------
+// GET /api/admin/wrapped-views?seasonId= -> { seasonId, seasons, complete, rows }
+// Who has watched their own season Wrapped, and how far they got.
+router.get("/wrapped-views", async (req, res, next) => {
+  try {
+    res.json(await getWrappedViews(prisma, req.query.seasonId ? String(req.query.seasonId) : null));
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get("/traffic", async (req, res, next) => {
   try {
     res.json(await getTrafficStats(prisma));

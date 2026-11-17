@@ -31,7 +31,7 @@ const TRANSITIONS = ["wipe", "circle", "push", "slash", "rise", "zoom"];
 const TRANSITION_MS = 720;
 const transitionInto = (n, back) => (back ? "back" : TRANSITIONS[(n - 1 + TRANSITIONS.length) % TRANSITIONS.length]);
 
-export default function Story({ review, slides, onClose }) {
+export default function Story({ review, slides, onClose, onProgress }) {
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
   // The slide being left, kept on screen under the new one while the move
@@ -50,6 +50,11 @@ export default function Story({ review, slides, onClose }) {
   const wide = useWideStory();
   useScrollLock(true);
   useFocusTrap(true, frameRef);
+  // The slide on show, for whoever keeps count (SeasonReview: how far a
+  // member got through their own Wrapped).
+  useEffect(() => {
+    onProgress?.(i, slides.length);
+  }, [i, slides.length, onProgress]);
 
   const go = useCallback(
     (to) => {

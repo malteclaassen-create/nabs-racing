@@ -15,6 +15,7 @@ import { ensureNewsTable } from "./news.js";
 import { ensureNewsCommentTable } from "./newsComments.js";
 import { ensureNewsReactionTables } from "./newsReactions.js";
 import { ensureSeasonAwardTable } from "./seasonAwards.js";
+import { ensureWrappedViewTable } from "./wrappedViews.js";
 
 // Add a column only if it isn't already there (SQLite has no
 // ADD COLUMN IF NOT EXISTS). `def` is everything after the name, e.g. "INTEGER".
@@ -959,6 +960,7 @@ export async function ensureAppSchema(prisma) {
   // The awards the league hands out per season (lib/seasonAwards.js,
   // migration season_awards).
   await ensureSeasonAwardTable(prisma);
+  await ensureWrappedViewTable(prisma);
 
   await migrateLiveLinksToSeries(prisma);
   await resetReferralsOnce(prisma);
