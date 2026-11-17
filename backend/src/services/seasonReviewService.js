@@ -116,6 +116,65 @@ export function classificationsOfPerRace(perRace) {
   return out;
 }
 
+// The Tier 2 lens. A Tier 2 driver, or a reserve who mostly finished behind
+// where the Tier 1 cars do, is told their races among the Tier 2 drivers
+// (the same field the Tier 2 table counts, the driver added): P18 overall
+// may be P5 among them, and that is the race they were really in. Returns the race-by-race rows with
+// those places (the overall one kept as `overall`), each race's field of
+// such cars, and their wins and podiums in it; null for everyone else and
+// for seasons without tiers.
+export async function classLens(prisma, rows, me, perRace) {
+  if (!me) return null;
+  const tierOf = (r) => r.team?.tier ?? r.tier ?? null;
+  const t1 = new Set(rows.filter((r) => tierOf(r) === 1).map((r) => r.driverId));
+  const t2 = new Set(rows.filter((r) => tierOf(r) === 2).map((r) => r.driverId));
+  if (!t1.size || !t2.size) return null;
+  const mine = tierOf(me);
+  if (mine === 1) return null;
+  if (mine !== 2) {
+    const fins = (perRace || []).filter(isFinish).map((r) => r.position);
+    if (!fins.length) return null;
+    if (fins.reduce((a, b) => a + b, 0) / fins.length <= t1.size) return null;
+  }
+  const ids = [];
+  for (const r of perRace || []) {
+    if (r.raceId) ids.push(r.raceId);
+    if (r.sprint?.raceId) ids.push(r.sprint.raceId);
+  }
+  if (!ids.length) return null;
+  const res = await prisma.raceResult.findMany({ where: { raceId: { in: ids } }, select: { raceId: true, driverId: true, position: true, grid: true, status: true } });
+  const field = new Map();
+  for (const x of res) {
+    if (!t2.has(x.driverId) && x.driverId !== me.driverId) continue;
+    if (!field.has(x.raceId)) field.set(x.raceId, []);
+    field.get(x.raceId).push(x);
+  }
+  // Places are counted on the sheet's own (raw) order, the driver's too, so
+  // everyone is measured the same way.
+  const placeIn = (raceId, cell) => {
+    const cars = field.get(raceId);
+    const own = cars?.find((x) => x.driverId === me.driverId);
+    if (!cell || !cars || !own) return cell;
+    const others = cars.filter((x) => x.driverId !== me.driverId);
+    const position = isFinish(cell) && own.position != null ? 1 + others.filter((x) => x.status === "FINISHED" && x.position != null && x.position < own.position).length : cell.position;
+    const grid = own.grid > 0 ? 1 + others.filter((x) => x.grid > 0 && x.grid < own.grid).length : cell.grid;
+    return { ...cell, position, grid, overall: cell.position };
+  };
+  const lensed = (perRace || []).map((r) => {
+    const out = placeIn(r.raceId, r);
+    return r.sprint ? { ...out, sprint: placeIn(r.sprint.raceId, r.sprint) } : out;
+  });
+  const starters = new Map([...field].map(([raceId, cars]) => [raceId, cars.filter((x) => x.status !== "DNS").length]));
+  const fin = classificationsOfPerRace(lensed).filter(isFinish);
+  return {
+    label: "Tier 2",
+    perRace: lensed,
+    starters,
+    wins: fin.filter((c) => c.position === 1).length,
+    podiums: fin.filter((c) => c.position <= 3).length,
+  };
+}
+
 // The best race: the highest classified finish, then the most points, then
 // the earlier round (the first time is the one people remember), the feature
 // race before the sprint.
@@ -518,6 +577,9 @@ async function buildSeasonReview(prisma, driverId) {
   const rows = table.filter(hasRaced);
   const me = rows.find((r) => r.driverId === driverId) || null;
   const position = profile.championship?.position ?? null;
+  // Back in the field: the races told among the cars outside Tier 1.
+  const lens = await classLens(prisma, rows, me, profile.perRace).catch(() => null);
+  const perRace = lens ? lens.perRace : profile.perRace;
 
   // The table after every round, and this driver's line through it.
   const trackOf = new Map(facts.run.map((r) => [r.number, r.track]));
@@ -560,10 +622,10 @@ async function buildSeasonReview(prisma, driverId) {
       races: got.length,
     };
   };
-  const best = bestResult(profile.perRace);
-  const climb = biggestClimb(profile.perRace);
+  const best = bestResult(perRace);
+  const climb = biggestClimb(perRace);
   const afterByRound = new Map(journey.map((j) => [j.round, j.position]));
-  const rounds = (profile.perRace || []).map((r) => {
+  const rounds = (perRace || []).map((r) => {
     const fid = featureOf(r.raceId);
     const sid = fid ? facts.sprintIdOf.get(fid) : null;
     const flHeld = (id) => !!id && (facts.fastest.get(id)?.has(driverId) || false);
@@ -574,9 +636,11 @@ async function buildSeasonReview(prisma, driverId) {
       track: r.track,
       status: r.status,
       position: r.position ?? null,
+      // The overall place, where the lens counts the position among Tier 2.
+      overall: r.overall ?? null,
       grid: r.grid ?? null,
       points: r.points || 0,
-      sprint: r.sprint ? { position: r.sprint.position ?? null, status: r.sprint.status, points: r.sprint.points || 0 } : null,
+      sprint: r.sprint ? { position: r.sprint.position ?? null, overall: r.sprint.overall ?? null, status: r.sprint.status, points: r.sprint.points || 0 } : null,
       pole: poleOf(facts, fid) === driverId,
       fastestLap: flHeld(fid) || flHeld(sid),
       dotd: [fid, sid].some((id) => id && facts.dotd.get(id) === driverId),
@@ -674,8 +738,10 @@ async function buildSeasonReview(prisma, driverId) {
         tier: myTier,
         field: tierRows.length,
         position: tierRows.findIndex((r) => r.driverId === driverId) + 1 || null,
-        wins: perRound.filter((p) => p.rank === 1).length,
-        podiums: perRound.filter((p) => p.rank <= 3).length,
+        // The lens counts the same field, so the story's races and these
+        // figures agree.
+        wins: lens ? lens.wins : perRound.filter((p) => p.rank === 1).length,
+        podiums: lens ? lens.podiums : perRound.filter((p) => p.rank <= 3).length,
         avgRank: avg(perRound.map((p) => p.rank)),
         perRound,
         ranks: {
@@ -739,7 +805,8 @@ async function buildSeasonReview(prisma, driverId) {
     // story to put next to the slide they fit.
     taggedPhotos(prisma, rounds.filter((r) => r.raceId).map((r) => ({ raceId: r.raceId, round: r.round }))).catch(() => []),
   ]);
-  const fieldOf = (c) => starters.get(c.sprint ? c.raceId : featureOf(c.raceId) || c.raceId) ?? null;
+  // Under the Tier 2 lens a place is out of the cars outside Tier 1.
+  const fieldOf = (c) => (lens ? lens.starters.get(c.raceId) : null) ?? starters.get(c.sprint ? c.raceId : featureOf(c.raceId) || c.raceId) ?? null;
   // A climb from a grid slot behind the field (a placeholder slot, a pit
   // lane start) is no climb to tell.
   const climbField = climb ? fieldOf(climb) : null;
@@ -826,6 +893,8 @@ async function buildSeasonReview(prisma, driverId) {
             })(),
           }
         : null,
+    // Set when the races are told among the cars outside Tier 1.
+    lens: lens ? { label: lens.label, wins: lens.wins, podiums: lens.podiums } : null,
     best: best ? { ...best, starters: fieldOf(best), heroImageUrl: heroes.get(best.raceId) || null } : null,
     climb: climbOk ? { ...climb, starters: climbField } : null,
     teammates,

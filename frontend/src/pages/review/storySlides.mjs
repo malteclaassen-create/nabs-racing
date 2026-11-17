@@ -373,13 +373,16 @@ export function seasonList(slide, review) {
   // place in it first: P11 overall reads differently next to P2 in Tier 2.
   const T = review.tier?.position ? review.tier : null;
   const tierName = T ? `Tier ${T.tier}` : "";
-  const wins = T ? T.wins ?? 0 : s.wins;
-  const podiums = T ? T.podiums ?? 0 : s.podiums;
+  // A reserve told among Tier 2 (review.lens) counts their wins there too,
+  // without a place in a Tier 2 table they were never in.
+  const L = !T && review.lens ? review.lens : null;
+  const wins = T ? T.wins ?? 0 : L ? L.wins ?? 0 : s.wins;
+  const podiums = T ? T.podiums ?? 0 : L ? L.podiums ?? 0 : s.podiums;
   const out = [
     T ? { k: "tierpos", value: `P${T.position}`, label: `in ${tierName}` } : null,
     // Under "P2 in Tier 2" the short form is enough, and fits a phone.
-    { k: "wins", value: wins, label: `${T ? `T${T.tier} ` : ""}${one(wins, "win", "wins")}` },
-    { k: "podiums", value: podiums, label: `${T ? `T${T.tier} ` : ""}${one(podiums, "podium", "podiums")}` },
+    { k: "wins", value: wins, label: `${T ? `T${T.tier} ` : L ? "T2 " : ""}${one(wins, "win", "wins")}` },
+    { k: "podiums", value: podiums, label: `${T ? `T${T.tier} ` : L ? "T2 " : ""}${one(podiums, "podium", "podiums")}` },
     s.poles > 0 ? { k: "poles", value: s.poles, label: one(s.poles, "pole", "poles") } : null,
     s.fastestLaps > 0 ? { k: "fl", value: s.fastestLaps, label: one(s.fastestLaps, "fastest lap", "fastest laps") } : null,
     s.overtakes > 0 ? { k: "ot", value: s.overtakes, label: one(s.overtakes, "overtake", "overtakes") } : null,

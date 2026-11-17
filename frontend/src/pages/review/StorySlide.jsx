@@ -17,6 +17,7 @@ import { TyreBadge } from "../../components/TyreStrategy.jsx";
 import { circuitFor } from "../../data/circuits.js";
 import { nth } from "./copy.mjs";
 import { seasonList } from "./storySlides.mjs";
+import { logoTeamOf } from "./wrapPalette.js";
 import { saveSharePicture } from "./sharePicture.js";
 import { motionOff } from "../../hooks/motion.js";
 import Object3D, { has3D, holdBuildUntil } from "./Object3D.jsx";
@@ -127,6 +128,18 @@ function useCountUp(v, delay) {
 
 // "Top 2%", as Wrapped puts a listener among all the others.
 export const topShare = (rank) => (rank ? Math.max(1, Math.ceil((rank.rank / rank.of) * 100)) : null);
+
+// Under the Tier 2 lens (review.lens, from the backend) the places on a
+// slide are counted among the Tier 2 drivers, and the slide says so.
+const lensName = (review) => review.lens?.label || null;
+function LensNote({ review, d = 0, className = "" }) {
+  if (!review.lens) return null;
+  return (
+    <div className={`st-kick st-in text-[13px] font-bold lv-mute ${className}`} style={{ "--d": `${d}ms`, fontFamily: "Inter, sans-serif" }}>
+      Places counted among {review.lens.label} drivers.
+    </div>
+  );
+}
 
 // A small label, the quiet voice set against the loud one.
 const Kicker = ({ d = 0, className = "", children }) => (
@@ -262,11 +275,12 @@ function Intro({ review }) {
   const num = /\d+$/.exec(String(season.label))?.[0] || "";
   const head = num ? String(season.label).slice(0, -num.length).trim() : season.label;
   const wide = useContext(Wide);
-  const logo = driver.team && driver.team.tier !== 0 && (
+  const lt = logoTeamOf(driver.team);
+  const logo = lt && (
     // The logo on its own light tile: a team logo in the team colour would
     // vanish on a slide painted in that same colour.
     <div className="st-land inline-flex shrink-0 items-center justify-center rounded-2xl p-3" style={{ "--d": "1100ms", background: "#f6f5f1", boxShadow: "0 1px 0 rgba(0,0,0,0.08)" }}>
-      <TeamLogo id={driver.team.id} name={driver.team.name} color={driver.team.color} logoUrl={driver.team.logoUrl} size={wide ? 96 : 64} />
+      <TeamLogo id={lt.id} name={lt.name} color={lt.color} logoUrl={lt.logoUrl} size={wide ? 96 : 64} />
     </div>
   );
   const facts = (
@@ -390,6 +404,7 @@ function Rounds({ review }) {
             {topShare(lapRank) <= 25 ? `More race laps than ${100 - topShare(lapRank)}% of ${lapScope || "the league"}.` : rankWords(lapRank, "race laps", lapScope)}
           </Kicker>
         )}
+        <LensNote review={review} d={1600 + n * 70} className="mt-2" />
       </div>
       </Aside>
     </Card>
@@ -562,6 +577,7 @@ function Top({ slide, review }) {
     <Card>
       <Fill text={`${v.Your} top`} d={100} />
       <Fill text="results" d={250} outline />
+      <LensNote review={review} d={400} className="mt-3" />
       <Aside>
         <ol className={`flex min-h-0 flex-col ${wide ? "" : "mt-6 flex-1 justify-end"}`}>
           {slide.list.map((t, k) => (
@@ -644,7 +660,9 @@ function Best({ slide, review }) {
   );
   return (
     <Card>
-      <Kicker d={100}>{v.Your} best race</Kicker>
+      <Kicker d={100}>
+        {v.Your} best race{lensName(review) ? ` in ${lensName(review)}` : ""}
+      </Kicker>
       <Echo value={`P${b.position}`} d={600} size="min(48cqi, 24cqh)" />
       {wide ? (
         <Aside>
@@ -697,6 +715,7 @@ function Climb({ slide, review }) {
             All in one race, at <Mark>{c.track}</Mark>.
           </Line>
           <div className="mt-6">{fromTo}</div>
+          <LensNote review={review} d={1300} className="mt-3" />
           <Aside>
             {slide.photo ? (
               <Photo photo={slide.photo} d={500} className="aspect-video w-full" />
@@ -720,6 +739,7 @@ function Climb({ slide, review }) {
           <Line d={1400} className="mt-2" size="min(5.6cqi, 3cqh)">
             All in one race, at <Mark>{c.track}</Mark>.
           </Line>
+          <LensNote review={review} d={1500} className="mt-2" />
         </>
       )}
     </Card>
@@ -757,7 +777,7 @@ function Podiums({ slide, review }) {
   return (
     <Card>
       <Fill text={`${v.You} stood on`} d={100} />
-      <Fill text="the podium" d={250} outline />
+      <Fill text={lensName(review) ? `the ${lensName(review)} podium` : "the podium"} d={250} outline />
       <div className="mt-4 flex items-end gap-4">
         <Echo value={n} d={500} size="min(50cqi, 24cqh)" />
         <Line d={900} className="mb-4">
@@ -1189,7 +1209,10 @@ function Final({ slide, review, onReplay }) {
             </div>
             {review.driver.team?.name && (
               <div className="mt-1.5 flex items-center gap-2 font-bold" style={{ fontFamily: "Inter, sans-serif", fontSize: "min(4.4cqi, 2.1cqh)" }}>
-                {review.driver.team.tier !== 0 && <TeamLogo id={review.driver.team.id} name={review.driver.team.name} color={review.driver.team.color} logoUrl={review.driver.team.logoUrl} size={26} />}
+                {(() => {
+                  const lt = logoTeamOf(review.driver.team);
+                  return lt && <TeamLogo id={lt.id} name={lt.name} color={lt.color} logoUrl={lt.logoUrl} size={26} />;
+                })()}
                 <span className="truncate opacity-75">{review.driver.team.name}</span>
               </div>
             )}
@@ -1199,7 +1222,7 @@ function Final({ slide, review, onReplay }) {
           {top.length > 0 && (
           <div className="min-w-0">
             <div className="text-[12px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
-              Top results
+              Top results{lensName(review) ? ` · ${lensName(review)}` : ""}
             </div>
             <ol className="mt-2 space-y-1">
               {top.map((t, k) => (
@@ -1621,7 +1644,7 @@ function Streak({ slide, review }) {
             ))}
           </div>
           <Kicker d={2100} className="mt-3 lv-mute normal-case tracking-normal">
-            Rounds {slide.from.round} to {slide.to.round}, without a break.
+            Rounds {slide.from.round} to {slide.to.round}, without a break.{lensName(review) ? ` Places among ${lensName(review)}.` : ""}
           </Kicker>
         </div>
       </Aside>

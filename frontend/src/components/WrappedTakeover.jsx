@@ -19,7 +19,7 @@ import { Play, X } from "lucide-react";
 import { api } from "../api/client.js";
 import { readableInkOn } from "./ui.jsx";
 import TeamLogo from "./TeamLogo.jsx";
-import { slideColours } from "../pages/review/wrapPalette.js";
+import { slideColours, logoTeamOf } from "../pages/review/wrapPalette.js";
 import "../pages/review/story.css";
 
 const SEEN_KEY = (seasonId) => `nabs_wrapped_seen_${seasonId}`;
@@ -76,6 +76,8 @@ export function WrappedTakeover({ wrapped, onClose }) {
   const num = /\d+$/.exec(label)?.[0] || "";
   const head = num ? label.slice(0, -num.length).trim() : label;
   const team = wrapped.team && wrapped.team.tier !== 0 ? wrapped.team : null;
+  // A reserve's season was the league's: the NABS mark stands for it.
+  const logo = logoTeamOf(wrapped.team);
   return (
     <div ref={cardRef} className="wt-card absolute inset-0 z-20 overflow-hidden" style={{ ...colours, background: "var(--g-bg)", color: "var(--g-fg)" }} role="dialog" aria-label={`Your ${label} Wrapped`}>
       {/* A band of the slide's second colour sweeps across once, the way the
@@ -121,13 +123,13 @@ export function WrappedTakeover({ wrapped, onClose }) {
           ) : null}
         </div>
         <div className="st-in flex flex-col items-start gap-4 lg:items-end" style={{ "--d": "950ms" }}>
-          {team && (
+          {logo && (
             <div className="flex items-center gap-3">
               <span className="inline-flex items-center justify-center rounded-xl p-2" style={{ background: "#f6f5f1" }}>
-                <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={36} />
+                <TeamLogo id={logo.id} name={logo.name} color={logo.color} logoUrl={logo.logoUrl} size={36} />
               </span>
               <span className="text-[14px] font-bold" style={{ fontFamily: "Inter, sans-serif", opacity: 0.85 }}>
-                Your year at {team.name}, in a few slides.
+                {team ? `Your year at ${team.name}, in a few slides.` : "Your year on the reserve list, in a few slides."}
               </span>
             </div>
           )}

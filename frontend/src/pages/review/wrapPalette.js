@@ -20,6 +20,14 @@ export function storyColour(review) {
   return t.color || LEAGUE;
 }
 
+// The logo a driver's story shows: the team's, or for a reserve the
+// league's own NABS mark, the one the site gives the reserve list.
+export function logoTeamOf(team) {
+  if (!team) return null;
+  if (team.tier === 0 || /^reserve/i.test(team.name || "")) return { id: "nabs", name: "NABS reserve", color: LEAGUE, logoUrl: "/teams/nabs.png" };
+  return team;
+}
+
 const alpha = (hex, a) => {
   const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;

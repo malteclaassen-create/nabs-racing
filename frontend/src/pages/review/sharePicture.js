@@ -149,7 +149,7 @@ export async function drawSharePicture(review, slide) {
   // figures take the whole width instead of sitting beside an empty column.
   const top = (slide.top || []).map((t, k) => [`${k + 1} ${t.track}`, `P${t.position}`]);
   const lists = [
-    ...(top.length ? [["Top results", top]] : []),
+    ...(top.length ? [[review.lens ? `Top results · ${review.lens.label}` : "Top results", top]] : []),
     ["The season", seasonList(slide, review).map((g) => [String(g.value), g.label])],
   ];
   lists.forEach(([title, rows], i) => {

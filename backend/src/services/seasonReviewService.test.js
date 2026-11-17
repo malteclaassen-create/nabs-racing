@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bestResult, biggestClimb, headToHead, journeyTables, rankAmong, honoursFor, tableWindow, classificationsOfPerRace } from "./seasonReviewService.js";
+import { bestResult, biggestClimb, headToHead, journeyTables, rankAmong, honoursFor, tableWindow, classificationsOfPerRace, classLens } from "./seasonReviewService.js";
 
 const perRace = [
   { number: 1, track: "Melbourne", raceId: "r1", status: "DNS", position: null, grid: null, points: 0 },
@@ -138,5 +138,31 @@ describe("trainingFor", () => {
   });
   it("nothing without a series or any laps", async () => {
     expect(await trainingFor(prisma, { series: null, seasonId: "s", raceIds: ["r1"], driverId: "a", names })).toBeNull();
+  });
+});
+
+describe("classLens", () => {
+  const row = (driverId, tier) => ({ driverId, team: { tier } });
+  const rows = [row("a", 1), row("b", 1), row("c", 2), row("d", 2), row("me", 0)];
+  const results = [
+    { raceId: "r1", driverId: "a", position: 1, grid: 1, status: "FINISHED" },
+    { raceId: "r1", driverId: "b", position: 2, grid: 2, status: "FINISHED" },
+    { raceId: "r1", driverId: "c", position: 3, grid: 4, status: "FINISHED" },
+    { raceId: "r1", driverId: "me", position: 4, grid: 5, status: "FINISHED" },
+    { raceId: "r1", driverId: "d", position: 5, grid: 3, status: "FINISHED" },
+  ];
+  const prisma = { raceResult: { findMany: async () => results } };
+
+  it("places a slow reserve among the Tier 2 drivers", async () => {
+    const lens = await classLens(prisma, rows, rows[4], [{ number: 1, raceId: "r1", status: "FINISHED", position: 4, grid: 5 }]);
+    expect(lens.label).toBe("Tier 2");
+    expect(lens.perRace[0]).toMatchObject({ position: 2, grid: 3, overall: 4 });
+    expect(lens.starters.get("r1")).toBe(3);
+    expect(lens.podiums).toBe(1);
+  });
+
+  it("leaves Tier 1 and a reserve running with Tier 1 alone", async () => {
+    expect(await classLens(prisma, rows, rows[0], [{ number: 1, raceId: "r1", status: "FINISHED", position: 1 }])).toBe(null);
+    expect(await classLens(prisma, rows, rows[4], [{ number: 1, raceId: "r1", status: "FINISHED", position: 2 }])).toBe(null);
   });
 });
