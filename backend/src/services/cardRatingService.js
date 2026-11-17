@@ -23,6 +23,10 @@
 //      round by round until the season ends and freezes them. It is the only
 //      honest option, since the formula has nothing else to read.
 //
+// On top of that the card is reprinted twice during the season (league wish,
+// 2026-11-17): at half-time with this season's numbers as of the middle round,
+// and at full-time with the final ones. See cardUpdate() below.
+//
 // Identity (team, tier, name) always comes from the CURRENT season's row: the
 // numbers freeze, the kit does not.
 //
@@ -80,14 +84,38 @@ async function computeCardRatings(prisma, seasonId) {
     .filter((s) => s.number < season.number)
     .slice(0, MAX_LOOKBACK);
 
-  const [drivers, groups, live] = await Promise.all([
+  const [drivers, groups, live, rounds] = await Promise.all([
     prisma.driver.findMany({ where: { seasonId }, include: { team: true } }),
     getPersonGroups(prisma),
     // The live field of the rated season: the fallback card for anyone
     // without an earlier one (rookies, season 1).
     getDriverRatings(prisma, seasonId),
+    // The championship rounds (sprint children carry no number, so they are
+    // not rounds of their own): they decide the half-time and full-time
+    // updates below.
+    prisma.race.findMany({
+      where: { seasonId, isSpecialEvent: false, number: { not: null } },
+      select: { number: true, isCompleted: true },
+      orderBy: { number: "asc" },
+    }),
   ]);
   const liveById = new Map(live.map((r) => [r.driverId, r]));
+
+  // The card is reprinted twice inside the season, on top of the carry-over:
+  //   - at HALF-TIME, once the middle round is completed: everyone who has
+  //     raced by then gets this season's numbers as of that round, frozen
+  //     until the end of the season;
+  //   - at FULL-TIME, once every round is completed: the season's final
+  //     numbers, the same ones the next season then carries over.
+  // Whoever has no row at that point (sat the first half out) keeps the card
+  // they had: carried, or live for a rookie.
+  const update = cardUpdate(rounds);
+  let updated = null; // Map<driverId, ratingRow> of the current reprint
+  if (update?.stage === "season-end") updated = liveById;
+  else if (update?.stage === "mid-season") {
+    const rows = await getDriverRatings(prisma, seasonId, { upToRaceNumber: update.round });
+    updated = new Map(rows.map((r) => [r.driverId, r]));
+  }
   const linkedOf = (driverId) => {
     const p = groups.byDriver.get(driverId);
     return p ? groups.byPerson.get(p) || [driverId] : [driverId];
@@ -106,6 +134,27 @@ async function computeCardRatings(prisma, seasonId) {
 
   const rows = [];
   for (const d of drivers) {
+    const reprint = updated?.get(d.id) || null;
+    if (reprint) {
+      rows.push({
+        ...reprint,
+        driverId: d.id,
+        name: d.name,
+        tier: d.tier,
+        team: d.team
+          ? { id: d.team.id, name: d.team.name, color: d.team.color, tier: d.team.tier }
+          : reprint.team,
+        card: {
+          locked: true,
+          source: update.stage,
+          fromSeasonNumber: season.number,
+          seasonNumber: season.number,
+          asOfRound: update.round,
+        },
+      });
+      continue;
+    }
+
     const linked = linkedOf(d.id);
     let source = null; // { row, season }
     for (const s of previous) {
@@ -149,6 +198,24 @@ async function computeCardRatings(prisma, seasonId) {
     // The season this season's cards are based on (null = there is none, so
     // every card is live).
     fromSeasonNumber: previous[0]?.number ?? null,
+    // The in-season reprint in force (null = still the carried cards).
+    update,
     rows,
   };
+}
+
+// Which in-season reprint is due, from the season's numbered championship
+// rounds: { stage: "season-end", round } once all are completed,
+// { stage: "mid-season", round } once the middle one is (round 6 of 12,
+// round 6 of 11), else null.
+export function cardUpdate(rounds) {
+  const list = (rounds || []).filter((r) => r.number != null).sort((a, b) => a.number - b.number);
+  if (list.length < 2) return null;
+  if (list.every((r) => r.isCompleted)) return { stage: "season-end", round: list[list.length - 1].number };
+  // Counted, not looked up by position: a round run out of order still counts
+  // towards half-time, and the cut is made at the round that completed the half.
+  const done = list.filter((r) => r.isCompleted);
+  const half = Math.ceil(list.length / 2);
+  if (done.length >= half) return { stage: "mid-season", round: done[half - 1].number };
+  return null;
 }

@@ -676,9 +676,13 @@ function CardCompare({ card, live, color }) {
           Your card vs. right now
         </h2>
         <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-          {locked && card.fromSeasonNumber != null
-            ? `Season ${season} card · earned in Season ${card.fromSeasonNumber}`
-            : `Season ${season} card · your first one, still live`}
+          {card.source === "mid-season"
+            ? `Season ${season} card · half-time update after Round ${card.asOfRound}`
+            : card.source === "season-end"
+              ? `Season ${season} card · final numbers`
+              : locked && card.fromSeasonNumber != null
+                ? `Season ${season} card · earned in Season ${card.fromSeasonNumber}`
+                : `Season ${season} card · your first one, still live`}
         </span>
       </div>
 

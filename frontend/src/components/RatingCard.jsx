@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import Flag from "./Flag.jsx";
 import { countryFor } from "../data/driverCountries.js";
+import { cardNote } from "../utils/cardNote.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { useSeries } from "../context/SeriesContext.jsx";
 // The collector series (Concepts, Spectrum, Velocity, Signature): a catalogue of
@@ -359,17 +360,10 @@ export default function RatingCard({ driver, rating, anim, explain = false }) {
               This formula is still being fine-tuned, so the exact maths may change.
             </p>
           )}
-          {/* Where the number comes from: a card is locked for a whole season
-              and shows the end of the season before it. */}
-          {rating?.card?.locked && rating.card.fromSeasonNumber != null && (
-            <p className="mt-1.5 text-[11px] font-semibold leading-relaxed text-light">
-              Locked for this season · earned by the end of Season {rating.card.fromSeasonNumber}.
-            </p>
-          )}
-          {rating?.card?.source === "live" && (
-            <p className="mt-1.5 text-[11px] font-semibold leading-relaxed text-light">
-              First season on a card · this one still moves with every round, then locks for next season.
-            </p>
+          {/* Where the number comes from: start of season, half-time or
+              full-time reprint, or a rookie's live card. */}
+          {cardNote(rating?.card) && (
+            <p className="mt-1.5 text-[11px] font-semibold leading-relaxed text-light">{cardNote(rating.card)}</p>
           )}
         </div>
       )}

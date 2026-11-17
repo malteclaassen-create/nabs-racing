@@ -30,6 +30,7 @@ import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { fmtLap, NO_VALUE} from "../utils/format.js";
 import { isIdleReserve, finishesOf } from "../utils/standingsRow.js";
+import { cardNote } from "../utils/cardNote.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 3: "Division 2", 0: "Reserve" };
 
@@ -494,9 +495,9 @@ function RatingBreakdown({ rating, stats, color }) {
         <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
           Rating Breakdown
         </h2>
-        {rating.card?.locked && rating.card.fromSeasonNumber != null && (
+        {rating.card?.locked && cardNote(rating.card) && (
           <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-            card locked for the season · earned in Season {rating.card.fromSeasonNumber}
+            {cardNote(rating.card)}
           </span>
         )}
       </div>
