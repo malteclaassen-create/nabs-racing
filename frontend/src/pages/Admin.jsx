@@ -7403,7 +7403,7 @@ function TeamLinks({ onSaved, onError }) {
 
 function Teams() {
   const ask = useAsk();
-  const { current } = useSeason();
+  const { current, seasons } = useSeason();
   const { data: teams, reload } = useApi(useCallback(() => api.teams(), []));
   // The all-time driver database + current roster names feed the seat boxes'
   // search (same source as the Drivers tab). Reserve-pool drivers are NOT
@@ -7682,10 +7682,10 @@ function Teams() {
   const rosterParts = [
     { title: division2 ? "Division 1" : null, boxes: [box("t1", "Tier 1", ofTier(1)), box("t2", "Tier 2", ofTier(2))] },
     { title: "Division 2", boxes: [box("d2", "Division 2", ofTier(3))] },
-    { title: "No seat", boxes: [box("pool", "Reserve pool", ofTier(0))] },
+    { title: "No seat", boxes: [box("pool", "Reserve pool", ofTier(0))], reserves: true },
   ]
     .map((p) => ({ ...p, boxes: p.boxes.filter(Boolean) }))
-    .filter((p) => p.boxes.length);
+    .filter((p) => p.boxes.length || p.reserves);
 
 
   return (
@@ -7787,6 +7787,14 @@ function Teams() {
                     <ul className="divide-y divide-border px-3">{b.teams.map(teamRow)}</ul>
                   </section>
                 ))}
+                {part.reserves && current && (
+                  <ReserveCarryOver
+                    target={current}
+                    seasons={seasons}
+                    onDone={(m) => { setError(null); setMsg(m); reload(); driverDb.reload(); }}
+                    onError={(m) => { setMsg(null); setError(m); }}
+                  />
+                )}
               </Fragment>
             ))}
             {(teams || []).length === 0 && <p className="py-3 text-sm text-light">No teams in this season yet.</p>}
@@ -7794,6 +7802,120 @@ function Teams() {
         </div>
       </div>
     </div>
+  );
+}
+
+// "Bring last season's reserves": for a season that is already set up. The
+// season guide does this while a season is being made; once the grid stands
+// and the Reserve pool is still empty, this fills it from an earlier season,
+// only with people who drove at least so many rounds there. Same server path
+// as the guide (carry-over, everyone "to reserve"): person-linked rows, and
+// whoever is on this season's roster already is left alone.
+function ReserveCarryOver({ target, seasons, onDone, onError }) {
+  const earlier = (seasons || [])
+    .filter((s) => s.id !== target?.id && (s.number ?? 0) < (target?.number ?? 0))
+    .sort((a, b) => (b.number ?? 0) - (a.number ?? 0));
+  const [fromId, setFromId] = useState(null);
+  const from = earlier.find((s) => s.id === fromId) || earlier[0] || null;
+  const [minStarts, setMinStarts] = useState(2);
+  const [withSeated, setWithSeated] = useState(false);
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [stamp, setStamp] = useState(0);
+
+  useEffect(() => {
+    if (!target?.id || !from?.id) return;
+    let alive = true;
+    setData(null);
+    api
+      .carryOverPreview(target.id, from.id)
+      .then((r) => alive && setData(r))
+      .catch((e) => alive && onError?.(e.message));
+    return () => { alive = false; };
+  }, [target?.id, from?.id, stamp]);
+
+  if (!from) return null;
+  const people = (data?.teams || []).flatMap((t) => t.people || []);
+  const min = Math.max(0, Number(minStarts) || 0);
+  const list = people
+    .filter((p) => !p.already && (!p.seat || withSeated) && p.starts >= min)
+    .sort((a, b) => b.starts - a.starts || a.name.localeCompare(b.name));
+  const here = people.filter((p) => p.already && !p.seat).length;
+
+  async function add() {
+    setBusy(true);
+    try {
+      const out = await api.carryOver(target.id, from.id, list.map((p) => ({ driverId: p.driverId, to: "reserve" })));
+      const n = out?.driversCreated ?? out?.drivers?.length ?? list.length;
+      onDone?.(`${n} reserve${n === 1 ? "" : "s"} added to the Reserve pool from ${from.name || `Season ${from.number}`}.`);
+      setStamp((x) => x + 1);
+    } catch (e) {
+      onError?.(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-border bg-surface/40">
+      <header className="flex flex-wrap items-baseline gap-x-2 border-b border-border bg-surface2/50 px-3 py-2">
+        <span className="font-semibold text-dark">Bring last season's reserves</span>
+        <span className="ml-auto text-xs text-light">into the Reserve pool</span>
+      </header>
+      <div className="space-y-3 px-3 py-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-medium">
+          <span>Reserves of</span>
+          <select
+            aria-label="Season to take the reserves from"
+            className="input w-auto py-1.5 text-sm"
+            value={from.id}
+            onChange={(e) => setFromId(e.target.value)}
+          >
+            {earlier.map((s) => (
+              <option key={s.id} value={s.id}>{s.name || `Season ${s.number}`}</option>
+            ))}
+          </select>
+          <span>with at least</span>
+          <input
+            aria-label="Least number of races driven"
+            type="number"
+            min={0}
+            className="input w-20 py-1.5 text-sm"
+            value={minStarts}
+            onChange={(e) => setMinStarts(e.target.value)}
+          />
+          <span>races</span>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-medium">
+          <input type="checkbox" checked={withSeated} onChange={(e) => setWithSeated(e.target.checked)} />
+          Also drivers who had a seat there and are not in this season yet
+        </label>
+        {!data ? (
+          <p className="text-sm text-light">Looking…</p>
+        ) : list.length === 0 ? (
+          <p className="text-sm text-light">
+            Nobody left to add with {min} race{min === 1 ? "" : "s"} or more.
+            {here > 0 && ` ${here} of its reserves are in this season already.`}
+          </p>
+        ) : (
+          <>
+            <ul className="flex flex-wrap gap-1.5">
+              {list.map((p) => (
+                <li key={p.driverId} className="rounded-md border border-border px-2 py-1 text-xs text-dark">
+                  {p.name} <span className="text-light">· {p.starts} race{p.starts === 1 ? "" : "s"}{p.seat ? ` · was ${p.teamName}` : ""}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap items-center gap-3">
+              <button type="button" className="btn-primary px-4 py-2 text-sm" disabled={busy} onClick={add}>
+                {busy ? "Adding…" : `Add ${list.length} to the Reserve pool`}
+              </button>
+              {here > 0 && <span className="text-xs text-light">{here} already here, left as they are.</span>}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
