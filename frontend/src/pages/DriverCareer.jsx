@@ -10,6 +10,7 @@
 // top to bottom with no second wait. Sections with nothing in them (a rookie
 // with no titles, an archive season with no telemetry) simply drop out.
 // ---------------------------------------------------------------------------
+import { roundTone } from "../utils/roundTone.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client.js";
@@ -306,18 +307,6 @@ function RatingRow({ rating, showLeague }) {
 // What a single round is worth to the eye: the podium in its own colours,
 // anything that scored in the accent, a finish outside the points quiet, and
 // a night that ended early greyed out.
-function roundTone(r) {
-  // A round the person was entered for but did not take: an empty slot, so the
-  // strip still shows the gap in the season rather than hiding it.
-  if (r.status === "DNS") return null;
-  if (r.status !== "FINISHED" || r.position == null) return "var(--c-faint)";
-  if (r.position <= 3) return MEDAL[r.position - 1];
-  // One colour, two strengths: a scoring finish reads solid, a finish that
-  // paid nothing is the same square gone pale.
-  if ((r.points ?? 0) > 0) return "rgb(var(--c-accent) / 0.7)";
-  return "rgb(var(--c-accent) / 0.22)";
-}
-
 function FormStrip({ rounds }) {
   if (!rounds.length) return null;
   return (

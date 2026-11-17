@@ -21,12 +21,11 @@
 // the admin preview opens it with ?seat=<driverId> to see any driver's version
 // of any round, which never counts as seen for anybody.
 // ---------------------------------------------------------------------------
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { useSpecificTitle } from "../utils/pageTitle.js";
-import { motionOff } from "../hooks/motion.js";
 import { DriverAvatar, TierBadge, ErrorBox, PageHeaderSkeleton, CardsSkeleton } from "../components/ui.jsx";
 import { Modal } from "../components/overlay.jsx";
 import { buildRaceFacts } from "../components/RaceFacts.jsx";
@@ -53,6 +52,9 @@ import "./recap/cmp.css";
 import "./recap/desktop.css";
 import { Timer, Gauge, Activity, ArrowLeftRight, ShieldCheck, Flag as FlagIcon, Hourglass, Rocket, Crown, ChevronRight } from "lucide-react";
 import RaceRecapPageClassic from "./RaceRecapPageClassic.jsx";
+import ContactMapCard from "./recap/ContactMap.jsx";
+import GridToFlag from "./recap/GridToFlag.jsx";
+import { useRecapReveal, useCardDepth } from "./recap/reveal.js";
 
 // This page (with the race replay) is for rounds raced from 16 Oct 2026 on.
 // Every round before that keeps the recap it was shown with, so a recap read
@@ -186,7 +188,12 @@ export default function RaceRecapPage() {
       </button>
     </div>
   );
-  const hasStrategy = you?.raced && (story?.stints?.length > 0 || incidents);
+  // With the circuit's line on hand the contacts get a chapter of their own,
+  // on the map (recap/ContactMap.jsx); without it they stay a list beside
+  // the tyres, as before.
+  const contactMap = you?.raced && incidents?.map?.line?.length > 2 ? incidents : null;
+  const listIncidents = contactMap ? null : incidents;
+  const hasStrategy = you?.raced && (story?.stints?.length > 0 || listIncidents);
   const shownWord = shown.half === "sprint" ? "the sprint" : sprint ? "the feature race" : "the race";
 
   return (
@@ -225,21 +232,27 @@ export default function RaceRecapPage() {
       )}
       {hasStrategy && (
         <section key={`strategy-${shownId}`} className="space-y-4 sm:space-y-5">
-          <Chapter n={ch()} title="Strategy" sub="Tyres, stops, contact" />
-          <div className={`grid gap-4 sm:gap-5 ${story?.stints?.length > 0 && incidents ? "lg:grid-cols-[1.2fr,1fr]" : ""}`}>
+          <Chapter n={ch()} title="Strategy" sub={listIncidents ? "Tyres, stops, contact" : "Tyres and stops"} />
+          <div className={`grid gap-4 sm:gap-5 ${story?.stints?.length > 0 && listIncidents ? "lg:grid-cols-[1.2fr,1fr]" : ""}`}>
             {story?.stints?.length > 0 && (
               <StintsCard
                 stints={story.stints}
                 raceLaps={race.raceLaps}
-                wide={!incidents}
+                wide={!listIncidents}
                 // Whether this round has the lap times a tyre reading is made
                 // from at all. Without them every stint would read "too short",
                 // which is not what happened, so the line is left out.
                 wearKnown={story.stints.some((st) => st.degMsPerLap != null) || (story.laps || []).some((l) => l.timeMs > 0)}
               />
             )}
-            {incidents && <IncidentsCard incidents={incidents} you={you} />}
+            {listIncidents && <IncidentsCard incidents={listIncidents} you={you} />}
           </div>
+        </section>
+      )}
+      {contactMap && (
+        <section key={`contact-${shownId}`} className="space-y-4 sm:space-y-5">
+          <Chapter n={ch()} title="Contact" sub="Where it happened" />
+          <ContactMapCard incidents={contactMap} you={you} />
         </section>
       )}
       {season && standings?.after && (
@@ -274,127 +287,6 @@ export default function RaceRecapPage() {
   );
 }
 
-// --- the motion ---------------------------------------------------------------
-
-// Lets every .recap-reveal on the page in once it is a good way into the
-// screen (its top past the lower fifth of the viewport); several arriving in
-// one pass fan out top to bottom. A scroll check rather than an
-// IntersectionObserver, like the site's own reveal: it never leaves a card
-// stuck invisible, whatever the browser is doing with its frames. Re-armed
-// whenever the page grows (the lap chart card lands a beat later).
-function useRecapReveal(...deps) {
-  useEffect(() => {
-    const pending = () => [...document.querySelectorAll(".recap-reveal:not(.is-visible)")];
-    if (!pending().length) return;
-    if (motionOff()) {
-      pending().forEach((el) => el.classList.add("is-visible"));
-      return;
-    }
-    // A short timer rather than an animation frame: frames stop when the tab
-    // is not painting, timers do not, and the site's own reveal learned the
-    // same lesson (hooks/useScrollReveal.js).
-    let timer = 0;
-    const check = () => {
-      timer = 0;
-      const line = window.innerHeight * 0.82;
-      const due = pending()
-        .map((el) => ({ el, top: el.getBoundingClientRect().top }))
-        .filter((x) => x.top < line)
-        .sort((a, b) => a.top - b.top);
-      // Calm steps: cards arriving together follow one another 140 ms apart.
-      due.forEach(({ el }, i) => {
-        el.style.setProperty("--reveal-delay", `${Math.min(i, 6) * 140}ms`);
-        el.classList.add("is-visible");
-      });
-    };
-    const onScroll = () => {
-      if (!timer) timer = setTimeout(check, 40);
-    };
-    check();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-      if (timer) clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-}
-
-// Scroll-linked depth: a card still low on the screen sits a little further
-// down, and glides up into its place as it is scrolled towards the reading
-// line (35% down the screen), where it comes to rest. Chapter headers sit on
-// a nearer layer and travel a touch more. It writes the `translate` property
-// only, which composes with the entrance's `transform` and never touches
-// layout; positions are read from the layout (offsetTop), never from the
-// moved boxes, so it cannot feed back on itself. Off with reduced motion.
-function useCardDepth(...deps) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const root = ref.current;
-    if (!root || motionOff()) return undefined;
-    let items = [];
-    let raf = 0;
-    const docTop = (el) => {
-      let y = 0;
-      for (let n = el; n; n = n.offsetParent) y += n.offsetTop;
-      return y;
-    };
-    const measure = () => {
-      items = [...root.querySelectorAll(".recap-reveal")].slice(1).map((el) => ({
-        el,
-        top: docTop(el),
-        k: el.classList.contains("rr-chapter") ? 0.075 : 0.06,
-        max: el.classList.contains("rr-chapter") ? 44 : 36,
-        last: null,
-      }));
-    };
-    const update = () => {
-      raf = 0;
-      if (motionOff()) {
-        items.forEach((it) => it.el.style.removeProperty("translate"));
-        return;
-      }
-      const vh = window.innerHeight;
-      const line = vh * 0.35;
-      const sy = window.scrollY;
-      for (const it of items) {
-        const top = it.top - sy;
-        if (top > vh * 1.4 || top < -vh) continue;
-        const off = Math.max(0, Math.min(it.max, (top - line) * it.k));
-        const r = Math.round(off * 10) / 10;
-        if (r !== it.last) {
-          it.last = r;
-          it.el.style.translate = r ? `0 ${r}px` : "";
-        }
-      }
-    };
-    const onScroll = () => {
-      if (!raf) raf = requestAnimationFrame(update);
-    };
-    const remeasure = () => {
-      measure();
-      onScroll();
-    };
-    measure();
-    update();
-    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(remeasure) : null;
-    ro?.observe(root);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", remeasure);
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", remeasure);
-      ro?.disconnect();
-      if (raf) cancelAnimationFrame(raf);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  return ref;
-}
-
-const teamOf = (row) => row?.effectiveTeam || row?.team || null;
 // 1st, 2nd, 3rd, 11th, 12th, 13th, 21st, 32nd ...
 const nth = (n) => (n % 100 >= 11 && n % 100 <= 13 ? `${n}th` : `${n}${["th", "st", "nd", "rd"][n % 10] || "th"}`);
 
@@ -547,48 +439,6 @@ function WeekendCard({ recap, half, onHalf }) {
 }
 
 // --- finishing position -------------------------------------------------------
-
-// The whole grid as a track, back of the field on the left and P1 on the
-// right, and the car sliding from where it started to where it finished,
-// leaving its team colour behind it.
-function GridToFlag({ grid, finish, field }) {
-  const at = (p) => ((field - p) / Math.max(1, field - 1)) * 100;
-  const from = at(grid);
-  const to = at(finish);
-  const w = Math.abs(to - from);
-  const step = field > 30 ? 10 : field > 12 ? 5 : 1;
-  const ticks = [];
-  for (let p = field; p >= 1; p -= 1) if (p === 1 || p === field || p % step === 0) ticks.push(p);
-  return (
-    <div className="relative h-14 w-full">
-      <div className="absolute inset-x-0 top-5 h-px bg-border" />
-      {ticks.map((p) => (
-        <div key={p} className="absolute top-5 -translate-x-1/2" style={{ left: `${at(p)}%` }}>
-          <div className="mx-auto h-2 w-px bg-border" />
-          <div className="mt-1 font-mono text-[10px] font-bold tabular-nums text-faint">P{p}</div>
-        </div>
-      ))}
-      {/* The trail is pinned to the GRID slot and grows towards the finish:
-          from the left when places were gained, from the right when they
-          were lost, so it follows the car instead of filling in backwards. */}
-      <div
-        className={`rr-sweep-trail absolute top-[19px] h-[3px] ${to >= from ? "" : "rr-from-right"}`}
-        style={{
-          ...(to >= from ? { left: `${from}%` } : { right: `${100 - from}%` }),
-          width: `${w}%`,
-          background: "var(--recap-team)",
-          opacity: 0.6,
-        }}
-      />
-      <div className="absolute top-5 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-light bg-card" style={{ left: `${from}%` }} title={`Grid P${grid}`} />
-      <div className="rr-sweep-layer pointer-events-none absolute inset-x-0 top-5" style={{ "--from": `${from}%`, "--to": `${to}%` }}>
-        <div className="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2">
-          <div className="h-4 w-4 rounded-full ring-4 ring-card" style={{ background: "var(--recap-team)" }} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // The sentence under the big number: the best climb of the season so far,
 // the teams beaten whole, the team-mate. Only what the numbers support.

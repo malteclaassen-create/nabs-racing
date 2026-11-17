@@ -22,12 +22,21 @@ const MODE_TEXT = {
   all: "Everyone. After each saved round, every member with a seat gets their recap once, the next time they open the site.",
 };
 
-function ModeSwitch({ mode, onChange, busy }) {
+// The season review (pages/SeasonReview.jsx): a driver's whole season in the
+// recap's chapters, opened from the driver page. Public figures only, so once
+// it is on it is there for anyone who can see the driver.
+const REVIEW_TEXT = {
+  off: "Off. No driver page offers the season review.",
+  admins: "Admins only. League admins see the Season in review link on every driver page; members see nothing yet.",
+  all: "Everyone. Every driver page with two or more rounds run offers its season review.",
+};
+
+function ModeSwitch({ mode, onChange, busy, title = "Race recap", texts = MODE_TEXT }) {
   return (
     <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
       <div className="min-w-0">
-        <div className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">Race recap</div>
-        <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">{MODE_TEXT[mode] || MODE_TEXT.off}</p>
+        <div className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{title}</div>
+        <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">{texts[mode] || texts.off}</p>
       </div>
       <SlidingTabs
         items={[
@@ -46,6 +55,7 @@ function ModeSwitch({ mode, onChange, busy }) {
 
 export default function AdminRaceRecap() {
   const { data, error: loadError, reload } = useApi(useCallback(() => api.adminRaceRecap(), []));
+  const { data: review, reload: reloadReview } = useApi(useCallback(() => api.adminSeasonReview(), []));
   const { data: races } = useApi(useCallback(() => api.races(), []));
   const { seriesPath } = useSeriesPath();
   const [busy, setBusy] = useState(false);
@@ -99,6 +109,21 @@ export default function AdminRaceRecap() {
     }
   }
 
+  async function setReviewMode(mode) {
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      await api.setSeasonReviewMode(mode);
+      setDone(mode === "all" ? "The season review is on for everyone." : mode === "admins" ? "The season review is on for admins only." : "The season review is off.");
+      reloadReview();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // The page itself, in a new tab, from that driver's seat (?seat= with no
   // driver is the spectator's version). The admin's own session carries the
   // rights the preview route asks for.
@@ -113,6 +138,7 @@ export default function AdminRaceRecap() {
       {done && <Notice kind="success">{done}</Notice>}
 
       <ModeSwitch mode={data.mode} busy={busy} onChange={setMode} />
+      {review && <ModeSwitch mode={review.mode} busy={busy} onChange={setReviewMode} title="Season review" texts={REVIEW_TEXT} />}
 
       <div className="card space-y-4 p-5">
         <CardHead eyebrow="What members get" title="How the recap works" />
@@ -166,6 +192,12 @@ export default function AdminRaceRecap() {
             </a>
           ) : (
             <span className="btn-primary pointer-events-none opacity-50">Open preview</span>
+          )}
+          {/* That driver's season review, while it is not off. */}
+          {driverId && review && review.mode !== "off" && (
+            <a href={seriesPath(`/drivers/${encodeURIComponent(driverId)}/review`)} target="_blank" rel="noreferrer" className="btn-secondary">
+              Season review
+            </a>
           )}
         </div>
         {!rounds.length && <p className="text-xs text-light">No finished round in the season being edited yet.</p>}

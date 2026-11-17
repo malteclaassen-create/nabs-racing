@@ -92,6 +92,7 @@ const NewsDesk = lazy(() => import("./pages/NewsDesk.jsx"));
 // The race recap: a member lands here once after each saved round, and can
 // come back from the race page. Never on a first page view of a visitor.
 const RaceRecapPage = lazy(() => import("./pages/RaceRecapPage.jsx"));
+const SeasonReview = lazy(() => import("./pages/SeasonReview.jsx"));
 // The career page belongs to a person, not a league, so it sits outside the
 // series-scoped routes and loads on its own chunk.
 const DriverCareer = lazy(() => import("./pages/DriverCareer.jsx"));
@@ -253,6 +254,7 @@ function AppRoutes() {
         <Route path="/s/:seriesSlug" element={<HomeRoute />} />
         <Route path="/s/:seriesSlug/drivers" element={<DriverStandings />} />
         <Route path="/s/:seriesSlug/drivers/:id" element={<DriverProfile />} />
+        <Route path="/s/:seriesSlug/drivers/:id/review" element={<SeasonReview />} />
         <Route path="/s/:seriesSlug/constructors" element={<Constructors />} />
         <Route path="/s/:seriesSlug/constructors/:id" element={<TeamProfile />} />
         <Route path="/s/:seriesSlug/teams" element={<Constructors />} />
@@ -285,6 +287,7 @@ function AppRoutes() {
             which never reaches the server. */}
         <Route path="/drivers" element={<ToSeries sub="/drivers" />} />
         <Route path="/drivers/:id" element={<ToSeries sub="/drivers/:id" />} />
+        <Route path="/drivers/:id/review" element={<ToSeries sub="/drivers/:id/review" />} />
         <Route path="/constructors" element={<ToSeries sub="/constructors" />} />
         <Route path="/constructors/:id" element={<ToSeries sub="/constructors/:id" />} />
         <Route path="/teams" element={<ToSeries sub="/teams" />} />

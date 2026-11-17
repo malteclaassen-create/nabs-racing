@@ -302,6 +302,13 @@ describe("isKnownRoute", () => {
     }
     expect(isKnownRoute("/newsx")).toBe(false);
   });
+
+  it("answers 200 for a driver's season review, and nothing else that deep", () => {
+    expect(isKnownRoute("/s/friday-f1/drivers/maltegoat/review")).toBe(true);
+    expect(isKnownRoute("/drivers/maltegoat/review")).toBe(true);
+    expect(isKnownRoute("/s/friday-f1/drivers/maltegoat/other")).toBe(false);
+    expect(isKnownRoute("/s/friday-f1/races/abc/review")).toBe(false);
+  });
 });
 
 describe("railway.app address", () => {

@@ -18,6 +18,16 @@
      curtains, the tower rows) still match it exactly. */
   --p-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.022) 0, rgba(255, 255, 255, 0) 88px);
 }
+/* Those are tuned for the dark page. On the light one the card edge is the
+   site's own hairline and the lift the site's own card shadow; a navy edge
+   and a near-black drop read as a heavy frame round every white card. */
+html:not(.dark) .rr,
+html:not(.dark) .rr-modal {
+  --p-edge: rgba(255, 255, 255, 0);
+  --p-edge-soft: rgba(255, 255, 255, 0);
+  --p-drop: var(--c-shadow);
+  --p-border: var(--c-border);
+}
 
 /* --------------------------------------------------------------- surfaces */
 .rr .card {
