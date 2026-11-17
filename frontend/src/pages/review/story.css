@@ -377,6 +377,14 @@
    gently so it reads as the way in. */
 @keyframes wt-sweep { 0% { transform: translateX(-101%); } 45% { transform: translateX(0); } 100% { transform: translateX(101%); } }
 .wt-sweep { background: var(--g-pop); animation: wt-sweep 1000ms cubic-bezier(0.76, 0, 0.18, 1) both; pointer-events: none; z-index: 5; }
+/* The small Wrapped button on a new season's page sweeps in the same way:
+   hidden until the band covers it, there once it has passed. */
+@keyframes wb-show { 0%, 44% { opacity: 0; } 45%, 100% { opacity: 1; } }
+.wb-reveal > a { animation: wb-show 1000ms linear 700ms both; }
+.wb-reveal > .wb-sweep { animation-delay: 700ms; }
+@media (prefers-reduced-motion: reduce) { .wb-reveal > a { animation: none; } .wb-reveal > .wb-sweep { display: none; } }
+.fx-lite .wb-reveal > a { animation: none; }
+.fx-lite .wb-reveal > .wb-sweep { display: none; }
 @keyframes wt-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
 .wt-go { animation: wt-breathe 2.6s ease-in-out 2.4s infinite; }
 .wt-go:hover { animation: none; transform: scale(1.04); }

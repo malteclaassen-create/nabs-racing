@@ -164,10 +164,10 @@ export function WrappedTakeover({ wrapped, onClose }) {
 // closed.
 // `label` names it where the season is not obvious ("Season 8 Wrapped" on
 // the next season's page); `small` matches the hero's Discord button there.
-export function WrappedButton({ wrapped, label = "Your Wrapped", small = false }) {
+export function WrappedButton({ wrapped, label = "Your Wrapped", small = false, reveal = false }) {
   const colour = teamColourOf(wrapped);
   const navigate = useNavigate();
-  return (
+  const button = (
     <Link
       to={wrappedPath(wrapped)}
       onClick={(e) => {
@@ -186,5 +186,15 @@ export function WrappedButton({ wrapped, label = "Your Wrapped", small = false }
       <Play size={small ? 13 : 15} strokeWidth={2.5} fill="currentColor" />
       {label}
     </Link>
+  );
+  if (!reveal) return button;
+  // `reveal`: the same band that crosses the big Wrapped card crosses the
+  // button, in a deep shade of the team colour (seen on a light page and a
+  // dark one), and the button is there once it has passed.
+  return (
+    <span className="wb-reveal relative inline-flex overflow-hidden rounded-xl" style={{ "--g-pop": `color-mix(in srgb, ${colour} 55%, #000)` }}>
+      {button}
+      <span className="wt-sweep wb-sweep absolute inset-0" aria-hidden="true" />
+    </span>
   );
 }

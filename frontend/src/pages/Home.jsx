@@ -616,8 +616,8 @@ export default function Home() {
   const wrappedState = useSeasonWrapped(season, isLoggedIn, !!(seasonOver || isPast));
   // The weeks after a new season is switched on, before its opener: the
   // season just gone is still what members want to look back on, so its
-  // Wrapped takes over this hero once too and keeps a button beside the
-  // Discord one.
+  // Wrapped gets a button beside the Discord one. No full card here: the
+  // page is the new season's; the button sweeps in instead.
   const lastSeason = awaitingOpener && !isUpcomingSeason && season ? (seasons || []).find((s) => s.number === season.number - 1) || null : null;
   const lastWrapped = useSeasonWrapped(lastSeason, isLoggedIn, !!lastSeason);
 
@@ -1069,7 +1069,6 @@ export default function Home() {
         />
 
         {(seasonOver || isPast) && wrappedState.showTakeover && <WrappedTakeover wrapped={wrappedState.wrapped} onClose={wrappedState.dismiss} />}
-        {showComingSoonHero && lastSeason && lastWrapped.showTakeover && <WrappedTakeover wrapped={lastWrapped.wrapped} onClose={lastWrapped.dismiss} />}
 
         <div className="hero-hud relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
           {seasonOver || isPast ? (
@@ -1181,7 +1180,7 @@ export default function Home() {
                       </a>
                     )}
                     {lastSeason && lastWrapped.wrapped && (
-                      <WrappedButton wrapped={lastWrapped.wrapped} label={`${lastWrapped.wrapped.season?.label || lastSeason.name} Wrapped`} small />
+                      <WrappedButton wrapped={lastWrapped.wrapped} label={`${lastWrapped.wrapped.season?.label || lastSeason.name} Wrapped`} small reveal />
                     )}
                   </div>
                 )}
