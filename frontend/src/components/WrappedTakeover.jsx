@@ -12,8 +12,9 @@
 // (GET /api/me/season-wrapped): signed in, switched on for them, raced in the
 // season, the season complete.
 // ---------------------------------------------------------------------------
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { motionOff } from "../hooks/motion.js";
 import { Play, X } from "lucide-react";
 import { api } from "../api/client.js";
 import { readableInkOn } from "./ui.jsx";
@@ -67,14 +68,60 @@ export function useSeasonWrapped(season, isLoggedIn, finished) {
 }
 
 // The takeover: covers the whole main card.
+// The card grows into the story: a sheet in the card's colour is laid over
+// it, swells to fill the window, and the story opens underneath. The sheet
+// lives on <body> (not in the page), so it survives the change of page and
+// only fades once the story is there.
+function growInto(card, colour, go) {
+  const box = card?.getBoundingClientRect();
+  if (!box || motionOff() || typeof card.animate !== "function") {
+    go();
+    return;
+  }
+  const radius = getComputedStyle(card.parentElement || card).borderRadius || "24px";
+  const sheet = document.createElement("div");
+  Object.assign(sheet.style, {
+    position: "fixed",
+    left: "0",
+    top: "0",
+    width: "100vw",
+    height: "100dvh",
+    background: colour,
+    zIndex: "2147483000",
+    pointerEvents: "none",
+    transformOrigin: "0 0",
+  });
+  document.body.appendChild(sheet);
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const from = `translate(${box.left}px, ${box.top}px) scale(${box.width / vw}, ${box.height / vh})`;
+  const grow = sheet.animate(
+    [
+      { transform: from, borderRadius: radius },
+      { transform: "translate(0, 0) scale(1, 1)", borderRadius: "0px" },
+    ],
+    { duration: 620, easing: "cubic-bezier(0.76, 0, 0.18, 1)", fill: "forwards" },
+  );
+  grow.onfinish = () => {
+    go();
+    // Give the story a moment to paint, then let the sheet go.
+    setTimeout(() => {
+      const fade = sheet.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: "ease-out", fill: "forwards" });
+      fade.onfinish = () => sheet.remove();
+    }, 180);
+  };
+}
+
 export function WrappedTakeover({ wrapped, onClose }) {
+  const cardRef = useRef(null);
+  const navigate = useNavigate();
   const colours = slideColours("intro", teamColourOf(wrapped));
   const label = wrapped.season?.label || "Season";
   const num = /\d+$/.exec(label)?.[0] || "";
   const head = num ? label.slice(0, -num.length).trim() : label;
   const team = wrapped.team && wrapped.team.tier !== 0 ? wrapped.team : null;
   return (
-    <div className="wt-card absolute inset-0 z-20 overflow-hidden" style={{ ...colours, background: "var(--g-bg)", color: "var(--g-fg)" }} role="dialog" aria-label={`Your ${label} Wrapped`}>
+    <div ref={cardRef} className="wt-card absolute inset-0 z-20 overflow-hidden" style={{ ...colours, background: "var(--g-bg)", color: "var(--g-fg)" }} role="dialog" aria-label={`Your ${label} Wrapped`}>
       {/* A band of the slide's second colour sweeps across once, the way the
           story's slides hand over to each other. */}
       <div className="wt-sweep absolute inset-0" aria-hidden="true" />
@@ -130,7 +177,15 @@ export function WrappedTakeover({ wrapped, onClose }) {
           )}
           <Link
             to={wrappedPath(wrapped)}
-            onClick={onClose}
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+              e.preventDefault();
+              const colour = getComputedStyle(cardRef.current).backgroundColor;
+              growInto(cardRef.current, colour, () => {
+                onClose();
+                navigate(wrappedPath(wrapped));
+              });
+            }}
             className="wt-go inline-flex h-14 items-center gap-2.5 whitespace-nowrap rounded-full px-6 text-[15px] font-extrabold uppercase tracking-wide sm:px-7 sm:text-[16px]"
             style={{ background: "var(--g-fg)", color: "var(--g-bg)", fontFamily: "Montserrat, sans-serif" }}
           >

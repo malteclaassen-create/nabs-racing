@@ -267,7 +267,7 @@
 /* The right column holds what sat at the foot of the tall slide; here it is
    centred instead of pushed down, and the small type in it is set larger. */
 .st-aside > .mt-auto, .st-aside > .st-in.mt-auto { margin-top: 0; }
-.st-aside { zoom: 1.22; }
+.st-aside { zoom: 1.08; }
 .st-aside > .st-fill { flex: 1 1 auto; min-height: 0; margin-top: 0; }
 
 /* A 3D object (review/Object3D.jsx) in the right column is drawn at its
@@ -381,3 +381,16 @@
 @media (prefers-reduced-motion: reduce) { .wt-sweep { display: none; } .wt-go { animation: none; } }
 .fx-lite .wt-sweep { display: none; }
 .fx-lite .wt-go { animation: none; }
+
+/* ------------------------------------------------ small text, full screen */
+/* On a laptop or desktop the story fills the window, so the small labels,
+   kickers and list rows grow with it instead of staying phone-sized next to
+   type that is a quarter of the screen tall. Phone sizes are the floor. */
+.st-frame-wide .lv-label { font-size: clamp(13px, 1.15vw, 22px); }
+.st-frame-wide .text-\[10px\] { font-size: clamp(11px, 0.95vw, 18px); }
+.st-frame-wide .text-\[11px\] { font-size: clamp(12px, 1.05vw, 20px); }
+.st-frame-wide .text-\[12px\] { font-size: clamp(13px, 1.15vw, 22px); }
+.st-frame-wide .text-\[13px\] { font-size: clamp(14px, 1.3vw, 24px); }
+.st-frame-wide .text-\[14px\] { font-size: clamp(15px, 1.35vw, 25px); }
+.st-frame-wide .text-\[15px\] { font-size: clamp(16px, 1.45vw, 27px); }
+.st-frame-wide .st-kick { letter-spacing: 0.12em; }
