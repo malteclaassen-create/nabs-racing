@@ -122,9 +122,11 @@ export function WrappedTakeover({ wrapped, onClose }) {
             </div>
           ) : null}
         </div>
-        <div className="st-in flex flex-col items-start gap-4 lg:items-end" style={{ "--d": "950ms" }}>
+        {/* The sweep crosses the card first (1 s); then the team line, and
+            the button lands last, so it is the thing left to do. */}
+        <div className="flex flex-col items-start gap-4 lg:items-end">
           {logo && (
-            <div className="flex items-center gap-3">
+            <div className="st-in flex items-center gap-3" style={{ "--d": "1050ms" }}>
               <span className="inline-flex items-center justify-center rounded-xl p-2" style={{ background: "#f6f5f1" }}>
                 <TeamLogo id={logo.id} name={logo.name} color={logo.color} logoUrl={logo.logoUrl} size={36} />
               </span>
@@ -133,6 +135,7 @@ export function WrappedTakeover({ wrapped, onClose }) {
               </span>
             </div>
           )}
+          <span className="st-land inline-block" style={{ "--d": "1250ms" }}>
           <Link
             to={wrappedPath(wrapped)}
             onClick={(e) => {
@@ -150,6 +153,7 @@ export function WrappedTakeover({ wrapped, onClose }) {
             <Play size={18} strokeWidth={2.5} fill="currentColor" />
             Watch your Wrapped
           </Link>
+          </span>
         </div>
       </div>
     </div>
