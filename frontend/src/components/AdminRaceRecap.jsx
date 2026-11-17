@@ -26,23 +26,25 @@ const MODE_TEXT = {
 // form of a story, opened from the driver page. Public figures only, so once
 // it is on it is there for anyone who can see the driver.
 const REVIEW_TEXT = {
-  off: "Off. No driver page offers the season Wrapped.",
-  admins: "Admins only. League admins see the Season Wrapped link on every driver page; members see nothing yet.",
-  all: "Everyone. Every driver page with two or more rounds run offers its season Wrapped.",
+  off: "Off. Nobody gets a season Wrapped.",
+  admins: "Admins only. League admins can open every driver's Wrapped; drivers see nothing yet.",
+  all: "Drivers, their own. Each driver signed in with Discord gets their own Wrapped (Home button, own driver page). Nobody else's Wrapped opens for them, and no public page links to it. Admins can still open all of them.",
 };
+const REVIEW_LABELS = { off: "Off", admins: "Admins only", all: "Drivers, their own" };
 
-function ModeSwitch({ mode, onChange, busy, title = "Race recap", texts = MODE_TEXT }) {
+function ModeSwitch({ mode, onChange, busy, title = "Race recap", texts = MODE_TEXT, labels = { off: "Off", admins: "Admins only", all: "Everyone" }, children = null }) {
   return (
     <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
       <div className="min-w-0">
         <div className="font-display text-lg font-extrabold uppercase tracking-tight text-dark">{title}</div>
         <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">{texts[mode] || texts.off}</p>
+        {children}
       </div>
       <SlidingTabs
         items={[
-          { key: "off", label: "Off" },
-          { key: "admins", label: "Admins only" },
-          { key: "all", label: "Everyone" },
+          { key: "off", label: labels.off },
+          { key: "admins", label: labels.admins },
+          { key: "all", label: labels.all },
         ]}
         value={mode || "off"}
         onChange={(m) => !busy && m !== mode && onChange(m)}
@@ -115,7 +117,22 @@ export default function AdminRaceRecap() {
     setDone(null);
     try {
       await api.setSeasonReviewMode(mode);
-      setDone(mode === "all" ? "The season Wrapped is on for everyone." : mode === "admins" ? "The season Wrapped is on for admins only." : "The season Wrapped is off.");
+      setDone(mode === "all" ? "Each driver can now watch their own season Wrapped." : mode === "admins" ? "The season Wrapped is on for admins only." : "The season Wrapped is off.");
+      reloadReview();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setReviewUntil(until) {
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      await api.setSeasonReviewUntil(until);
+      setDone(until ? `Drivers can watch their Wrapped until the end of ${new Date(`${until}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.` : "The season Wrapped has no end date.");
       reloadReview();
     } catch (e) {
       setError(e.message);
@@ -138,7 +155,25 @@ export default function AdminRaceRecap() {
       {done && <Notice kind="success">{done}</Notice>}
 
       <ModeSwitch mode={data.mode} busy={busy} onChange={setMode} />
-      {review && <ModeSwitch mode={review.mode} busy={busy} onChange={setReviewMode} title="Season Wrapped" texts={REVIEW_TEXT} />}
+      {review && (
+        <ModeSwitch mode={review.mode} busy={busy} onChange={setReviewMode} title="Season Wrapped" texts={REVIEW_TEXT} labels={REVIEW_LABELS}>
+          {/* How long drivers can watch it: to the end of this day, then the
+              Home button and their own link go away (admins keep it). */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <label htmlFor="wrapped-until" className="font-medium text-dark">
+              Open for drivers until
+            </label>
+            <input id="wrapped-until" type="date" className="input w-auto py-1 text-sm" value={review.until || ""} disabled={busy} onChange={(e) => setReviewUntil(e.target.value || null)} />
+            {review.until ? (
+              <button type="button" className="btn-secondary py-1 text-xs" disabled={busy} onClick={() => setReviewUntil(null)}>
+                No end
+              </button>
+            ) : (
+              <span className="text-xs text-light">No end date</span>
+            )}
+          </div>
+        </ModeSwitch>
+      )}
 
       <div className="card space-y-4 p-5">
         <CardHead eyebrow="What members get" title="How the recap works" />

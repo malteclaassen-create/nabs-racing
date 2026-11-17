@@ -69,7 +69,7 @@ export default function SeasonReview() {
     navigate(review?.season?.number != null ? `${driverPage}?season=${review.season.number}` : driverPage, { replace: true });
   };
 
-  if (error) return <ErrorBox message={error === "Not available" ? "The season Wrapped is not open yet." : error} />;
+  if (error) return <ErrorBox message={error === "Not available" ? "This season Wrapped isn't open to you. Each driver can watch only their own, signed in with Discord." : error} />;
   if (!review) return <div className="min-h-[60vh]" aria-busy="true" />;
   if (review.tooEarly || review.empty || slides.length === 0) {
     return (

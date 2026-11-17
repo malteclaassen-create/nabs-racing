@@ -35,8 +35,19 @@ async function rowFor(req) {
   return hit?.id || null;
 }
 
+// Whether the signed-in member looking is the driver of this row (or the
+// same person's row in another season).
+async function viewerOwns(req, rowId) {
+  try {
+    const mine = req.user ? await resolveDriverId(prisma, req.user) : null;
+    return !!mine && (mine === rowId || (await getLinkedDriverIds(prisma, mine)).includes(rowId));
+  } catch {
+    return false;
+  }
+}
+
 // GET /api/drivers/:id/profile -> full career profile for one driver
-router.get("/:id/profile", async (req, res, next) => {
+router.get("/:id/profile", optionalUser, async (req, res, next) => {
   try {
     const rowId = await rowFor(req);
     const driver = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { seasonId: true } }) : null;
@@ -58,7 +69,9 @@ router.get("/:id/profile", async (req, res, next) => {
     // can offer the way there (services/seasonReviewService.js).
     try {
       const rounds = (profile.perRace || []).length;
-      const open = rounds >= MIN_ROUNDS && (profile.stats?.starts || 0) > 0 && (await reviewVisibleTo(prisma, req));
+      // Never on someone else's public page: an admin sees the way there on
+      // every page, a member only on their own.
+      const open = rounds >= MIN_ROUNDS && (profile.stats?.starts || 0) > 0 && (await reviewVisibleTo(prisma, req)) && (req.isAdminRequest === true || (await viewerOwns(req, rowId)));
       profile.seasonReview = open ? { complete: await isSeasonComplete(prisma, driver.seasonId) } : null;
     } catch {
       profile.seasonReview = null;
@@ -83,13 +96,10 @@ router.get("/:id/season-review", optionalUser, async (req, res, next) => {
     if (!review) return res.status(404).json({ error: "Driver not found" });
     // Whether the person looking is the driver themselves: the story then
     // speaks to them ("you"), as a Wrapped does; anyone else reads the name.
-    let own = false;
-    try {
-      const mine = req.user ? await resolveDriverId(prisma, req.user) : null;
-      own = !!mine && (mine === rowId || (await getLinkedDriverIds(prisma, mine)).includes(rowId));
-    } catch {
-      own = false;
-    }
+    const own = await viewerOwns(req, rowId);
+    // A Wrapped is personal: anyone but its driver (and the admins) is told
+    // there is nothing here.
+    if (!own && req.isAdminRequest !== true) return res.status(404).json({ error: "Not available" });
     // A member opening their own Wrapped is noted for the admin's
     // System > Wrapped view (lib/wrappedViews.js); a failure there never
     // stops the story.
@@ -112,9 +122,7 @@ router.post("/:id/season-review/seen", optionalUser, async (req, res, next) => {
     const rowId = await rowFor(req);
     const driver = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { seasonId: true } }) : null;
     if (!driver) return res.json({ ok: false });
-    const mine = await resolveDriverId(prisma, req.user);
-    const own = !!mine && (mine === rowId || (await getLinkedDriverIds(prisma, mine)).includes(rowId));
-    if (!own) return res.json({ ok: false });
+    if (!(await viewerOwns(req, rowId))) return res.json({ ok: false });
     await recordWrappedProgress(prisma, { seasonId: driver.seasonId, discordId: req.user.discordId, slide: req.body?.slide, slides: req.body?.slides });
     res.json({ ok: true });
   } catch (e) {

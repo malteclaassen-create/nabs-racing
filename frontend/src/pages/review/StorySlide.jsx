@@ -1180,13 +1180,7 @@ function Final({ slide, review, onReplay }) {
       setState("failed");
     }
   };
-  const copy = () => {
-    try {
-      navigator.clipboard?.writeText(window.location.href.split("?")[0]).then(() => setState("copied"));
-    } catch {
-      /* no clipboard */
-    }
-  };
+
   const c = review.championship;
   const top = slide.top || [];
   const card = (
@@ -1277,9 +1271,8 @@ function Final({ slide, review, onReplay }) {
           </button>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3">
-          <button type="button" onClick={copy} className="lv-link">
-            {state === "copied" ? "Link copied" : "Copy link"}
-          </button>
+          {/* No link to copy: a Wrapped opens only for its own driver, so
+              the picture is the thing to share. */}
           <button type="button" onClick={onReplay} className="lv-link">
             Watch again
           </button>

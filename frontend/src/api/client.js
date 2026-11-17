@@ -562,6 +562,7 @@ export const api = {
   wrappedSeen: (id, slide, slides) => request(`/drivers/${encodeURIComponent(id)}/season-review/seen`, { method: "POST", body: { slide, slides }, auth: true }),
   adminSeasonReview: () => request("/admin/season-review", { auth: true }),
   setSeasonReviewMode: (mode) => request("/admin/season-review", { method: "PUT", body: { mode }, auth: true }),
+  setSeasonReviewUntil: (until) => request("/admin/season-review", { method: "PUT", body: { until }, auth: true }),
   // The public profile page: `id` may be the person's handle (name in url
   // form) instead of a row id. The backend resolves it within the viewed
   // series and the season given (null = the selected one) to the right row.

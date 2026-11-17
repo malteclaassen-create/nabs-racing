@@ -67,13 +67,43 @@ export async function setReviewMode(prisma, mode) {
   return value;
 }
 
-// Is it open to THIS request? Everybody once it is on, admins (checked live by
-// the auth middleware) while it is being tried out.
+// Until when drivers can watch it (an admin setting): a date, YYYY-MM-DD, to
+// the end of that day in the league's time zone; none means no end.
+export const REVIEW_UNTIL_SETTING = "season_review_until";
+const leagueToday = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+
+export async function reviewUntil(prisma) {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: REVIEW_UNTIL_SETTING } });
+    return /^\d{4}-\d{2}-\d{2}$/.test(row?.value || "") ? row.value : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function setReviewUntil(prisma, until) {
+  const value = /^\d{4}-\d{2}-\d{2}$/.test(String(until || "")) ? String(until) : null;
+  if (value) await prisma.setting.upsert({ where: { key: REVIEW_UNTIL_SETTING }, create: { key: REVIEW_UNTIL_SETTING, value }, update: { value } });
+  else await prisma.setting.deleteMany({ where: { key: REVIEW_UNTIL_SETTING } });
+  return value;
+}
+
+// Whether drivers may watch their own Wrapped right now: switched on for
+// them ("all" is "each driver, their own") and not past the end date.
+export async function membersMayWatch(prisma) {
+  if ((await reviewMode(prisma)) !== "all") return false;
+  const until = await reviewUntil(prisma);
+  return !until || leagueToday() <= until;
+}
+
+// Is the Wrapped open to THIS request at all? Admins (checked live by the
+// auth middleware) whenever it is not off; members while they may watch,
+// and then only their OWN (the routes check whose it is).
 export async function reviewVisibleTo(prisma, req) {
   const mode = await reviewMode(prisma);
-  if (mode === "all") return true;
-  if (mode === "admins") return req?.isAdminRequest === true;
-  return false;
+  if (mode === "off") return false;
+  if (req?.isAdminRequest === true) return true;
+  return membersMayWatch(prisma);
 }
 
 // --- the pure parts -------------------------------------------------------------

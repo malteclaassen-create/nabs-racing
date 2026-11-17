@@ -180,7 +180,7 @@ import {
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 import { isWidgetsPagePublic, setWidgetsPagePublic, isAndroidWidgetsPublic, setAndroidWidgetsPublic } from "../lib/widgetsPage.js";
 import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
-import { reviewMode, setReviewMode, invalidateSeasonReviewCache } from "../services/seasonReviewService.js";
+import { reviewMode, setReviewMode, reviewUntil, setReviewUntil, invalidateSeasonReviewCache } from "../services/seasonReviewService.js";
 import { draftRaceReport } from "../lib/newsRaceReport.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { activityLogger, readActivity, readResultRows, diffResults, diffReport, raceTarget } from "../lib/adminActivity.js";
@@ -1137,21 +1137,24 @@ router.get("/race-recap/preview", async (req, res, next) => {
 // THE SEASON REVIEW (services/seasonReviewService.js): its switch. Off,
 // admins first (the default, so the office sees it on the live site before
 // anyone else), everyone.
-// GET /api/admin/season-review -> { mode }
+// GET /api/admin/season-review -> { mode, until }
 router.get("/season-review", async (req, res, next) => {
   try {
-    res.json({ mode: await reviewMode(prisma) });
+    res.json({ mode: await reviewMode(prisma), until: await reviewUntil(prisma) });
   } catch (e) {
     next(e);
   }
 });
 
-// PUT /api/admin/season-review { mode: off | admins | all }
+// PUT /api/admin/season-review { mode?: off | admins | all, until?: YYYY-MM-DD | null }
+// "all" is each driver their own Wrapped; `until` ends it for them after
+// that day (null: no end).
 router.put("/season-review", async (req, res, next) => {
   try {
-    const mode = await setReviewMode(prisma, req.body?.mode);
+    const mode = req.body && "mode" in req.body ? await setReviewMode(prisma, req.body.mode) : await reviewMode(prisma);
+    const until = req.body && "until" in req.body ? await setReviewUntil(prisma, req.body.until) : await reviewUntil(prisma);
     invalidateSeasonReviewCache();
-    res.json({ ok: true, mode });
+    res.json({ ok: true, mode, until });
   } catch (e) {
     next(e);
   }
