@@ -36,7 +36,7 @@ import AdminSeasonAwards from "../components/AdminSeasonAwards.jsx";
 import TabNotice from "../components/TabNotice.jsx";
 import { FilterChip, SearchField } from "../components/AdminFilters.jsx";
 import { HelpNote } from "../components/ui.jsx";
-import { teamLabel } from "../utils/teamLabel.js";
+import { teamLabel, tierLabel } from "../utils/teamLabel.js";
 // The tab strip and the searchable list of what each tab does live together in
 // one place, so a new tab and its search entries are added side by side.
 import { resolveTab } from "../data/adminIndex.js";
@@ -4411,7 +4411,7 @@ function SafetyCarDrivers({ drivers, busy, onSet }) {
             <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
               <SafetyCarBadge compact />
               <span className="min-w-0 flex-1 truncate font-semibold text-dark">{d.name}</span>
-              <span className="text-xs text-light">{d.teamLabel || d.teamName}</span>
+              <span className="text-xs text-light">{d.teamLabel}</span>
               <button
                 className="transition text-xs font-semibold text-link hover:underline"
                 disabled={busy}
@@ -4435,7 +4435,7 @@ function SafetyCarDrivers({ drivers, busy, onSet }) {
           <option value="">Add a driver…</option>
           {rest.map((d) => (
             <option key={d.id} value={d.id}>
-              {d.name} · {d.teamLabel || d.teamName}
+              {d.name} · {d.teamLabel}
             </option>
           ))}
         </select>
@@ -7161,7 +7161,9 @@ function TeamImport({ seasonId, onImported, onError }) {
       await api.importTeam(t.id, seasonId);
       onImported?.(t);
       // Refresh the list so the team we just took now shows as already here.
-      setRows((prev) => (prev || []).map((r) => (r.name === t.name ? { ...r, alreadyHere: true } : r)));
+      // Taken per division: bringing over Division 1 McLaren leaves Division 2 McLaren open.
+      const div = (x) => (x.tier === 3 ? 2 : 1);
+      setRows((prev) => (prev || []).map((r) => (r.name === t.name && div(r) === div(t) ? { ...r, alreadyHere: true } : r)));
     } catch (e) {
       onError?.(e.message);
     } finally {
@@ -7197,7 +7199,7 @@ function TeamImport({ seasonId, onImported, onError }) {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-dark">{t.name}</span>
                 <span className="block font-mono text-[11px] uppercase tracking-wider text-light">
-                  {t.seasonName || `Season ${t.seasonNumber}`} · {t.tier === 0 ? "Reserve" : `Tier ${t.tier}`}
+                  {t.seasonName || `Season ${t.seasonNumber}`} · {tierLabel(t.tier)}
                 </span>
               </span>
               {t.alreadyHere ? (

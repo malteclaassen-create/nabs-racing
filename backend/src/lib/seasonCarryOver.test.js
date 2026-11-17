@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildCarryOverList, readCarryOver, commitCarryOver, parsePicks, pickedByDefault, parseTeamPlan, commitTeamPlan, teamIdBase, teamCopyId,
+  buildCarryOverList, readCarryOver, commitCarryOver, parsePicks, pickedByDefault, parseTeamPlan, commitTeamPlan, teamIdBase, teamCopyId, matchTeams,
 } from "./seasonCarryOver.js";
 
 // An in-memory stand-in for the handful of tables the carry over touches:
@@ -509,6 +509,7 @@ describe("team ids do not grow from season to season", () => {
     expect(teamIdBase("mclaren_d2_s8_d2_s9")).toBe("mclaren");
     expect(teamIdBase("mclaren_s9_2")).toBe("mclaren");
     expect(teamIdBase("torro_rosso_s8")).toBe("torro_rosso");
+    expect(teamIdBase("reserve_s9_lq3k2a1b")).toBe("reserve");
     expect(teamIdBase("")).toBe("team");
   });
 
@@ -535,5 +536,70 @@ describe("team ids do not grow from season to season", () => {
     });
     const ids = prisma.state.teams.filter((t) => t.seasonId === "s10" && t.tier !== 0).map((t) => t.id).sort();
     expect(ids).toEqual(["ferrari_d2_s10", "ferrari_s10"]);
+  });
+});
+
+describe("a short team id that is taken is never mistaken for the copy", () => {
+  // Season numbers are counted per series: another series' Season 9 can hold
+  // `ferrari_s9` and `reserve_s9` already.
+  function withOtherSeries() {
+    const prisma = season8();
+    prisma.state.teams.push(
+      { id: "ferrari_s9", name: "Ferrari", tier: 1, color: "#f00", seasonId: "sunday_s9" },
+      { id: "reserve_s9", name: "Reserve", tier: 0, color: "#666", seasonId: "sunday_s9" },
+    );
+    return prisma;
+  }
+
+  it("the teams step gives the copy a free id, and the drivers land in it", async () => {
+    const prisma = withOtherSeries();
+    await commitTeamPlan(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      plan: parseTeamPlan({ division2: false, teams: [{ sourceId: "ferrari_s8", tier: 1 }] }),
+    });
+    const mine = prisma.state.teams.filter((t) => t.seasonId === "s9").map((t) => t.id).sort();
+    expect(mine).toEqual(["ferrari_s9_2", "reserve_s9_2"]);
+    await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "malte_s8" }, { driverId: "sub_s8" }]) });
+    const by = Object.fromEntries(prisma.state.drivers.filter((d) => d.seasonId === "s9").map((d) => [d.name, d]));
+    expect(by.Malte.teamId).toBe("ferrari_s9_2");
+    expect(by["Sub Driver"].teamId).toBe("reserve_s9_2");
+  });
+
+  it("without a teams step every team is still copied, none skipped", async () => {
+    const prisma = withOtherSeries();
+    await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "malte_s8" }]) });
+    const mine = prisma.state.teams.filter((t) => t.seasonId === "s9");
+    expect(mine.map((t) => t.name).sort()).toEqual(["Ferrari", "Minardi", "Red Bull", "Reserve"]);
+    expect(mine.find((t) => t.name === "Ferrari").id).toBe("ferrari_s9_2");
+    expect(prisma.state.drivers.find((d) => d.seasonId === "s9" && d.name === "Malte").teamId).toBe("ferrari_s9_2");
+  });
+
+  it("two old teams with the same base both come along", async () => {
+    const prisma = season8();
+    prisma.state.teams.push({ id: "ferrari_s8_2", name: "Scuderia", tier: 1, color: "#a00", seasonId: "s8" });
+    await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "malte_s8" }]) });
+    const mine = prisma.state.teams.filter((t) => t.seasonId === "s9" && t.tier === 1);
+    expect(mine.map((t) => t.name).sort()).toEqual(["Ferrari", "Scuderia"]);
+  });
+
+  it("an id hit with another name falls through to the name", () => {
+    const source = [{ id: "toro_rosso_s8_2", name: "Toro Rosso", tier: 2 }];
+    const target = [
+      { id: "toro_rosso_s9", name: "AlphaTauri", tier: 2 },
+      { id: "toro_rosso_s9_2", name: "Toro Rosso", tier: 2 },
+    ];
+    expect(matchTeams(source, target, 9).get("toro_rosso_s8_2").name).toBe("Toro Rosso");
+  });
+
+  it("a new team keeps its own name in the id", async () => {
+    const prisma = season8();
+    await commitTeamPlan(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      plan: parseTeamPlan({ division2: true, newTeams: [{ name: "Racing S5", tier: 2 }, { name: "Team D2", tier: 3 }] }),
+    });
+    const ids = prisma.state.teams.filter((t) => t.seasonId === "s9" && t.tier !== 0).map((t) => t.id).sort();
+    expect(ids).toEqual(["racing_s5_s9", "team_d2_d2_s9"]);
   });
 });
