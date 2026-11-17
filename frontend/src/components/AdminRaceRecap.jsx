@@ -27,8 +27,8 @@ const MODE_TEXT = {
 // it is on it is there for anyone who can see the driver.
 const REVIEW_TEXT = {
   off: "Off. Nobody gets a season Wrapped.",
-  admins: "Admins only. League admins can open every driver's Wrapped; drivers see nothing yet.",
-  all: "Drivers, their own. Each driver signed in with Discord gets their own Wrapped (Home button, own driver page). Nobody else's Wrapped opens for them, and no public page links to it. Admins can still open all of them.",
+  admins: "Admins only. League admins can open every driver's Wrapped of the seasons ticked below; drivers see nothing yet.",
+  all: "Drivers, their own. Each driver signed in with Discord gets their own Wrapped of the seasons ticked below (Home button, own driver page). Nobody else's Wrapped opens for them, and no public page links to it. Admins can open every driver's, for those seasons too.",
 };
 const REVIEW_LABELS = { off: "Off", admins: "Admins only", all: "Drivers, their own" };
 
@@ -126,6 +126,21 @@ export default function AdminRaceRecap() {
     }
   }
 
+  async function setReviewSeasons(seasonIds) {
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      await api.setSeasonReviewSeasons(seasonIds);
+      setDone(seasonIds.length ? "Saved which seasons have a Wrapped." : "No season has a Wrapped now.");
+      reloadReview();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function setReviewUntil(until) {
     setBusy(true);
     setError(null);
@@ -172,6 +187,31 @@ export default function AdminRaceRecap() {
               <span className="text-xs text-light">No end date</span>
             )}
           </div>
+          {/* Which seasons have a Wrapped at all, for everybody. */}
+          {review.seasons?.length > 0 && (
+            <div className="mt-3">
+              <div className="text-sm font-medium text-dark">Seasons with a Wrapped</div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {review.seasons.map((s) => (
+                  <label
+                    key={s.id}
+                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition ${s.open ? "border-brand bg-brand/15 text-dark" : "border-border text-light hover:text-dark"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-brand"
+                      checked={s.open}
+                      disabled={busy}
+                      onChange={() => setReviewSeasons(review.seasons.filter((x) => (x.id === s.id ? !x.open : x.open)).map((x) => x.id))}
+                    />
+                    {s.series ? `${s.series} · ` : ""}
+                    {s.name}
+                  </label>
+                ))}
+              </div>
+              {!review.chosen && <p className="mt-1 text-xs text-light">Not chosen yet, so only the newest finished season of the main series has one.</p>}
+            </div>
+          )}
         </ModeSwitch>
       )}
 

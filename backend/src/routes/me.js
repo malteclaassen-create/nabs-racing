@@ -817,7 +817,7 @@ router.get("/season-wrapped", async (req, res, next) => {
   try {
     const seasonId = String(req.query.seasonId || "");
     if (!req.user || !seasonId) return res.json(none);
-    if (!(await reviewVisibleTo(prisma, req))) return res.json(none);
+    if (!(await reviewVisibleTo(prisma, req, seasonId))) return res.json(none);
     const driverId = await resolveDriverId(prisma, req.user);
     if (!driverId) return res.json(none);
     const linked = await getLinkedDriverIds(prisma, driverId);

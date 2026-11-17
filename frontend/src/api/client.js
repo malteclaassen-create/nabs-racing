@@ -563,6 +563,7 @@ export const api = {
   adminSeasonReview: () => request("/admin/season-review", { auth: true }),
   setSeasonReviewMode: (mode) => request("/admin/season-review", { method: "PUT", body: { mode }, auth: true }),
   setSeasonReviewUntil: (until) => request("/admin/season-review", { method: "PUT", body: { until }, auth: true }),
+  setSeasonReviewSeasons: (seasonIds) => request("/admin/season-review", { method: "PUT", body: { seasonIds }, auth: true }),
   // The public profile page: `id` may be the person's handle (name in url
   // form) instead of a row id. The backend resolves it within the viewed
   // series and the season given (null = the selected one) to the right row.

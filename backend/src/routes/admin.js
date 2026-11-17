@@ -46,6 +46,7 @@ import { writeSeasonHero, writeSeasonCar, writeSeasonPreviewLoop } from "../lib/
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
 import { getWrappedViews } from "../lib/wrappedViews.js";
+import { isSeasonComplete } from "../lib/seasonComplete.js";
 import { leagueSince, setLeagueSince } from "../lib/leagueStats.js";
 import {
   dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload, ensureReplaysFolder,
@@ -181,7 +182,7 @@ import {
 import { isTelemetryPublic, setTelemetryPublic } from "../lib/telemetryAccess.js";
 import { isWidgetsPagePublic, setWidgetsPagePublic, isAndroidWidgetsPublic, setAndroidWidgetsPublic } from "../lib/widgetsPage.js";
 import { recapMode, setRecapMode, buildRaceRecap } from "../lib/raceRecap.js";
-import { reviewMode, setReviewMode, reviewUntil, setReviewUntil, invalidateSeasonReviewCache } from "../services/seasonReviewService.js";
+import { reviewMode, setReviewMode, reviewUntil, setReviewUntil, reviewSeasons, setReviewSeasons, invalidateSeasonReviewCache } from "../services/seasonReviewService.js";
 import { draftRaceReport } from "../lib/newsRaceReport.js";
 // DOWNLOADS_DIR arrives via lib/downloads.js above.
 import { activityLogger, readActivity, readResultRows, diffResults, diffReport, raceTarget } from "../lib/adminActivity.js";
@@ -1138,10 +1139,23 @@ router.get("/race-recap/preview", async (req, res, next) => {
 // THE SEASON REVIEW (services/seasonReviewService.js): its switch. Off,
 // admins first (the default, so the office sees it on the live site before
 // anyone else), everyone.
-// GET /api/admin/season-review -> { mode, until }
+// The finished seasons an admin can open the Wrapped for, each marked
+// whether it is open now.
+async function wrappedSeasonChoice() {
+  const open = await reviewSeasons(prisma);
+  const seasons = await prisma.season.findMany({ orderBy: [{ number: "desc" }], select: { id: true, name: true, number: true, series: { select: { name: true } } } });
+  const out = [];
+  for (const s of seasons) {
+    if (!(await isSeasonComplete(prisma, s.id))) continue;
+    out.push({ id: s.id, name: s.name, series: s.series?.name || null, open: open.ids.includes(s.id) });
+  }
+  return { seasons: out, chosen: open.chosen };
+}
+
+// GET /api/admin/season-review -> { mode, until, seasons, chosen }
 router.get("/season-review", async (req, res, next) => {
   try {
-    res.json({ mode: await reviewMode(prisma), until: await reviewUntil(prisma) });
+    res.json({ mode: await reviewMode(prisma), until: await reviewUntil(prisma), ...(await wrappedSeasonChoice()) });
   } catch (e) {
     next(e);
   }
@@ -1154,8 +1168,11 @@ router.put("/season-review", async (req, res, next) => {
   try {
     const mode = req.body && "mode" in req.body ? await setReviewMode(prisma, req.body.mode) : await reviewMode(prisma);
     const until = req.body && "until" in req.body ? await setReviewUntil(prisma, req.body.until) : await reviewUntil(prisma);
+    // `seasonIds`: the seasons drivers get a Wrapped for (null: the default,
+    // the newest finished season of each series).
+    if (req.body && "seasonIds" in req.body) await setReviewSeasons(prisma, req.body.seasonIds);
     invalidateSeasonReviewCache();
-    res.json({ ok: true, mode, until });
+    res.json({ ok: true, mode, until, ...(await wrappedSeasonChoice()) });
   } catch (e) {
     next(e);
   }

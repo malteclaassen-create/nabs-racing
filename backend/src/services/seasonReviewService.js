@@ -30,7 +30,7 @@
 import { getDriverProfile } from "./driverProfileService.js";
 import { applyDropScores, compareFinishSheets, finishSheetOf } from "./standingsService.js";
 import { getSeasonHonours } from "./honoursService.js";
-import { seasonCompleteFromRaces } from "../lib/seasonComplete.js";
+import { seasonCompleteFromRaces, isSeasonComplete } from "../lib/seasonComplete.js";
 import { finishesOf, hasRaced, roundsOf } from "../lib/standingsRow.js";
 import { readSprintChildren } from "../lib/sprintRaces.js";
 import { readPoleHolders, readManualFastestLaps } from "../lib/raceHonours.js";
@@ -96,12 +96,53 @@ export async function membersMayWatch(prisma) {
   return !until || leagueToday() <= until;
 }
 
-// Is the Wrapped open to THIS request at all? Admins (checked live by the
-// auth middleware) whenever it is not off; members while they may watch,
-// and then only their OWN (the routes check whose it is).
-export async function reviewVisibleTo(prisma, req) {
+// Which seasons have a Wrapped at all (an admin setting, for everybody,
+// admins included): a list of season ids. Unset, it is only the newest
+// finished season of the main series, so no old season and no side series
+// gets one until an admin ticks it.
+export const REVIEW_SEASONS_SETTING = "season_review_seasons";
+
+async function newestFinishedSeasons(prisma) {
+  const main = await prisma.series.findFirst({ where: { isActive: true }, orderBy: { order: "asc" }, select: { id: true } }).catch(() => null);
+  const seasons = await prisma.season.findMany({
+    where: main ? { seriesId: main.id } : {},
+    orderBy: [{ number: "desc" }],
+    select: { id: true },
+  });
+  for (const s of seasons) if (await isSeasonComplete(prisma, s.id)) return [s.id];
+  return [];
+}
+
+export async function reviewSeasons(prisma) {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: REVIEW_SEASONS_SETTING } });
+    const list = row ? JSON.parse(row.value) : null;
+    if (Array.isArray(list)) return { ids: list.filter((x) => typeof x === "string"), chosen: true };
+  } catch {
+    /* unset or unreadable: the default below */
+  }
+  return { ids: await newestFinishedSeasons(prisma), chosen: false };
+}
+
+export async function setReviewSeasons(prisma, ids) {
+  if (ids == null) {
+    await prisma.setting.deleteMany({ where: { key: REVIEW_SEASONS_SETTING } });
+    return reviewSeasons(prisma);
+  }
+  const value = JSON.stringify([...new Set((Array.isArray(ids) ? ids : []).map(String))]);
+  await prisma.setting.upsert({ where: { key: REVIEW_SEASONS_SETTING }, create: { key: REVIEW_SEASONS_SETTING, value }, update: { value } });
+  return reviewSeasons(prisma);
+}
+
+// Is the Wrapped open to THIS request at all (for that season, when given)?
+// Only the chosen seasons have one, for everybody, admins included. Within
+// them: admins (checked live by the auth middleware) whenever it is not off;
+// members while they may watch, and then only their OWN (the routes check
+// whose it is).
+export async function reviewVisibleTo(prisma, req, seasonId = null) {
   const mode = await reviewMode(prisma);
   if (mode === "off") return false;
+  if (seasonId && !(await reviewSeasons(prisma)).ids.includes(seasonId)) return false;
   if (req?.isAdminRequest === true) return true;
   return membersMayWatch(prisma);
 }

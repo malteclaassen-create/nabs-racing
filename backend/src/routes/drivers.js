@@ -72,7 +72,7 @@ router.get("/:id/profile", optionalUser, async (req, res, next) => {
       const rounds = (profile.perRace || []).length;
       // Never on someone else's public page: an admin sees the way there on
       // every page, a member only on their own.
-      const open = rounds >= MIN_ROUNDS && (profile.stats?.starts || 0) > 0 && (await reviewVisibleTo(prisma, req)) && (req.isAdminRequest === true || (await viewerOwns(req, rowId)));
+      const open = rounds >= MIN_ROUNDS && (profile.stats?.starts || 0) > 0 && (await reviewVisibleTo(prisma, req, driver.seasonId)) && (req.isAdminRequest === true || (await viewerOwns(req, rowId)));
       profile.seasonReview = open ? { complete: await isSeasonComplete(prisma, driver.seasonId) } : null;
     } catch {
       profile.seasonReview = null;
@@ -93,6 +93,8 @@ router.get("/:id/season-review", optionalUser, async (req, res, next) => {
     const driver = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { seasonId: true } }) : null;
     if (!driver) return res.status(404).json({ error: "Driver not found" });
     if (await seasonHidden(req, driver.seasonId)) return res.status(404).json({ error: "Driver not found" });
+    // Only the seasons the league has opened, for a driver.
+    if (!(await reviewVisibleTo(prisma, req, driver.seasonId))) return res.status(404).json({ error: "Not available" });
     const review = await getSeasonReview(prisma, rowId);
     if (!review) return res.status(404).json({ error: "Driver not found" });
     // Whether the person looking is the driver themselves: the story then
