@@ -728,9 +728,7 @@ function Climb({ slide, review }) {
 
 // The podiums as medals: solid, metal, dropping in one after another and
 // spinning to face out, four to a row with the circuit under each.
-// The label band under each row of medals, and the room between rows, in
-// pixels: the medal scene leaves exactly this much between its rows.
-const MEDAL_LABEL = 38;
+// The room between rows of medals, in pixels.
 const MEDAL_GAP = 12;
 
 function Podiums({ slide, review }) {
@@ -773,10 +771,13 @@ function Podiums({ slide, review }) {
             // browser set up 3D several times at once, and the slide stuttered.
             // The canvas lies behind the rows; the rows keep the room the
             // medals need and carry the labels under them.
-            <div className="relative">
+            // The medals are set on the rows' own boxes (data-medal-row), so
+            // labels that grow with the screen never end up under a coin; the
+            // block is kept narrow enough for every row and label to fit.
+            <div className="relative mx-auto w-full" style={{ maxWidth: `calc((${wide ? 72 : 48}cqh - ${rows.length} * ${wide ? 64 : 46}px) * ${cols / (rows.length * 1.05)})` }}>
               <Thing
                 kind="medals"
-                data={{ places: shown.map((p) => p.position), cols, band: MEDAL_LABEL + MEDAL_GAP }}
+                data={{ places: shown.map((p) => p.position), cols, rows: true }}
                 d={1000}
                 style={{ position: "absolute", inset: 0 }}
                 label={`Podium places: ${shown.map((p) => `P${p.position}`).join(", ")}`}
@@ -784,8 +785,8 @@ function Podiums({ slide, review }) {
               <div className="relative flex flex-col" style={{ gap: MEDAL_GAP }}>
                 {rows.map((row, r) => (
                   <div key={r}>
-                    <div style={{ aspectRatio: `${cols} / 1.05` }} />
-                    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, height: MEDAL_LABEL }}>
+                    <div data-medal-row="" style={{ aspectRatio: `${cols} / 1.05` }} />
+                    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                       {row.map((p, k) => (
                         <div key={`${p.round}-${p.sprint}`} className="st-in min-w-0 text-center" style={{ "--d": `${1300 + (r * cols + k) * 180}ms` }}>
                           <div className="truncate text-[12px] font-extrabold uppercase">{p.track}</div>
@@ -1231,7 +1232,7 @@ function Final({ slide, review, onReplay }) {
             <div className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
               Championship
             </div>
-            <div className="wr-big wr-num" style={{ fontSize: "min(15cqi, 7cqh)", color: "var(--g-mark)" }}>
+            <div className="wr-big wr-num" style={{ fontSize: "min(15cqi, 7cqh)", color: "var(--g-mark-paper, var(--g-mark))" }}>
               {c.position ? `P${c.position}` : "–"}
             </div>
           </div>

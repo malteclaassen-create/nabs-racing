@@ -25,20 +25,50 @@ const alpha = (hex, a) => {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 };
 
+// WCAG contrast between two #rrggbb colours (1 to 21).
+function luminance(hex) {
+  const n = parseInt(hex.replace("#", "").slice(0, 6), 16);
+  const lin = (c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+}
+export function contrast(a, b) {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
 export function slideColours(key, teamColor) {
   const team = /^#[0-9a-f]{6}$/i.test(String(teamColor || "")) ? teamColor : LEAGUE;
+  return { ...coloursOf(key, team), "--g-mark-paper": onPaper(team) };
+}
+
+// The team colour for a figure on white (the summary card): itself, or a
+// deeper shade where it all but disappears on white (a lime green).
+function onPaper(team) {
+  return contrast(team, PAPER) >= 1.5 ? team : readableAccent(team, { target: 3 });
+}
+
+function coloursOf(key, team) {
   if (ON_TEAM.has(key)) {
     const fg = readableInkOn(team) === "#fff" ? PAPER : INK;
-    const other = fg === PAPER ? INK : PAPER;
+    // The second colour is the other of black and white, unless it all but
+    // disappears on the team colour (white on a lime green): then the lines
+    // and marks are drawn in the type's colour too, and a marked word turns
+    // to white on black.
+    const flip = fg === PAPER ? INK : PAPER;
+    const other = contrast(flip, team) >= 1.5 ? flip : fg;
+    const otherFg = other === INK ? PAPER : INK;
     return {
       "--g-bg": team,
       "--g-fg": fg,
       "--g-mute": alpha(fg, 0.72),
       "--g-faint": alpha(fg, 0.18),
       "--g-pop": other,
-      "--g-pop-fg": fg === PAPER ? PAPER : INK,
+      "--g-pop-fg": other === flip ? fg : otherFg,
       "--g-mark": other,
-      "--g-mark-fg": fg === PAPER ? PAPER : INK,
+      "--g-mark-fg": other === flip ? fg : otherFg,
       "--lv-team": team,
     };
   }

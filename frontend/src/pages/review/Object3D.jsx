@@ -237,7 +237,7 @@ function medalFace(metal, text) {
 
 // One medal a podium, in a grid that matches the labels the slide sets
 // under it (`cols` columns): each drops in, spins and settles facing out.
-function medalsThing({ scene, data, setCamera }) {
+function medalsThing({ scene, data, setCamera, el }) {
   const places = data?.places || [];
   if (!places.length) return null;
   const cols = data.cols || Math.min(4, places.length);
@@ -272,8 +272,9 @@ function medalsThing({ scene, data, setCamera }) {
     return { holder, k, col: k % cols, row: Math.floor(k / cols) };
   });
 
-  // Each row is 1.05 columns tall, with `band` pixels between rows for the
-  // labels the slide sets there (one scene for all rows, see Podiums).
+  // With `rows`, the slide lays out one box a row (data-medal-row) with its
+  // labels under it, and the coins are set on those boxes, wherever the
+  // labels push them (see Podiums). Otherwise rows are evenly spread.
   const ROW = 1.05;
   let cell = ROW;
   const fit = (_c, aspect, px) => {
@@ -286,13 +287,20 @@ function medalsThing({ scene, data, setCamera }) {
       bottom: -h / 2,
     });
     cam.updateProjectionMatrix();
-    const band = data.band && px ? (data.band * w) / px : 0;
-    cell = band ? ROW : h / rows;
+    const boxes = data.rows && el ? [...(el.parentElement?.querySelectorAll("[data-medal-row]") || [])] : [];
+    const at = el?.getBoundingClientRect();
+    const k = at?.width ? w / at.width : px ? w / px : 1;
+    const rowY = (row) => {
+      const b = boxes[row]?.getBoundingClientRect();
+      if (!b || !at) return h / 2 - (h / rows) * (row + 0.5);
+      return h / 2 - (b.top - at.top + b.height / 2) * k;
+    };
+    cell = boxes[0] ? boxes[0].getBoundingClientRect().height * k || ROW : h / rows;
     const r = Math.min(0.4, cell * 0.42);
     for (const c of coins) {
       c.holder.scale.setScalar(r);
       c.holder.userData.x = -w / 2 + 0.5 + c.col;
-      c.holder.userData.y = h / 2 - c.row * (cell + band) - cell / 2;
+      c.holder.userData.y = rowY(c.row);
     }
   };
   const update = (t) => {
@@ -501,6 +509,7 @@ export default function Object3D({ kind, data, delay = 0, className = "", style,
         pal,
         data: JSON.parse(key),
         setCamera: (c) => (camera = c),
+        el,
       });
       const textures = [];
       // Nothing to draw (a circuit without an outline on file): the flat
