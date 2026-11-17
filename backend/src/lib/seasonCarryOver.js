@@ -254,7 +254,7 @@ export async function readPastTeams(prisma, target) {
 // A team id for a new team: its name in id form, shaped like a copy (`_d2`
 // for Division 2, the season), made unique. Kept to letters, digits and _
 // (the id becomes the logo's file name).
-async function freshTeamId(prisma, name, tier, number) {
+export async function freshTeamId(prisma, name, tier, number) {
   const base =
     String(name || "")
       .toLowerCase()

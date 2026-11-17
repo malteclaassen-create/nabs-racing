@@ -1553,8 +1553,14 @@ export const api = {
   // next to Add team. `seasonId` is the season being edited.
   teamLibrary: (seasonId, q = "") =>
     request(`/admin/teams/library?seasonId=${encodeURIComponent(seasonId || "")}&q=${encodeURIComponent(q)}`, { auth: true }),
-  importTeam: (fromTeamId, seasonId) =>
-    request("/admin/teams/import", { method: "POST", body: { ...seriesBody(), fromTeamId, seasonId }, auth: true }),
+  // `division` (1 or 2): which division the copy races in; left out = the source's.
+  importTeam: (fromTeamId, seasonId, division) =>
+    request("/admin/teams/import", { method: "POST", body: { ...seriesBody(), fromTeamId, seasonId, division }, auth: true }),
+  // Teams of the season without a logo that a team of the same name has one for.
+  teamLogoMatches: (seasonId) =>
+    request(`/admin/teams/logo-matches?seasonId=${encodeURIComponent(seasonId || "")}`, { auth: true }),
+  fillTeamLogos: (seasonId) =>
+    request("/admin/teams/fill-logos", { method: "POST", body: { ...seriesBody(), seasonId }, auth: true }),
   updateTeam: (id, body) => request(`/admin/teams/${id}`, { method: "PUT", body, auth: true }),
   // "Volvo Racing is the same team as Volvo" (lib/teamLineage.js).
   teamLinks: () => request(`/admin/team-links${seriesQ()}`, { auth: true }),

@@ -111,7 +111,8 @@ import {
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
-import { readCarryOver, commitCarryOver, parsePicks, parseTeamPlan, commitTeamPlan, teamCopyId, uniqueTeamId } from "../lib/seasonCarryOver.js";
+import { readCarryOver, commitCarryOver, parsePicks, parseTeamPlan, commitTeamPlan, teamCopyId, uniqueTeamId, freshTeamId } from "../lib/seasonCarryOver.js";
+import { libraryEntries, logoSourceFor, logoPatch, hasOwnLogo } from "../lib/teamLibrary.js";
 import { deleteDriverOps } from "../lib/driverDeletion.js";
 import {
   newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer, reviewNewcomers, foldNewRowInto,
@@ -6539,31 +6540,17 @@ router.get("/teams/library", async (req, res, next) => {
       orderBy: { number: "desc" },
     });
     const seasonById = new Map(seasons.map((s) => [s.id, s]));
-    const existing = await prisma.team.findMany({ where: { seasonId: targetSeasonId } });
-    // A name is taken per division: Division 2 has its own McLaren.
-    const nameKey = (t) => `${t.tier === DIV2_TIER ? 2 : 1}:${t.name.trim().toLowerCase()}`;
-    const takenNames = new Set(existing.map(nameKey));
-
-    const teams = await prisma.team.findMany({
-      where: { seasonId: { in: seasons.map((s) => s.id).filter((id) => id !== targetSeasonId) } },
-    });
-    const rows = teams
-      .filter((t) => !q || t.name.toLowerCase().includes(q) || t.id.toLowerCase().includes(q))
-      .map((t) => ({
-        id: t.id,
-        name: t.name,
-        tier: t.tier,
-        color: t.color,
-        logoUrl: t.logoUrl,
-        seasonId: t.seasonId,
-        seasonNumber: seasonById.get(t.seasonId)?.number ?? null,
-        seasonName: seasonById.get(t.seasonId)?.name ?? null,
-        alreadyHere: takenNames.has(nameKey(t)),
-      }))
-      .sort(
-        (a, b) =>
-          (b.seasonNumber ?? 0) - (a.seasonNumber ?? 0) || a.name.localeCompare(b.name)
-      );
+    const numberOf = new Map(seasons.map((s) => [s.id, s.number]));
+    // This season's own teams are in too: Division 2 often wants the Division 1
+    // team of the same season (Porsche with this year's logo). One entry per
+    // team name, newest copy first, with `here` per division (lib/teamLibrary.js).
+    const teams = await prisma.team.findMany({ where: { seasonId: { in: seasons.map((s) => s.id) } } });
+    const rows = libraryEntries(teams, numberOf, targetSeasonId, q).map((r) => ({
+      ...r,
+      seasonName: seasonById.get(r.seasonId)?.name ?? null,
+      // Older clients read this: the name is taken in the team's own division.
+      alreadyHere: r.here[r.tier === DIV2_TIER ? 2 : 1],
+    }));
     res.json(rows);
   } catch (e) {
     next(e);
@@ -6609,7 +6596,7 @@ router.put("/team-links", async (req, res, next) => {
 // across seasons (same convention as clone-teams).
 router.post("/teams/import", async (req, res, next) => {
   try {
-    const { fromTeamId, seasonId } = req.body || {};
+    const { fromTeamId, seasonId, division } = req.body || {};
     if (!fromTeamId) return res.status(400).json({ error: "fromTeamId required" });
     const targetSeasonId =
       seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
@@ -6617,30 +6604,36 @@ router.post("/teams/import", async (req, res, next) => {
     if (!target) return res.status(404).json({ error: "Target season not found" });
     const source = await prisma.team.findUnique({ where: { id: fromTeamId } });
     if (!source) return res.status(404).json({ error: "Team not found" });
-    if (source.seasonId === targetSeasonId) {
-      return res.status(400).json({ error: "That team is already in this season" });
-    }
+
+    // Which division the copy races in: the one asked for, else the source's.
+    // Into Division 2 = tier 3; into Division 1 keeps the source's tier, and a
+    // Division 2 team moving up starts in Tier 2.
+    const sourceDiv = source.tier === DIV2_TIER ? 2 : 1;
+    const div = Number(division) === 2 ? 2 : Number(division) === 1 ? 1 : sourceDiv;
+    const tier = div === 2 ? DIV2_TIER : source.tier === 1 || source.tier === 2 ? source.tier : 2;
+
     // Division 1 and Division 2 each have their own McLaren, so a name is only
-    // taken within the same division.
-    const sameDivision = (tier) => (tier === DIV2_TIER) === (source.tier === DIV2_TIER);
-    const clash = (await prisma.team.findMany({ where: { seasonId: targetSeasonId, name: source.name } })).find((t) =>
-      sameDivision(t.tier)
+    // taken within the same division. Spelling aside ("Red Bull" / "RedBull").
+    // This also stops a team being copied onto itself.
+    const squashName = (n) => String(n || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const clash = (await prisma.team.findMany({ where: { seasonId: targetSeasonId } })).find(
+      (t) => t.tier !== 0 && squashName(t.name) === squashName(source.name) && (t.tier === DIV2_TIER ? 2 : 1) === div
     );
     if (clash) {
       return res.status(409).json({
-        error: `${source.name} is already in this season${source.tier === DIV2_TIER ? " (Division 2)" : ""}`,
+        error: `${source.name} is already in this season${div === 2 ? " (Division 2)" : ""}`,
       });
     }
 
     // Strip what earlier copies added (season, Division 2 mark) before adding
     // this season, so a team travelling S6 -> S7 -> S8 does not end up as
     // "mclaren_s7_s8".
-    const newId = await uniqueTeamId(prisma, teamCopyId(source.id, source.tier, target.number));
+    const newId = await uniqueTeamId(prisma, teamCopyId(source.id, tier, target.number));
     const team = await prisma.team.create({
       data: {
         id: newId,
         name: source.name,
-        tier: source.tier,
+        tier,
         color: source.color,
         logoUrl: source.logoUrl,
         seasonId: targetSeasonId,
@@ -6653,26 +6646,58 @@ router.post("/teams/import", async (req, res, next) => {
   }
 });
 
+// Every team of the series `seasonId` belongs to, with season numbers and the
+// admin's team links: what a name is looked up in for its logo.
+async function seriesTeamsOf(seasonId) {
+  const season = seasonId ? await prisma.season.findUnique({ where: { id: seasonId } }) : null;
+  if (!season) return { teams: [], numberOf: new Map(), links: undefined };
+  const seasons = await prisma.season.findMany({ where: { seriesId: season.seriesId ?? null } });
+  const [teams, links] = await Promise.all([
+    prisma.team.findMany({ where: { seasonId: { in: seasons.map((s) => s.id) } } }),
+    readTeamLinks(prisma).then(linkMap).catch(() => undefined),
+  ]);
+  return { teams, numberOf: new Map(seasons.map((s) => [s.id, s.number])), links };
+}
+
+// Give `team` the logo (and, while it is plain grey, the colour) of the
+// league's newest team of the same name. Returns the updated row and where the
+// logo came from, or the team as it was when no team of that name has one.
+async function takeLogoByName(team) {
+  if (!team || team.tier === 0) return { team, from: null };
+  const { teams, numberOf, links } = await seriesTeamsOf(team.seasonId);
+  const source = logoSourceFor(teams, numberOf, team.name, { excludeId: team.id, links });
+  const patch = logoPatch(team, source);
+  if (!patch) return { team, from: null };
+  const updated = await prisma.team.update({ where: { id: team.id }, data: patch });
+  return { team: updated, from: { id: source.id, name: source.name, seasonNumber: numberOf.get(source.seasonId) ?? null } };
+}
+
 router.post("/teams", async (req, res, next) => {
   try {
-    const { id, name, tier, color, seasonId } = req.body || {};
-    if (!id || !name || tier === undefined || !color) {
-      return res.status(400).json({ error: "id, name, tier, color required" });
+    const { name, tier, color, seasonId } = req.body || {};
+    let id = String(req.body?.id || "").trim();
+    if (!name || tier === undefined || !color) {
+      return res.status(400).json({ error: "name, tier, color required" });
     }
     if (![0, 1, 2, DIV2_TIER].includes(Number(tier))) {
       return res.status(400).json({ error: "Tier must be 0 (Reserve), 1, 2 or 3 (Division 2)" });
     }
     // The id becomes the logo's file name later on, so keep it to plain
     // characters. Every existing team already fits this.
-    if (!isSafeId(id)) {
+    if (id && !isSafeId(id)) {
       return res.status(400).json({ error: "Team id may only contain letters, digits, - and _" });
     }
     const targetSeasonId =
       seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
-    const team = await prisma.team.create({
-      data: { id, name, tier: Number(tier), color, seasonId: targetSeasonId },
+    const target = await prisma.season.findUnique({ where: { id: targetSeasonId } });
+    // No id typed: made from the name like every copy is (`porsche_d2_s9`).
+    if (!id) id = await freshTeamId(prisma, name, Number(tier), target?.number ?? 0);
+    const created = await prisma.team.create({
+      data: { id, name: String(name).trim(), tier: Number(tier), color, seasonId: targetSeasonId },
     });
-    res.status(201).json(team);
+    // A team the league has run before arrives with its logo.
+    const { team, from } = await takeLogoByName(created);
+    res.status(201).json({ ...team, logoFrom: from });
   } catch (e) {
     if (e.code === "P2002") return res.status(409).json({ error: "Team id already exists" });
     next(e);
@@ -6697,15 +6722,76 @@ router.put("/teams/:id", async (req, res, next) => {
     // Driver.tier is a copy of the team's (every move sets it from the team),
     // and the standings read the driver's: a retiered team takes its drivers
     // along, or they stay listed in the old tier's table.
-    const [team] = await prisma.$transaction([
+    const before = data.name !== undefined ? await prisma.team.findUnique({ where: { id: req.params.id } }) : null;
+    const [saved] = await prisma.$transaction([
       prisma.team.update({ where: { id: req.params.id }, data }),
       ...(data.tier !== undefined
         ? [prisma.driver.updateMany({ where: { teamId: req.params.id }, data: { tier: data.tier } })]
         : []),
     ]);
-    res.json(team);
+    // Renamed to a team the league knows ("Porsche"): it takes that team's
+    // logo, unless it has a logo uploaded for it alone, or the same request
+    // sets one.
+    let team = saved;
+    let logoFrom = null;
+    if (before && before.name !== saved.name && logoUrl === undefined && !hasOwnLogo(saved)) {
+      ({ team, from: logoFrom } = await takeLogoByName(saved));
+    }
+    res.json({ ...team, logoFrom });
   } catch (e) {
     if (e.code === "P2025") return res.status(404).json({ error: "Team not found" });
+    next(e);
+  }
+});
+
+// GET  /api/admin/teams/logo-matches?seasonId=  -> [{ teamId, name, from }]
+// POST /api/admin/teams/fill-logos { seasonId }  -> { filled: [...] }
+// Teams of the season without a logo whose name another team of the league
+// has one for: the Division 2 copies typed in by hand, mostly. The list is
+// what the Teams tab offers; the POST takes them all in one go.
+async function logoMatches(seasonId) {
+  const { teams, numberOf, links } = await seriesTeamsOf(seasonId);
+  const out = [];
+  for (const t of teams) {
+    if (t.seasonId !== seasonId || t.tier === 0 || t.logoUrl) continue;
+    const source = logoSourceFor(teams, numberOf, t.name, { excludeId: t.id, links });
+    if (source) out.push({ team: t, source, seasonNumber: numberOf.get(source.seasonId) ?? null });
+  }
+  return out;
+}
+
+router.get("/teams/logo-matches", async (req, res, next) => {
+  try {
+    const seasonId =
+      req.query.seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.query.series }));
+    const list = await logoMatches(seasonId);
+    res.json(
+      list.map(({ team, source, seasonNumber }) => ({
+        teamId: team.id,
+        name: team.name,
+        tier: team.tier,
+        from: { id: source.id, name: source.name, seasonNumber, logoUrl: source.logoUrl },
+      }))
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post("/teams/fill-logos", async (req, res, next) => {
+  try {
+    const seasonId =
+      req.body?.seasonId || (await resolveSeasonId(prisma, undefined, { includePrivate: true, series: req.body?.series }));
+    const list = await logoMatches(seasonId);
+    const filled = [];
+    for (const { team, source } of list) {
+      const patch = logoPatch(team, source);
+      if (!patch) continue;
+      await prisma.team.update({ where: { id: team.id }, data: patch });
+      filled.push({ teamId: team.id, name: team.name, from: source.name });
+    }
+    res.json({ filled });
+  } catch (e) {
     next(e);
   }
 });

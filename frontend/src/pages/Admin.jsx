@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Armchair, Bug, CalendarClock, ChevronDown, ChevronUp, Hand, RotateCcw, UserMinus, UserRoundPlus, UserRoundX } from "lucide-react";
 import { shrinkImage } from "../utils/imageResize.js";
@@ -7132,11 +7132,18 @@ function SeatBoxes({ team, db, rosterNames, onAdded, onError, onRemove, busy, al
 // whole season (Seasons tab) is the opposite problem: it drags in everyone.
 // This searches every other season of the series and copies one team across
 // with its name, tier, colour and logo intact.
-function TeamImport({ seasonId, onImported, onError }) {
+//
+// One line per team, not per season it raced (the newest copy, with today's
+// logo). With Division 2 on, a switch says which division the copy goes to,
+// and this season's own Division 1 teams are on offer for Division 2.
+function TeamImport({ seasonId, division2, onImported, onError }) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [into, setInto] = useState(1);
+  const div = division2 ? into : null;
+  const isHere = (t) => (div ? !!t.here?.[div] : t.here ? !!t.here[t.tier === 3 ? 2 : 1] : !!t.alreadyHere);
 
   // Debounced so a fast typist does not fire a request per keystroke. Also runs
   // on an empty box: with nothing typed the list is simply "the newest seasons
@@ -7158,12 +7165,14 @@ function TeamImport({ seasonId, onImported, onError }) {
   async function bringOver(t) {
     setBusyId(t.id);
     try {
-      await api.importTeam(t.id, seasonId);
-      onImported?.(t);
-      // Refresh the list so the team we just took now shows as already here.
-      // Taken per division: bringing over Division 1 McLaren leaves Division 2 McLaren open.
-      const div = (x) => (x.tier === 3 ? 2 : 1);
-      setRows((prev) => (prev || []).map((r) => (r.name === t.name && div(r) === div(t) ? { ...r, alreadyHere: true } : r)));
+      await api.importTeam(t.id, seasonId, div || undefined);
+      onImported?.(t, div);
+      // The team we just took now shows as already here, in that division only:
+      // bringing over Division 1 McLaren leaves Division 2 McLaren open.
+      const d = div || (t.tier === 3 ? 2 : 1);
+      setRows((prev) =>
+        (prev || []).map((r) => (r.id === t.id ? { ...r, here: { ...(r.here || {}), [d]: true }, alreadyHere: true } : r))
+      );
     } catch (e) {
       onError?.(e.message);
     } finally {
@@ -7178,6 +7187,26 @@ function TeamImport({ seasonId, onImported, onError }) {
       <p className="-mt-2 text-sm text-light">
         Search every earlier season and copy a team into this one, with its colour and logo.
       </p>
+      {division2 && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-light">Add to</span>
+          <div className="inline-flex rounded-lg border border-border p-0.5" role="group" aria-label="Division the team goes to">
+            {[1, 2].map((d) => (
+              <button
+                key={d}
+                type="button"
+                aria-pressed={into === d}
+                onClick={() => setInto(d)}
+                className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                  into === d ? "bg-surface2 text-dark" : "text-light hover:text-dark"
+                }`}
+              >
+                Division {d}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <input
         className="input"
         placeholder="Search past teams, e.g. Mercedes"
@@ -7198,11 +7227,12 @@ function TeamImport({ seasonId, onImported, onError }) {
               <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={30} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-dark">{t.name}</span>
-                <span className="block font-mono text-[11px] uppercase tracking-wider text-light">
+                <span className="block truncate font-mono text-[11px] uppercase tracking-wider text-light">
                   {t.seasonName || `Season ${t.seasonNumber}`} · {tierLabel(t.tier)}
+                  {t.seasons?.length > 1 && ` · ${t.seasons.length} seasons`}
                 </span>
               </span>
-              {t.alreadyHere ? (
+              {isHere(t) ? (
                 <span className="shrink-0 font-mono text-[11px] uppercase tracking-wider text-light">already here</span>
               ) : (
                 <button
@@ -7386,6 +7416,16 @@ function Teams() {
   );
   const [form, setForm] = useState({ id: "", name: "", tier: 2, color: "#888888" });
   const [renaming, setRenaming] = useState(null); // { id, name } while a team is being renamed
+  // Teams without a logo that a team of the same name has one for (typed in
+  // by hand, mostly the Division 2 copies). Asked again whenever the list loads.
+  const [logoMatches, setLogoMatches] = useState([]);
+  useEffect(() => {
+    if (!current?.id || !teams) return;
+    let alive = true;
+    api.teamLogoMatches(current.id).then((r) => alive && setLogoMatches(r || [])).catch(() => {});
+    return () => { alive = false; };
+  }, [teams, current?.id]);
+  const division2 = !!current?.division2 || (teams || []).some((t) => t.tier === 3);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -7402,11 +7442,15 @@ function Teams() {
     e.preventDefault();
     setBusy(true); setError(null); setMsg(null);
     try {
-      await api.createTeam({
+      const made = await api.createTeam({
         id: form.id.trim(), name: form.name.trim(), tier: Number(form.tier), color: form.color,
         seasonId: current?.id,
       });
-      setMsg(`Team ${form.name} created.`);
+      setMsg(
+        made?.logoFrom
+          ? `Team ${made.name} created, with the logo of ${made.logoFrom.name} (Season ${made.logoFrom.seasonNumber}).`
+          : `Team ${made?.name || form.name} created.`
+      );
       setForm({ id: "", name: "", tier: 2, color: "#888888" });
       reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }
@@ -7414,8 +7458,25 @@ function Teams() {
 
   async function saveTeam(t, patch) {
     setBusy(true); setError(null); setMsg(null);
-    try { await api.updateTeam(t.id, patch); reload(); }
+    try {
+      const saved = await api.updateTeam(t.id, patch);
+      // A rename to a name the league knows brings that team's logo along.
+      if (saved?.logoFrom) {
+        setMsg(`${saved.name} now has the logo of ${saved.logoFrom.name} (Season ${saved.logoFrom.seasonNumber}).`);
+      }
+      reload();
+    }
     catch (err) { setError(err.message); } finally { setBusy(false); }
+  }
+
+  async function fillLogos() {
+    setBusy(true); setError(null); setMsg(null);
+    try {
+      const out = await api.fillTeamLogos(current?.id);
+      const n = out?.filled?.length || 0;
+      setMsg(n ? `Logo added to ${n} team${n === 1 ? "" : "s"}: ${out.filled.map((f) => f.name).join(", ")}.` : "Nothing to add.");
+      reload();
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
 
   async function saveRename() {
@@ -7514,6 +7575,119 @@ function Teams() {
     (a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name)
   );
 
+  // One team line of the roster: logo and name, its seats, then colour, tier,
+  // logo and delete.
+  const teamRow = (t) => (
+      <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 py-3">
+        {/* identity — the name is renameable in place (pencil) */}
+        <div className="flex min-w-[12rem] flex-1 items-center gap-3">
+          <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={38} />
+          {renaming?.id === t.id ? (
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <input
+                autoFocus
+                aria-label={`New name for ${t.name}`}
+                className="input py-1.5 text-sm"
+                value={renaming.name}
+                onChange={(e) => setRenaming({ id: t.id, name: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveRename();
+                  if (e.key === "Escape") setRenaming(null);
+                }}
+              />
+              <button className="btn-primary px-3 py-1.5 text-xs" disabled={busy || !renaming.name.trim()} onClick={saveRename}>
+                Save
+              </button>
+              <button className="text-xs font-semibold text-light transition hover:text-dark" onClick={() => setRenaming(null)}>
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate font-display text-base font-bold tracking-tight text-dark">{t.name}</span>
+                <button
+                  title="Rename team"
+                  disabled={busy}
+                  onClick={() => setRenaming({ id: t.id, name: t.name })}
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-light transition hover:bg-surface2 hover:text-dark"
+                >
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-light">
+                <span className="font-mono">{t.id}</span>
+                <span>·</span>
+                <span>{t.drivers?.length || 0} drivers</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* seats — filled chips + dashed add-slots with DB search */}
+        <SeatBoxes
+          team={t}
+          db={driverDb.entries}
+          allSeries={driverDb.allSeries}
+          onAllSeriesChange={driverDb.setAllSeries}
+          rosterNames={rosterNames}
+          busy={busy}
+          onRemove={removeDriver}
+          onAdded={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
+          onError={(m) => { setError(m); setMsg(null); }}
+        />
+
+        {/* controls */}
+        <div className="flex items-center gap-2">
+          {/* team colour — saved when the picker closes (blur) */}
+          <input
+            key={`${t.id}-${t.color}`}
+            aria-label={`Team colour for ${t.name}`}
+            type="color"
+            defaultValue={t.color}
+            disabled={busy}
+            title="Team colour, click to change"
+            onBlur={(e) => {
+              const v = e.target.value;
+              if (v && v.toLowerCase() !== (t.color || "").toLowerCase()) saveTeam(t, { color: v });
+            }}
+            className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent"
+          />
+          <select aria-label={`Tier of ${t.name}`} className="input w-28 py-1.5 text-sm" value={t.tier} disabled={busy}
+            onChange={(e) => saveTeam(t, { tier: Number(e.target.value) })}>
+            <option value={1}>Tier 1</option>
+            <option value={2}>Tier 2</option>
+            <option value={3}>Division 2</option>
+            <option value={0}>Reserve</option>
+          </select>
+          <label className="btn-secondary cursor-pointer whitespace-nowrap px-3 py-1.5 text-xs">
+            {t.logoUrl ? "Change logo" : "Upload logo"}
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
+              onChange={(e) => uploadLogo(t, e.target.files?.[0])} />
+          </label>
+          <button title="Delete team" disabled={busy} onClick={() => remove(t)}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-light transition hover:bg-rose-500/10 hover:text-rose-500">
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+            </svg>
+          </button>
+        </div>
+      </li>
+  );
+
+  const ofTier = (tier) => sortedTeams.filter((t) => (tier === 0 ? ![1, 2, 3].includes(t.tier) : t.tier === tier));
+  const box = (key, title, list) => (list.length ? { key, title, teams: list } : null);
+  const rosterParts = [
+    { title: division2 ? "Division 1" : null, boxes: [box("t1", "Tier 1", ofTier(1)), box("t2", "Tier 2", ofTier(2))] },
+    { title: "Division 2", boxes: [box("d2", "Division 2", ofTier(3))] },
+    { title: "No seat", boxes: [box("pool", "Reserve pool", ofTier(0))] },
+  ]
+    .map((p) => ({ ...p, boxes: p.boxes.filter(Boolean) }))
+    .filter((p) => p.boxes.length);
+
+
   return (
     <div>
       {error && <div ref={noticeRef} className="mb-4"><Notice kind="error">{error}</Notice></div>}
@@ -7531,11 +7705,10 @@ function Teams() {
           </Field>
           <Field
             label="ID (slug)"
-            required
-            hint={<>Unique across all seasons. A suffix like <code>_s8</code> helps.</>}
+            hint="Leave it empty and it is made from the name, like mercedes_s9 or mercedes_d2_s9 for Division 2. Only the site uses it, nobody sees it."
           >
-            <input className="input" placeholder="e.g. mercedes_s8" value={form.id}
-              onChange={(e) => setForm({ ...form, id: e.target.value })} required />
+            <input className="input" placeholder="made from the name" value={form.id}
+              onChange={(e) => setForm({ ...form, id: e.target.value })} />
           </Field>
           <Field label="Tier" hint="Division 2 teams race on the second server and have their own standings. Two teams may share a name (one per division), the ID must differ.">
             <select className="input" value={form.tier} onChange={(e) => setForm({ ...form, tier: e.target.value })}>
@@ -7556,7 +7729,9 @@ function Teams() {
             )}
           </Field>
           <button className="btn-primary w-full" disabled={busy}>{busy ? "Saving…" : "Create team"}</button>
-          <p className="text-xs text-light">Upload each team's logo from the list after creating it.</p>
+          <p className="text-xs text-light">
+            A team the league has raced with before gets its logo by name, and its colour if you leave the grey. A new one gets its logo from the list after creating it.
+          </p>
         </form>
         </div>
 
@@ -7564,7 +7739,12 @@ function Teams() {
             raced before, and only type a new one in when it genuinely is new. */}
         <TeamImport
           seasonId={current?.id}
-          onImported={(t) => { setError(null); setMsg(`${t.name} added to ${current?.name || "this season"}.`); reload(); }}
+          division2={division2}
+          onImported={(t, div) => {
+            setError(null);
+            setMsg(`${t.name} added to ${div ? `Division ${div}` : current?.name || "this season"}.`);
+            reload();
+          }}
           onError={(m) => { setMsg(null); setError(m); }}
         />
 
@@ -7576,112 +7756,51 @@ function Teams() {
         {/* Roster */}
         <div className="card p-5 lg:col-span-2">
           <CardHead eyebrow="Roster" title={`Teams (${(teams || []).length})`} />
-          <ul className="mt-1 divide-y divide-border">
-            {sortedTeams.map((t) => (
-              <li key={t.id} className="flex flex-wrap items-center gap-x-4 gap-y-3 py-3">
-                {/* identity — the name is renameable in place (pencil) */}
-                <div className="flex min-w-[12rem] flex-1 items-center gap-3">
-                  <TeamLogo id={t.id} name={t.name} color={t.color} logoUrl={t.logoUrl} size={38} />
-                  {renaming?.id === t.id ? (
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <input
-                        autoFocus
-                        aria-label={`New name for ${t.name}`}
-                        className="input py-1.5 text-sm"
-                        value={renaming.name}
-                        onChange={(e) => setRenaming({ id: t.id, name: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") saveRename();
-                          if (e.key === "Escape") setRenaming(null);
-                        }}
-                      />
-                      <button className="btn-primary px-3 py-1.5 text-xs" disabled={busy || !renaming.name.trim()} onClick={saveRename}>
-                        Save
-                      </button>
-                      <button className="text-xs font-semibold text-light transition hover:text-dark" onClick={() => setRenaming(null)}>
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate font-display text-base font-bold tracking-tight text-dark">{t.name}</span>
-                        <button
-                          title="Rename team"
-                          disabled={busy}
-                          onClick={() => setRenaming({ id: t.id, name: t.name })}
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-light transition hover:bg-surface2 hover:text-dark"
-                        >
-                          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
-                          </svg>
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-light">
-                        <span className="font-mono">{t.id}</span>
-                        <span>·</span>
-                        <span>{t.drivers?.length || 0} drivers</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* seats — filled chips + dashed add-slots with DB search */}
-                <SeatBoxes
-                  team={t}
-                  db={driverDb.entries}
-                  allSeries={driverDb.allSeries}
-                  onAllSeriesChange={driverDb.setAllSeries}
-                  rosterNames={rosterNames}
-                  busy={busy}
-                  onRemove={removeDriver}
-                  onAdded={(m) => { setMsg(m); setError(null); reload(); driverDb.reload(); }}
-                  onError={(m) => { setError(m); setMsg(null); }}
-                />
-
-                {/* controls */}
-                <div className="flex items-center gap-2">
-                  {/* team colour — saved when the picker closes (blur) */}
-                  <input
-                    key={`${t.id}-${t.color}`}
-                    aria-label={`Team colour for ${t.name}`}
-                    type="color"
-                    defaultValue={t.color}
-                    disabled={busy}
-                    title="Team colour, click to change"
-                    onBlur={(e) => {
-                      const v = e.target.value;
-                      if (v && v.toLowerCase() !== (t.color || "").toLowerCase()) saveTeam(t, { color: v });
-                    }}
-                    className="h-8 w-10 shrink-0 cursor-pointer rounded-lg border border-border bg-transparent"
-                  />
-                  <select aria-label={`Tier of ${t.name}`} className="input w-28 py-1.5 text-sm" value={t.tier} disabled={busy}
-                    onChange={(e) => saveTeam(t, { tier: Number(e.target.value) })}>
-                    <option value={1}>Tier 1</option>
-                    <option value={2}>Tier 2</option>
-                    <option value={3}>Division 2</option>
-                    <option value={0}>Reserve</option>
-                  </select>
-                  <label className="btn-secondary cursor-pointer whitespace-nowrap px-3 py-1.5 text-xs">
-                    {t.logoUrl ? "Change logo" : "Upload logo"}
-                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
-                      onChange={(e) => uploadLogo(t, e.target.files?.[0])} />
-                  </label>
-                  <button title="Delete team" disabled={busy} onClick={() => remove(t)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-light transition hover:bg-rose-500/10 hover:text-rose-500">
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
-                    </svg>
-                  </button>
-                </div>
-              </li>
+          {logoMatches.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-surface2 px-3 py-2.5">
+              <p className="min-w-0 flex-1 text-sm text-medium">
+                {logoMatches.length === 1 ? "1 team has" : `${logoMatches.length} teams have`} no logo, but the league has one under the same name:{" "}
+                <span className="font-semibold text-dark">
+                  {logoMatches.map((m) => teamLabel({ name: m.name, tier: m.tier })).join(", ")}
+                </span>
+              </p>
+              <button type="button" className="btn-secondary shrink-0 px-3 py-1.5 text-xs" disabled={busy} onClick={fillLogos}>
+                Use those logos
+              </button>
+            </div>
+          )}
+          {/* Split like the season guide: Division 1 (Tier 1, Tier 2),
+              Division 2, then the Reserve pool, each in a box of its own. */}
+          <div className="mt-3 space-y-3">
+            {rosterParts.map((part) => (
+              <Fragment key={part.title}>
+                {part.title && <RosterPartHead>{part.title}</RosterPartHead>}
+                {part.boxes.map((b) => (
+                  <section key={b.key} className="overflow-hidden rounded-xl border border-border bg-surface/40">
+                    <header className="flex flex-wrap items-baseline gap-x-2 border-b border-border bg-surface2/50 px-3 py-2">
+                      <span className="font-semibold text-dark">{b.title}</span>
+                      <span className="ml-auto text-xs text-light">
+                        {b.teams.length} team{b.teams.length === 1 ? "" : "s"} ·{" "}
+                        {b.teams.reduce((n, t) => n + (t.drivers?.length || 0), 0)} drivers
+                      </span>
+                    </header>
+                    <ul className="divide-y divide-border px-3">{b.teams.map(teamRow)}</ul>
+                  </section>
+                ))}
+              </Fragment>
             ))}
-            {(teams || []).length === 0 && <li className="py-3 text-sm text-light">No teams in this season yet.</li>}
-          </ul>
+            {(teams || []).length === 0 && <p className="py-3 text-sm text-light">No teams in this season yet.</p>}
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+// A part of the Teams roster ("Division 1", "Division 2", "No seat"), styled
+// like the parts of the season guide.
+function RosterPartHead({ children }) {
+  return <h3 className="pt-2 font-display text-base font-black uppercase tracking-wide text-dark">{children}</h3>;
 }
 
 // --- CHANGE PIN ------------------------------------------------------------
