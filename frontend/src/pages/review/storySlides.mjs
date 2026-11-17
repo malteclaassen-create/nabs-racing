@@ -132,93 +132,6 @@ export function bestRun(rounds) {
   return null;
 }
 
-// A short wink under a slide's figures, written for the figure it sits under
-// and only where it is true: a wall-hugger is not told they were clean. No
-// quip at all beats one that does not fit.
-export function quipFor(slide, review) {
-  const s = review.stats || {};
-  switch (slide.key) {
-    case "rounds":
-      if (s.starts >= 5 && s.finishes === s.starts) return "Not one retirement. Your car must like you.";
-      if ((s.dnf || 0) >= 3) return `${s.dnf} retirements. The car had other plans.`;
-      return null;
-    case "training":
-      if (slide.rank?.rank <= 3) return "Do you even sleep, or just lap?";
-      if (slide.value < 60) return "Quality over quantity. Probably.";
-      return "Practice makes podiums. Allegedly.";
-    case "best": {
-      const b = review.best;
-      if (!b) return null;
-      if (b.grid > 0 && b.grid - b.position >= 6) return "Came from nowhere and nobody saw it coming.";
-      if (b.position === 1) return "The top step. Get used to it.";
-      return null;
-    }
-    case "climb":
-      return "Busy afternoon in the mirrors of everyone else.";
-    case "passes":
-      if (slide.value >= 150) return "A lot of people saw your rear wing this year.";
-      if (slide.value >= 60) return "Plenty of names on your list.";
-      return "Every single one counts.";
-    case "podiums":
-      if (slide.podiums.length === 1) return "Once is enough to get a taste for it.";
-      if (slide.podiums.length >= 5) return "Getting used to the view up there.";
-      return "Champagne for the shelf.";
-    case "led":
-      if (slide.value >= 40) return `${slide.value} laps of clean air and nobody to follow.`;
-      return "Nice view from the front, right?";
-    case "tyres": {
-      const t = String(slide.tyres?.[0]?.tyre || "").toLowerCase();
-      if (/^m|medium/.test(t)) return "Mediums. The sensible choice.";
-      if (/^s|soft/.test(t)) return "Softs. Who needs tyres at the end anyway?";
-      if (/^h|hard/.test(t)) return "Hards. The patience of a saint.";
-      if (/^w|wet/.test(t)) return "Wets. You like it messy.";
-      return null;
-    }
-    case "journey": {
-      const last = review.championship?.journey?.at?.(-1);
-      const p = last?.position;
-      if (!p) return null;
-      if (p === 1) return "Champion. Say it out loud.";
-      if (p <= 3) return "Top three. Not bad at all.";
-      if (p <= 10) return "Top ten. Respectable.";
-      return "There is always next season.";
-    }
-    case "tier":
-      if (slide.wins > 0) return "Tier 1 should start paying attention.";
-      if (slide.position <= 5) return "Making Tier 2 look good.";
-      return null;
-    case "team": {
-      const m = slide.mate;
-      if (!m) return null;
-      const diff = (m.myPoints ?? 0) - (m.points ?? 0);
-      if (diff > 0) return "Bragging rights: yours.";
-      if (diff < 0) return "Your team-mate will remind you. Often.";
-      return "Dead level. Awkward team meetings.";
-    }
-    case "streak":
-      return "Do not let it go to your head.";
-    case "hits":
-      if (slide.fieldPerRace != null && slide.perRace != null && slide.perRace < slide.fieldPerRace) return "Your insurance company says thanks.";
-      return "Bumper cars would like a word.";
-    case "contact": {
-      const k = review.contact;
-      if (!k) return null;
-      if (k.clean === 0) return "Not one clean round. Commitment.";
-      if (k.clean >= 5) return "Gentle hands. Mostly.";
-      return null;
-    }
-    case "limits": {
-      const mine = slide.cuts / Math.max(1, slide.races);
-      if (slide.fieldPerRace != null && mine > slide.fieldPerRace) return "The white lines were more of a suggestion.";
-      return "Inside the lines. Your driving instructor would be proud.";
-    }
-    case "honours":
-      return "Clear some space on the shelf.";
-    default:
-      return null;
-  }
-}
-
 export function storySlides(review) {
   const usedPhotos = new Set();
   // A Tier 2 driver is measured against Tier 2 (review.tier, from the
@@ -426,7 +339,6 @@ export function storySlides(review) {
     grid: summaryGrid(review, mate),
     top,
   });
-  for (const sl of slides) sl.quip = quipFor(sl, review);
   return slides;
 }
 

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { storySlides, summaryGrid, podiumsOf, topResults, quizOptions, pickPhoto, bestRun, quipFor } from "./storySlides.mjs";
+import { storySlides, summaryGrid, podiumsOf, topResults, quizOptions, pickPhoto, bestRun } from "./storySlides.mjs";
 
 const review = (over = {}) => ({
   season: { label: "Season 7", complete: true, roundsRun: 10, totalRounds: 10 },
@@ -144,13 +144,4 @@ test("a Tier 2 driver is ranked among Tier 2 and gets a Tier 2 slide", () => {
   // Laps led: 4th of 64 in the league says more than 9th of 40 in Tier 2.
   assert.equal(s.find((x) => x.key === "led").scope, null);
   assert.equal(s.find((x) => x.key === "passes").scope, "Tier 2");
-});
-
-test("a quip only says what the figures back up", () => {
-  const r = review();
-  const hits = (perRace, fieldPerRace) => quipFor({ key: "hits", perRace, fieldPerRace }, r);
-  assert.equal(hits(1.2, 3), "Your insurance company says thanks.");
-  assert.equal(hits(4, 3), "Bumper cars would like a word.");
-  assert.equal(quipFor({ key: "intro" }, r), null);
-  assert.ok(storySlides(r).every((s) => s.quip === null || typeof s.quip === "string"));
 });

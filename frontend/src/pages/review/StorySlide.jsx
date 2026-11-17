@@ -172,19 +172,6 @@ export function useWideStory() {
   return wide;
 }
 
-// The slide's wink (storySlides.mjs quipFor), set by StorySlide for Card to
-// place at the end of the words.
-const QuipCtx = createContext(null);
-function Quip() {
-  const text = useContext(QuipCtx);
-  if (!text) return null;
-  return (
-    <div className="st-quip st-in" style={{ "--d": "2200ms" }}>
-      {text}
-    </div>
-  );
-}
-
 // The part of a slide that goes to the right column on a wide screen. On a
 // phone it stays exactly where it is written.
 const Aside = ({ children }) => children;
@@ -201,7 +188,6 @@ function Card({ children, className = "" }) {
       <div className={`st-wide relative z-10 grid min-h-0 flex-1 ${right.length ? "" : "st-wide-one"} ${className}`}>
         <div className="st-col flex min-h-0 flex-col justify-center">
           {left}
-          <Quip />
         </div>
         {right.length > 0 && <div className="st-col st-aside flex min-h-0 flex-col justify-center">{right}</div>}
       </div>
@@ -210,7 +196,6 @@ function Card({ children, className = "" }) {
   return (
     <div className={`relative z-10 flex min-h-0 flex-1 flex-col px-6 pb-8 pt-[5.2rem] sm:px-7 ${className}`}>
       {children}
-      <Quip />
     </div>
   );
 }
@@ -1025,7 +1010,7 @@ function Contact({ review }) {
                     }}
                   />
                 ) : (
-                  <span className="block h-[5px] w-full rounded-full" style={{ boxShadow: "inset 0 0 0 1.5px var(--g-mute)" }} />
+                  <span className="st-grow-y block h-[5px] w-full rounded-full" style={{ "--d": `${1300 + n * 60}ms`, boxShadow: "inset 0 0 0 1.5px var(--g-mute)" }} />
                 )}
               </div>
             );
@@ -1414,7 +1399,7 @@ function Passes({ slide }) {
                     style={{ "--d": `${1300 + k * 60}ms`, height: `${Math.max(4, (p.n / max) * 100)}%`, background: p === top ? "var(--g-mark)" : "var(--g-fg)" }}
                   />
                 ) : (
-                  <span className="block h-[5px] w-full rounded-full" style={{ boxShadow: "inset 0 0 0 1.5px var(--g-mute)" }} />
+                  <span className="st-grow-y block h-[5px] w-full rounded-full" style={{ "--d": `${1300 + k * 60}ms`, boxShadow: "inset 0 0 0 1.5px var(--g-mute)" }} />
                 )}
               </div>
             ))}
@@ -1647,11 +1632,7 @@ export default function StorySlide({ slide, review, onReplay, onNext }) {
   const Comp = SLIDES[slide.key];
   if (!Comp) return null;
   const tease = teaseOf(slide.key, review);
-  const body = (
-    <QuipCtx.Provider value={slide.quip || null}>
-      <Comp slide={slide} review={review} onReplay={onReplay} onNext={onNext} />
-    </QuipCtx.Provider>
-  );
+  const body = <Comp slide={slide} review={review} onReplay={onReplay} onNext={onNext} />;
   if (!tease) return body;
   return (
     <Offset.Provider value={TEASE_MS}>

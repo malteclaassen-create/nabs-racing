@@ -15,6 +15,7 @@ import { useSpecificTitle } from "../utils/pageTitle.js";
 import { ErrorBox } from "../components/ui.jsx";
 import Story from "./review/Story.jsx";
 import { storySlides } from "./review/storySlides.mjs";
+import { shrinkBack } from "../utils/wrappedMorph.js";
 
 export default function SeasonReview() {
   const { id, seriesSlug } = useParams();
@@ -44,7 +45,9 @@ export default function SeasonReview() {
   // has nothing to go back to, so it lands on the driver's page instead.
   const close = () => {
     if (location.key && location.key !== "default") {
-      navigate(-1);
+      // Opened from the Wrapped button: the story shrinks back into it.
+      const frame = document.querySelector(".st-frame");
+      shrinkBack(() => navigate(-1), frame ? getComputedStyle(frame).backgroundColor : null);
       return;
     }
     const driverPage = `${seriesSlug ? `/s/${seriesSlug}` : ""}/drivers/${encodeURIComponent(id)}`;
