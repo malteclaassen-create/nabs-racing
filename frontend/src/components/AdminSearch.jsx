@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../api/client.js";
 import { searchAdmin } from "../data/adminIndex.js";
+import { tierLabel } from "../utils/teamLabel.js";
 
 // A way into the admin that isn't "read all twenty-one tab names and guess".
 //
@@ -40,7 +41,7 @@ function dataItems(data) {
       key: `t:${t.id}`,
       title: t.name,
       where: `Team · ${season(t)}`,
-      hint: t.tier === 0 ? "Reserve pool" : `Tier ${t.tier}`,
+      hint: t.tier === 0 ? "Reserve pool" : tierLabel(t.tier),
       tab: "teams",
       seasonNumber: t.seasonNumber,
     });

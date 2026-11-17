@@ -23,6 +23,7 @@ import RatingCard from "../components/RatingCard.jsx";
 import ChampionBadge, { TeamPodiumBadge } from "../components/ChampionBadge.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
 import TrackStrengths from "../components/TrackStrengths.jsx";
+import RatingSeasons from "../components/RatingSeasons.jsx";
 import RivalsGapChart from "../components/RivalsGapChart.jsx";
 import DriverRaceByRace from "../components/DriverRaceByRace.jsx";
 import { countryFor } from "../data/driverCountries.js";
@@ -30,6 +31,7 @@ import { flagFor } from "../data/circuits.js";
 import { useSpecificTitle } from "../utils/pageTitle.js";
 import { fmtLap, NO_VALUE} from "../utils/format.js";
 import { isIdleReserve, finishesOf } from "../utils/standingsRow.js";
+import { cardNote } from "../utils/cardNote.js";
 
 const TIER_LABEL = { 1: "Tier 1", 2: "Tier 2", 3: "Division 2", 0: "Reserve" };
 
@@ -494,9 +496,9 @@ function RatingBreakdown({ rating, stats, color }) {
         <h2 className="font-display text-lg font-extrabold uppercase tracking-tight text-dark sm:text-xl">
           Rating Breakdown
         </h2>
-        {rating.card?.locked && rating.card.fromSeasonNumber != null && (
+        {rating.card?.locked && cardNote(rating.card) && (
           <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-light">
-            card locked for the season · earned in Season {rating.card.fromSeasonNumber}
+            {cardNote(rating.card)}
           </span>
         )}
       </div>
@@ -2202,6 +2204,10 @@ export default function DriverProfile({ previewId, preview }) {
       {!previewId && (
         <TrackStrengths key={driver.id} driver={driver} color={color} standings={standingsData.standings} />
       )}
+
+      {/* How the ratings moved season by season (finished seasons only, so it
+          never shows the private live numbers). Hidden below two seasons. */}
+      {!previewId && cardsEnabled && <RatingSeasons key={`rs-${driver.id}`} driverId={driver.id} color={color} />}
 
       {/* Career across linked seasons (only when this driver spans more than one) */}
       <CareerBlock

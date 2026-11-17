@@ -46,14 +46,21 @@ const FIELDS = {
   s6: [ratingRow("d6cara", 75)],
 };
 
+// Season 8 has 12 rounds; `doneRounds` of them are completed.
+let doneRounds = 3;
 const prisma = {
   season: { findUnique: async ({ where }) => SEASONS[where.id] || null },
   driver: { findMany: async ({ where }) => DRIVERS[where.seasonId] || [] },
+  race: {
+    findMany: async () =>
+      Array.from({ length: 12 }, (_, i) => ({ number: i + 1, isCompleted: i < doneRounds })),
+  },
 };
 
 beforeEach(() => {
   invalidateCardRatingCache();
   vi.clearAllMocks();
+  doneRounds = 3;
   getRatingWindow.mockResolvedValue([
     { id: "s7", number: 7 },
     { id: "s6", number: 6 },
@@ -115,5 +122,49 @@ describe("getCardRatings", () => {
     expect(seasonsRated.filter((s) => s === "s6")).toHaveLength(1);
     await getCardRatings(prisma, "s8");
     expect(getDriverRatings.mock.calls).toHaveLength(seasonsRated.length);
+  });
+
+  it("reprints the card at half-time with this season's numbers as of the middle round", async () => {
+    doneRounds = 6;
+    getDriverRatings.mockImplementation(async (_p, seasonId, opts) => {
+      if (seasonId === "s8" && opts?.upToRaceNumber === 6) return [ratingRow("d8anna", 79)];
+      return FIELDS[seasonId] || [];
+    });
+    const { rows, update } = await getCardRatings(prisma, "s8");
+    expect(update).toEqual({ stage: "mid-season", round: 6 });
+    const anna = rows.find((r) => r.driverId === "d8anna");
+    expect(anna.ratings.overall).toBe(79);
+    expect(anna.name).toBe("Anna");
+    expect(anna.card).toMatchObject({ locked: true, source: "mid-season", fromSeasonNumber: 8, asOfRound: 6 });
+    // No half-time row (sat the first half out): keeps the older card.
+    const cara = rows.find((r) => r.driverId === "d8cara");
+    expect(cara.card).toMatchObject({ source: "carried", fromSeasonNumber: 6 });
+  });
+
+  it("does not reprint before half-time", async () => {
+    doneRounds = 5;
+    const { update } = await getCardRatings(prisma, "s8");
+    expect(update).toBeNull();
+    expect(getDriverRatings.mock.calls.some((c) => c[2]?.upToRaceNumber != null)).toBe(false);
+  });
+
+  it("reprints with the final numbers once every round is done", async () => {
+    doneRounds = 12;
+    const { rows, update } = await getCardRatings(prisma, "s8");
+    expect(update).toEqual({ stage: "season-end", round: 12 });
+    const anna = rows.find((r) => r.driverId === "d8anna");
+    expect(anna.ratings.overall).toBe(70);
+    expect(anna.card).toMatchObject({ locked: true, source: "season-end", fromSeasonNumber: 8 });
+  });
+});
+
+describe("cardUpdate", () => {
+  const rounds = (n, done) => Array.from({ length: n }, (_, i) => ({ number: i + 1, isCompleted: i < done }));
+  it("puts half-time at round 6 of 12 and round 6 of 11", async () => {
+    const { cardUpdate } = await import("./cardRatingService.js");
+    expect(cardUpdate(rounds(12, 6))).toEqual({ stage: "mid-season", round: 6 });
+    expect(cardUpdate(rounds(11, 5))).toBeNull();
+    expect(cardUpdate(rounds(11, 6))).toEqual({ stage: "mid-season", round: 6 });
+    expect(cardUpdate(rounds(11, 11))).toEqual({ stage: "season-end", round: 11 });
   });
 });

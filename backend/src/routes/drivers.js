@@ -11,6 +11,7 @@ import { getTrackStrengths } from "../services/trackStrengthService.js";
 import { getSeasonReview, reviewVisibleTo, MIN_ROUNDS } from "../services/seasonReviewService.js";
 import { isSeasonComplete } from "../lib/seasonComplete.js";
 import { recordWrappedOpen, recordWrappedProgress } from "../lib/wrappedViews.js";
+import { getDriverCareerRatings } from "../services/ratingHistoryService.js";
 
 const router = Router();
 
@@ -162,7 +163,42 @@ router.get("/:id/rating", async (req, res, next) => {
   }
 });
 
+// GET /api/drivers/:id/rating/seasons -> { points } one point per FINISHED
+// season of this league the person raced: the ratings they ended it on (the
+// same numbers their next card carried). Public on purpose, the way a card is.
+// A season still being raced is left out: its numbers are the live ones, and
+// those stay private (/api/me/rating/history).
+router.get("/:id/rating/seasons", async (req, res, next) => {
+  try {
+    const rowId = await rowFor(req);
+    const driver = rowId ? await prisma.driver.findUnique({ where: { id: rowId }, select: { seasonId: true } }) : null;
+    if (!driver) return res.status(404).json({ error: "Driver not found" });
+    if (await seasonHidden(req, driver.seasonId)) return res.status(404).json({ error: "Driver not found" });
+    const career = await getDriverCareerRatings(prisma, rowId);
+    const all = career?.points || [];
+    // A season point carries its season id as `raceId` (ratingHistoryService).
+    const ids = all.map((p) => p.raceId);
+    const [open, hidden] = await Promise.all([
+      ids.length
+        ? prisma.race.findMany({
+            where: { seasonId: { in: ids }, isSpecialEvent: false, isCompleted: false, number: { not: null } },
+            select: { seasonId: true },
+          })
+        : [],
+      isAdminRequest(req) ? new Set() : getPrivateSeasonIds(prisma),
+    ]);
+    const openIds = new Set(open.map((r) => r.seasonId));
+    const points = all
+      .filter((p) => !openIds.has(p.raceId) && !hidden.has(p.raceId))
+      .map(({ provisional, ...p }) => p);
+    res.json({ points });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // The round-by-round rating history is NOT public: it lives on /api/me/rating/
-// history (me.js), own eyes only — the public profile shows just the card.
+// history (me.js), own eyes only — the public profile shows the card and the
+// end-of-season numbers above.
 
 export default router;

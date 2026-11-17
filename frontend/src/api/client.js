@@ -568,6 +568,8 @@ export const api = {
   // series and the season given (null = the selected one) to the right row.
   driverProfileAt: (id, season) => request(`/drivers/${id}/profile${seasonParam(season)}`, { auth: true }),
   driverRatingAt: (id, season) => request(`/drivers/${id}/rating${seasonParam(season)}`, { auth: true }),
+  // End-of-season ratings, one point per finished season (public profile chart).
+  driverRatingSeasons: (id) => request(`/drivers/${id}/rating/seasons`, { auth: true }),
   // Which kind of circuit the person behind a driver row goes best on:
   // "all" = every season of this league, "season" = the row's own
   // (backend services/trackStrengthService.js).
@@ -1561,8 +1563,14 @@ export const api = {
   // next to Add team. `seasonId` is the season being edited.
   teamLibrary: (seasonId, q = "") =>
     request(`/admin/teams/library?seasonId=${encodeURIComponent(seasonId || "")}&q=${encodeURIComponent(q)}`, { auth: true }),
-  importTeam: (fromTeamId, seasonId) =>
-    request("/admin/teams/import", { method: "POST", body: { ...seriesBody(), fromTeamId, seasonId }, auth: true }),
+  // `division` (1 or 2): which division the copy races in; left out = the source's.
+  importTeam: (fromTeamId, seasonId, division) =>
+    request("/admin/teams/import", { method: "POST", body: { ...seriesBody(), fromTeamId, seasonId, division }, auth: true }),
+  // Teams of the season without a logo that a team of the same name has one for.
+  teamLogoMatches: (seasonId) =>
+    request(`/admin/teams/logo-matches?seasonId=${encodeURIComponent(seasonId || "")}`, { auth: true }),
+  fillTeamLogos: (seasonId) =>
+    request("/admin/teams/fill-logos", { method: "POST", body: { ...seriesBody(), seasonId }, auth: true }),
   updateTeam: (id, body) => request(`/admin/teams/${id}`, { method: "PUT", body, auth: true }),
   // "Volvo Racing is the same team as Volvo" (lib/teamLineage.js).
   teamLinks: () => request(`/admin/team-links${seriesQ()}`, { auth: true }),
