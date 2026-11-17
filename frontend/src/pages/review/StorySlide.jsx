@@ -1114,190 +1114,6 @@ function SeasonCover({ review }) {
   );
 }
 
-// --- the closing card, three takes on the Wrapped summary (?card=a1|a2|a3) -----------
-
-const small = { fontFamily: "Inter, sans-serif" };
-const tiny = "text-[11px] font-bold uppercase tracking-[0.12em] opacity-60";
-
-// A finishing place as a small plate: the medal colours for a podium.
-function PlacePlate({ p }) {
-  const medal = p >= 1 && p <= 3;
-  return (
-    <span
-      className="wr-big wr-num inline-flex h-6 min-w-[2.2rem] shrink-0 items-center justify-center rounded-md px-1 text-[12px] leading-none"
-      style={medal ? { background: MEDAL[p - 1], color: MEDAL_INK[p - 1] } : { boxShadow: "inset 0 0 0 1.5px currentColor" }}
-    >
-      P{p}
-    </span>
-  );
-}
-
-// The two halves every take shares: the best results as a numbered list with
-// plates, and four season figures as big numbers.
-function SummaryLists({ slide, review }) {
-  const top = (slide.top || []).slice(0, 5);
-  // Four figures, the ones that are not zero first: "0 wins" only shows when
-  // there is nothing better to show.
-  const all = seasonList(slide, review);
-  const figures = [...all.filter((g) => g.value && g.value !== "0"), ...all.filter((g) => !g.value || g.value === "0")].slice(0, 4);
-  return (
-    <div className="grid grid-cols-[1.6fr_1fr] gap-4">
-      <div className="min-w-0">
-        <div className={tiny} style={small}>
-          Top results
-        </div>
-        <ol className="mt-2 space-y-1.5">
-          {top.map((t, k) => (
-            <li key={`${t.round}-${t.sprint}`} className="flex items-center gap-2">
-              <span className="wr-big wr-num w-3 shrink-0 text-[13px] leading-none opacity-50">{k + 1}</span>
-              <span className="min-w-0 flex-1 truncate text-[14px] font-extrabold leading-tight">{t.track}</span>
-              <PlacePlate p={t.position} />
-            </li>
-          ))}
-        </ol>
-      </div>
-      <div className="min-w-0">
-        <div className={tiny} style={small}>
-          The season
-        </div>
-        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2.5">
-          {figures.map((g) => (
-            <div key={g.k} className="min-w-0">
-              <div className="wr-big wr-num leading-none" style={{ fontSize: "min(6.2cqi, 3cqh)" }}>
-                {g.value}
-              </div>
-              <div className="mt-0.5 text-[11px] font-bold leading-tight opacity-60" style={small}>
-                {g.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SummaryFoot({ slide, review, accent = "var(--g-mark)" }) {
-  const c = review.championship;
-  return (
-    <div className="mt-5 grid grid-cols-2 gap-4 border-t pt-4" style={{ borderColor: "color-mix(in srgb, currentColor 16%, transparent)" }}>
-      <div>
-        <div className={tiny} style={small}>
-          Points
-        </div>
-        <div className="wr-big wr-num leading-none" style={{ fontSize: "min(14cqi, 6.6cqh)" }}>
-          {slide.points}
-        </div>
-      </div>
-      <div>
-        <div className={tiny} style={small}>
-          Championship
-        </div>
-        <div className="wr-big wr-num leading-none" style={{ fontSize: "min(14cqi, 6.6cqh)", color: accent }}>
-          {c.position ? `P${c.position}` : "–"}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SummaryName({ slide, review, cover = true }) {
-  return (
-    <div className="flex items-center gap-3.5">
-      {cover && <SeasonCover review={review} />}
-      <div className="min-w-0">
-        <div className={tiny} style={small}>
-          {slide.eyebrow}
-        </div>
-        <div className="wr-big uppercase" style={nameFit(review.driver.name)}>
-          {review.driver.name}
-        </div>
-        {review.driver.team?.name && (
-          <div className="mt-1 flex items-center gap-1.5 text-[13px] font-bold" style={small}>
-            {review.driver.team.tier !== 0 && <TeamLogo id={review.driver.team.id} name={review.driver.team.name} color={review.driver.team.color} logoUrl={review.driver.team.logoUrl} size={18} />}
-            <span className="truncate opacity-70">{review.driver.team.name}</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const leagueLine = (review) => (
-  <div className="mt-3 text-[11px] font-bold opacity-50" style={small}>
-    NABS Racing League · {review.season.label}
-  </div>
-);
-
-// A1: the white card, tidied: cover and name, the two lists, the two numbers.
-function CardClassic({ slide, review }) {
-  return (
-    <div className="st-land flex shrink-0 flex-col rounded-xl p-5" style={{ "--d": "100ms", background: "var(--g-fg)", color: "var(--g-bg)" }}>
-      <SummaryName slide={slide} review={review} />
-      <div className="mt-5">
-        <SummaryLists slide={slide} review={review} />
-      </div>
-      <SummaryFoot slide={slide} review={review} />
-      {leagueLine(review)}
-    </div>
-  );
-}
-
-// A2: the same card in the team colour, the way Wrapped's summary is a
-// colour of its own.
-function CardColour({ slide, review }) {
-  return (
-    <div className="st-land flex shrink-0 flex-col rounded-xl p-5" style={{ "--d": "100ms", background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
-      <SummaryName slide={slide} review={review} />
-      <div className="mt-5">
-        <SummaryLists slide={slide} review={review} />
-      </div>
-      <SummaryFoot slide={slide} review={review} accent="currentColor" />
-      {leagueLine(review)}
-    </div>
-  );
-}
-
-// A3: the picture as the card's title image, full width, the name set over
-// its foot; the lists and numbers under it on the white card.
-function CardCover({ slide, review }) {
-  const [broken, setBroken] = useState(false);
-  const photo = review.driver?.photoUrl && !broken ? review.driver.photoUrl : null;
-  const num = /\d+$/.exec(String(review.season?.label || ""))?.[0] || "";
-  return (
-    <div className="st-land flex shrink-0 flex-col overflow-hidden rounded-xl" style={{ "--d": "100ms", background: "var(--g-fg)", color: "var(--g-bg)" }}>
-      <div className="relative aspect-[16/9] w-full" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
-        {photo ? (
-          <img src={photo} alt="" className="absolute inset-0 h-full w-full object-cover" onError={() => setBroken(true)} draggable="false" />
-        ) : (
-          <span className="wr-big wr-num absolute right-4 top-2 leading-none opacity-90" style={{ fontSize: "min(30cqi, 15cqh)" }}>
-            {num}
-          </span>
-        )}
-        <div className="absolute inset-x-0 bottom-0 h-2/3" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.72), transparent)" }} />
-        <div className="absolute inset-x-0 bottom-0 p-4 text-white">
-          <div className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-80" style={small}>
-            {slide.eyebrow}
-          </div>
-          <div className="wr-big uppercase" style={{ fontSize: "min(10cqi, 4.8cqh)", lineHeight: 0.95 }}>
-            {review.driver.name}
-          </div>
-          {review.driver.team?.name && (
-            <div className="mt-1 text-[13px] font-bold opacity-85" style={small}>
-              {review.driver.team.name}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="p-5">
-        <SummaryLists slide={slide} review={review} />
-        <SummaryFoot slide={slide} review={review} />
-        {leagueLine(review)}
-      </div>
-    </div>
-  );
-}
-
 // The last slide: the summary card, the way Wrapped ends. A cover on top,
 // two lists side by side, the two big numbers at the foot. The picture that
 // "Save picture" makes is this card.
@@ -1322,10 +1138,7 @@ function Final({ slide, review, onReplay }) {
   };
   const c = review.championship;
   const top = slide.top || [];
-  // Which take on the closing card to show while they are compared
-  // (?card=a1, a2 or a3); without it, the card as it was.
-  const variant = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("card") || "").toLowerCase() : "";
-  const cardA = (
+  const card = (
       <div
         className="st-land flex shrink-0 flex-col rounded-xl p-5"
         style={{
@@ -1344,33 +1157,33 @@ function Final({ slide, review, onReplay }) {
               {review.driver.name}
             </div>
             {review.driver.team?.name && (
-              <div className="mt-1 flex items-center gap-1.5 text-[13px] font-bold" style={{ fontFamily: "Inter, sans-serif" }}>
-                {review.driver.team.tier !== 0 && <TeamLogo id={review.driver.team.id} name={review.driver.team.name} color={review.driver.team.color} logoUrl={review.driver.team.logoUrl} size={18} />}
-                <span className="truncate opacity-60">{review.driver.team.name}</span>
+              <div className="mt-1.5 flex items-center gap-2 font-bold" style={{ fontFamily: "Inter, sans-serif", fontSize: "min(4.4cqi, 2.1cqh)" }}>
+                {review.driver.team.tier !== 0 && <TeamLogo id={review.driver.team.id} name={review.driver.team.name} color={review.driver.team.color} logoUrl={review.driver.team.logoUrl} size={26} />}
+                <span className="truncate opacity-75">{review.driver.team.name}</span>
               </div>
             )}
           </div>
         </div>
-        <div className="mt-6 grid grid-cols-2 gap-4">
+        <div className="mt-6 grid grid-cols-[1.3fr_1fr] gap-4">
           <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
+            <div className="text-[12px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
               Top results
             </div>
-            <ol className="mt-1.5 space-y-0.5">
+            <ol className="mt-2 space-y-1">
               {top.map((t, k) => (
-                <li key={`${t.round}-${t.sprint}`} className="truncate text-[15px] font-extrabold leading-snug">
+                <li key={`${t.round}-${t.sprint}`} className="truncate font-extrabold leading-snug" style={{ fontSize: "min(4.2cqi, 2.2cqh)" }}>
                   {k + 1} {t.track} <span className="opacity-50">P{t.position}</span>
                 </li>
               ))}
             </ol>
           </div>
           <div className="min-w-0">
-            <div className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
+            <div className="text-[12px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
               The season
             </div>
-            <ol className="mt-1.5 space-y-0.5">
+            <ol className="mt-2 space-y-1">
               {seasonList(slide, review).map((g) => (
-                <li key={g.k} className="truncate text-[15px] font-extrabold leading-snug">
+                <li key={g.k} className="truncate font-extrabold leading-snug" style={{ fontSize: "min(4.2cqi, 2.2cqh)" }}>
                   {g.value} <span className="opacity-50">{g.label}</span>
                 </li>
               ))}
@@ -1400,7 +1213,6 @@ function Final({ slide, review, onReplay }) {
         </div>
       </div>
   );
-  const card = variant === "a1" ? <CardClassic slide={slide} review={review} /> : variant === "a2" ? <CardColour slide={slide} review={review} /> : variant === "a3" ? <CardCover slide={slide} review={review} /> : cardA;
   const actions = (
       <div className="st-in pt-4" style={{ "--d": "700ms" }}>
         <div className="flex flex-wrap gap-2">

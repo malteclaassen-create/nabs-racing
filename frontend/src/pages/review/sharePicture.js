@@ -135,27 +135,30 @@ export async function drawSharePicture(review, slide) {
   ctx.fillText(name, tx, cy + P + 120 + ns + 6);
   if (review.driver.team?.name) {
     ctx.globalAlpha = 0.7;
-    ctx.font = font(700, 28, SMALL);
-    ctx.fillText(clip(ctx, review.driver.team.name, tw), tx, cy + P + 120 + ns + 52);
+    ctx.font = font(700, 36, SMALL);
+    ctx.fillText(clip(ctx, review.driver.team.name, tw), tx, cy + P + 120 + ns + 58);
     ctx.globalAlpha = 1;
   }
 
   // Two lists side by side.
   let y = cy + P + cs + 80;
-  const colW = (R - L - 40) / 2;
+  // The results get the wider column: circuit names are longer than figures.
+  const colL = (R - L - 40) * 0.58;
+  const colR = R - L - 40 - colL;
   const lists = [
     ["Top results", (slide.top || []).map((t, k) => [`${k + 1} ${t.track}`, `P${t.position}`])],
     ["The season", seasonList(slide, review).map((g) => [String(g.value), g.label])],
   ];
   lists.forEach(([title, rows], i) => {
-    const x = L + i * (colW + 40);
+    const x = L + (i ? colL + 40 : 0);
+    const colW = i ? colR : colL;
     ctx.globalAlpha = 0.7;
     ctx.font = font(700, 28, SMALL);
     ctx.fillText(title, x, y);
     ctx.globalAlpha = 1;
     rows.forEach(([a, b], k) => {
-      const ry = y + 64 + k * 60;
-      ctx.font = font(800, 42, HEAVY);
+      const ry = y + 64 + k * 64;
+      ctx.font = font(800, 44, HEAVY);
       const left = clip(ctx, a, colW - 90);
       ctx.fillText(left, x, ry);
       const aw = ctx.measureText(left).width;
@@ -173,7 +176,7 @@ export async function drawSharePicture(review, slide) {
     ["Championship", review.championship.position ? `P${review.championship.position}` : "–"],
   ];
   big.forEach(([label, value], i) => {
-    const x = L + i * (colW + 40);
+    const x = L + i * ((R - L - 40) / 2 + 40);
     ctx.globalAlpha = 0.7;
     ctx.font = font(700, 28, SMALL);
     ctx.fillText(label, x, y);
