@@ -295,6 +295,13 @@ const SECTIONS = {
     description: () =>
       "Live timing from the league's race servers: running order, gaps, best laps and tyre strategy, on race nights and in practice in between.",
   },
+  // The coming season's sign-up. Not about the season being shown, so the
+  // label is not used; it is the link that gets posted in Discord.
+  "season-signup": {
+    title: () => "Sign-up",
+    description: () =>
+      "Sign up for the next season of the NABS Racing League: the team you want to drive for and who your teammate is.",
+  },
   attendance: {
     title: (s) => `${s} sign-ups and attendance`,
     description: (s) =>

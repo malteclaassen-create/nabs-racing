@@ -309,6 +309,11 @@ describe("isKnownRoute", () => {
     expect(isKnownRoute("/s/friday-f1/drivers/maltegoat/other")).toBe(false);
     expect(isKnownRoute("/s/friday-f1/races/abc/review")).toBe(false);
   });
+
+  it("answers 200 for the season sign-up, in a series and as the short link", () => {
+    expect(isKnownRoute("/s/sunday-championship/season-signup")).toBe(true);
+    expect(isKnownRoute("/season-signup")).toBe(true);
+  });
 });
 
 describe("railway.app address", () => {

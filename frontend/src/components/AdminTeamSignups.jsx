@@ -3,7 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { CardHead, ErrorBox } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
-import { isNotATeam } from "../data/signupTeams.js";
+import { isNotATeam, LOOKING_FOR_TEAM, NO_TEAM } from "../data/signupTeams.js";
 
 // Admin League > Team sign-ups. Opens or closes the form on a series' home
 // page ("Season 7: which team do you want, who drives it?") and lists what
@@ -91,6 +91,9 @@ function Entry({ item, onChanged }) {
   const ask = useAsk();
   const [busy, setBusy] = useState(false);
   const done = item.status === "DONE";
+  // Under "No team yet" and "Looking for a team" the section already says
+  // what they picked, so the drivers are the heading.
+  const noTeam = isNotATeam(item.teamName);
 
   async function run(fn) {
     setBusy(true);
@@ -108,13 +111,17 @@ function Entry({ item, onChanged }) {
     <li className={`flex flex-col gap-3 py-3 sm:flex-row sm:items-start sm:gap-4 ${done ? "opacity-60" : ""}`}>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2">
-          <span className="font-display text-base font-extrabold uppercase tracking-tight text-dark">{item.teamName}</span>
+          <span className="font-display text-base font-extrabold uppercase tracking-tight text-dark">
+            {noTeam ? (item.driver2 ? `${item.driver1} and ${item.driver2}` : item.driver1) : item.teamName}
+          </span>
           {!done && <span className="rounded-full bg-brand/20 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-dark">New</span>}
         </div>
-        <div className="mt-0.5 text-sm text-medium">
-          {item.driver1}
-          {item.driver2 ? <> and {item.driver2}</> : <span className="text-light">, no teammate yet</span>}
-        </div>
+        {!noTeam && (
+          <div className="mt-0.5 text-sm text-medium">
+            {item.driver1}
+            {item.driver2 ? <> and {item.driver2}</> : <span className="text-light">, no teammate yet</span>}
+          </div>
+        )}
         {item.note && <p className="mt-1 whitespace-pre-line text-sm text-light">{item.note}</p>}
         <div className="mt-1 text-xs text-light">
           Sent by {item.senderName || "a member"} · {fmtTime(item.createdAt)}
@@ -168,11 +175,26 @@ export default function AdminTeamSignups() {
 
   const group = groups.find((g) => g.key === list) || null;
   // Open ones first, then by team name so two entries for one team sit together.
-  const items = group
-    ? [...group.items].sort((a, b) => (a.status === b.status ? a.teamName.localeCompare(b.teamName) : a.status === "NEW" ? -1 : 1))
-    : [];
-  const teamCount = new Set(items.filter((i) => !isNotATeam(i.teamName)).map((i) => i.teamName.toLowerCase())).size;
-  const alone = items.filter((i) => !i.driver2).length;
+  // A driver who signed up alone and is now named in a pair's entry (backend
+  // markCovered) is folded away: the pair's entry is the one to deal with.
+  const covered = group ? group.items.filter((i) => i.coveredBy) : [];
+  const items = group ? group.items.filter((i) => !i.coveredBy) : [];
+  // Three lists: the teams (by name, so two entries for one team sit
+  // together), then who is looking for a team, then who has none yet. New
+  // ones before the ticked-off ones inside each.
+  const byStatus = (a, b) => (a.status === b.status ? 0 : a.status === "NEW" ? -1 : 1);
+  const isChoice = (i, c) => i.teamName.trim().toLowerCase() === c.toLowerCase();
+  const teamItems = items
+    .filter((i) => !isNotATeam(i.teamName))
+    .sort((a, b) => a.teamName.localeCompare(b.teamName, undefined, { sensitivity: "base" }) || byStatus(a, b));
+  const lookingItems = items.filter((i) => isChoice(i, LOOKING_FOR_TEAM)).sort(byStatus);
+  const noTeamItems = items.filter((i) => isChoice(i, NO_TEAM)).sort(byStatus);
+  const teamCount = new Set(teamItems.map((i) => i.teamName.trim().toLowerCase())).size;
+  const sections = [
+    { title: "Teams", items: teamItems, count: `${teamCount} team${teamCount === 1 ? "" : "s"}` },
+    { title: LOOKING_FOR_TEAM, items: lookingItems, count: `${lookingItems.length}` },
+    { title: NO_TEAM, items: noTeamItems, count: `${noTeamItems.length}` },
+  ].filter((sec) => sec.items.length > 0);
 
   return (
     <div className="space-y-5">
@@ -190,7 +212,7 @@ export default function AdminTeamSignups() {
                   {groups.map((g) => (
                     <option key={g.key} value={g.key}>
                       {g.seriesName ? `${g.seriesName} · ` : ""}
-                      {g.label} ({g.items.length})
+                      {g.label} ({g.items.filter((i) => !i.coveredBy).length})
                     </option>
                   ))}
                 </select>
@@ -203,14 +225,35 @@ export default function AdminTeamSignups() {
           {group ? (
             <>
               <p className="text-sm text-light">
-                {items.length} sign-up{items.length === 1 ? "" : "s"} for {teamCount} team{teamCount === 1 ? "" : "s"}
-                {alone ? `, ${alone} without a teammate yet` : ""}. If two people ask for the same team they are listed next to each other.
+                {items.length} sign-up{items.length === 1 ? "" : "s"}: {teamCount} team{teamCount === 1 ? "" : "s"}, {lookingItems.length} looking for a team,{" "}
+                {noTeamItems.length} with no team yet.
               </p>
-              <ul className="mt-2 divide-y divide-border">
-                {items.map((i) => (
-                  <Entry key={i.id} item={i} onChanged={reload} />
-                ))}
-              </ul>
+              {sections.map((sec) => (
+                <section key={sec.title} className="mt-5">
+                  <div className="flex items-baseline justify-between gap-3 border-b border-border pb-1.5">
+                    <h3 className="font-mono text-[11px] font-bold uppercase tracking-wider text-eyebrow">{sec.title}</h3>
+                    <span className="font-mono text-[11px] tabular-nums text-light">{sec.count}</span>
+                  </div>
+                  <ul className="divide-y divide-border">
+                    {sec.items.map((i) => (
+                      <Entry key={i.id} item={i} onChanged={reload} />
+                    ))}
+                  </ul>
+                </section>
+              ))}
+              {covered.length > 0 && (
+                <p className="mt-3 border-t border-border pt-3 text-xs text-light">
+                  Not listed, because they are now down as a pair:{" "}
+                  {covered.map((i, n) => (
+                    <span key={i.id}>
+                      {n > 0 ? "; " : ""}
+                      <span className="font-semibold text-medium">{i.driver1}</span> (signed up alone as {i.teamName}, now {i.coveredBy.teamName} with{" "}
+                      {i.coveredBy.with})
+                    </span>
+                  ))}
+                  . If that pair takes their entry back, these come back on the list.
+                </p>
+              )}
             </>
           ) : (
             <p className="text-sm text-light">Nobody has signed up yet.</p>

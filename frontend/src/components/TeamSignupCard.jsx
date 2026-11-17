@@ -56,6 +56,9 @@ export default function TeamSignupCard({ startOpen = false, whenClosed = null })
 
   const label = data.label;
   const openSeats = data.openSeats || [];
+  // Signed-in members also see who is still on their own, so they can find a
+  // teammate (backend freeAgentsFrom: name and choice, never the note).
+  const freeAgents = data.freeAgents || [];
 
   function openForm() {
     const from = mine || { ...EMPTY, driver1: data.myName || "" };
@@ -212,6 +215,7 @@ export default function TeamSignupCard({ startOpen = false, whenClosed = null })
                 maxLength={60}
                 disabled={alone}
                 autoComplete="off"
+                list={freeAgents.length > 0 ? "signup-free-agents" : undefined}
               />
             </Field>
             <CheckField className="sm:col-span-2" checked={alone} onChange={(e) => setAlone(e.target.checked)} label="I don't have a teammate yet" />
@@ -230,6 +234,26 @@ export default function TeamSignupCard({ startOpen = false, whenClosed = null })
           </form>
         )}
         {!editing && error && <p className="mt-3 text-sm font-semibold text-warn">{error}</p>}
+
+        {freeAgents.length > 0 && (
+          <div className="mt-5 border-t border-border pt-4">
+            <div className="font-mono text-[10px] font-bold uppercase tracking-wider text-light">Still looking for a teammate</div>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {freeAgents.map((a) => (
+                <li key={a.name} className="rounded-lg border border-border bg-white/60 px-3 py-1.5 text-sm dark:bg-white/[0.04]">
+                  <span className="font-semibold text-dark">{a.name}</span>
+                  <span className="ml-1.5 text-xs text-light">{a.choice === LOOKING_FOR_TEAM ? "looking for a team" : "no team yet"}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-light">Want to drive together? Message them on Discord, then put their name down as your second driver.</p>
+            <datalist id="signup-free-agents">
+              {freeAgents.map((a) => (
+                <option key={a.name} value={a.name} />
+              ))}
+            </datalist>
+          </div>
+        )}
       </div>
     </section>
   );

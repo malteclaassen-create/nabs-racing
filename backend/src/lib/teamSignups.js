@@ -13,7 +13,8 @@
 // The admin reads them in the Team sign-ups tab and ticks them off once dealt
 // with. Nothing here is shown publicly, except that a signed-in member
 // filling in the form sees which teams still have a free seat (team name and
-// the one driver, openSeatsFrom), and nothing rings the bell: the
+// the one driver, openSeatsFrom) and who has no team yet (name only,
+// freeAgentsFrom), and nothing rings the bell: the
 // admins look in the tab when they want to.
 //
 // Raw SQL like Feedback (the running dev server locks the generated Prisma
@@ -199,10 +200,41 @@ export async function dbWithdrawSignup(prisma, { seriesId, label, discordId }) {
     WHERE "seriesId" = ${seriesId || ""} AND "label" = ${label} AND "discordId" = ${discordId}`;
 }
 
-// Every entry, newest first. The admin view groups them by series and name.
+// Every entry, newest first. The admin view groups them by series and name,
+// and folds away the ones markCovered marks.
 export async function dbListSignups(prisma) {
   const rows = await prisma.$queryRaw`SELECT * FROM "TeamSignup" ORDER BY "createdAt" DESC LIMIT 1000`;
-  return rows.map(shape);
+  return markCovered(rows.map(shape));
+}
+
+// A driver who signed up on their own and is now named in somebody else's
+// entry as one of two drivers has found their pair: their own entry is spent.
+// It is not deleted (that other entry could be taken back, or name them by
+// mistake), only marked, so the admin list and the lists members see can leave
+// it out. Adds `coveredBy: { id, teamName, with }` (the entry that names them,
+// newest wins) to each such entry; everything else is returned as it was.
+// Entries are matched within one sign-up (series + name), drivers by name in
+// any case.
+export function markCovered(entries) {
+  const list = (entries || []).filter(Boolean);
+  const norm = (v) => String(v || "").trim().toLowerCase();
+  const group = (e) => `${e.seriesId || ""}::${e.label}`;
+  const stamp = (e) => e.updatedAt || e.createdAt || "";
+  const pairs = list.filter((e) => norm(e.driver1) && norm(e.driver2));
+  return list.map((e) => {
+    if (norm(e.driver2)) return e;
+    const me = norm(e.driver1);
+    if (!me) return e;
+    let best = null;
+    for (const p of pairs) {
+      if (p.id === e.id || group(p) !== group(e)) continue;
+      if (norm(p.driver1) !== me && norm(p.driver2) !== me) continue;
+      if (!best || stamp(p) > stamp(best)) best = p;
+    }
+    if (!best) return e;
+    const partner = norm(best.driver1) === me ? best.driver2 : best.driver1;
+    return { ...e, coveredBy: { id: best.id, teamName: best.teamName, with: partner } };
+  });
 }
 
 // Teams in this sign-up with one driver so far, so someone on their own can
@@ -214,7 +246,7 @@ export function openSeatsFrom(entries, excludeDiscordId) {
   const notTeam = new Set(NOT_A_TEAM.map((n) => n.toLowerCase()));
   const teams = new Map();
   for (const e of entries || []) {
-    if (!e?.teamName || (excludeDiscordId && e.discordId === excludeDiscordId)) continue;
+    if (!e?.teamName || e.coveredBy || (excludeDiscordId && e.discordId === excludeDiscordId)) continue;
     const key = e.teamName.trim().toLowerCase();
     if (!key || notTeam.has(key)) continue;
     if (!teams.has(key)) teams.set(key, { teamName: e.teamName.trim(), drivers: new Map() });
@@ -229,12 +261,42 @@ export function openSeatsFrom(entries, excludeDiscordId) {
     .sort((a, b) => a.teamName.localeCompare(b.teamName));
 }
 
-export async function dbListOpenSeats(prisma, { seriesId, label, excludeDiscordId }) {
+// Drivers in this sign-up with no team and no teammate yet ("No team yet" or
+// "Looking for a team", second seat empty), so the people on their own can
+// find each other. Name and which of the two they picked, oldest first; never
+// the note, which is written for the admins. The asker's own entry is left out.
+export function freeAgentsFrom(entries, excludeDiscordId) {
+  const notTeam = new Map(NOT_A_TEAM.map((n) => [n.toLowerCase(), n]));
+  const out = [];
+  const seen = new Set();
+  for (const e of entries || []) {
+    if (!e || e.coveredBy || (excludeDiscordId && e.discordId === excludeDiscordId)) continue;
+    const choice = notTeam.get(String(e.teamName || "").trim().toLowerCase());
+    const name = String(e.driver1 || "").trim();
+    if (!choice || !name || String(e.driver2 || "").trim()) continue;
+    if (seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push({ name, choice });
+  }
+  return out;
+}
+
+async function listEntries(prisma, { seriesId, label }) {
   const rows = await prisma.$queryRaw`
     SELECT * FROM "TeamSignup"
     WHERE "seriesId" = ${seriesId || ""} AND "label" = ${label}
     ORDER BY "createdAt" ASC`;
-  return openSeatsFrom(rows.map(shape), excludeDiscordId);
+  return markCovered(rows.map(shape));
+}
+
+// What a signed-in member filling in the form gets to see of the others:
+// teams with a free seat, and the drivers still on their own.
+export async function dbListForMembers(prisma, { seriesId, label, excludeDiscordId }) {
+  const entries = await listEntries(prisma, { seriesId, label });
+  return {
+    openSeats: openSeatsFrom(entries, excludeDiscordId),
+    freeAgents: freeAgentsFrom(entries, excludeDiscordId),
+  };
 }
 
 export async function dbSetSignupStatus(prisma, id, status) {
