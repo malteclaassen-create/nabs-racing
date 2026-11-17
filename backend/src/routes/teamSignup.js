@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, requireUser, resolveDriverId } from "../middleware/auth.js";
-import { resolveSeries } from "../lib/series.js";
+import { resolveSeries, getSeriesById } from "../lib/series.js";
 import {
   readSignupSettings,
   parseSignupForm,
@@ -33,6 +33,16 @@ async function openSignupFor(req) {
   return { ...settings, series };
 }
 
+// Where the sign-up is open, if it is: the slug of that series, so a link to
+// the sign-up page that lands on another series (the short /season-signup goes
+// to the main one) can move on to it. Null when closed or the series is hidden.
+async function openSeriesSlug() {
+  const settings = await readSignupSettings(prisma);
+  if (!settings.open || !settings.seriesId) return null;
+  const s = await getSeriesById(prisma, settings.seriesId);
+  return s && (s.isPublic || s.isActive) ? s.slug : null;
+}
+
 // The member's current driver name, to fill the first seat in for them.
 async function driverNameOf(user) {
   try {
@@ -50,7 +60,7 @@ async function driverNameOf(user) {
 router.get("/", optionalUser, async (req, res, next) => {
   try {
     const signup = await openSignupFor(req);
-    if (!signup) return res.json({ open: false });
+    if (!signup) return res.json({ open: false, openIn: await openSeriesSlug() });
     const mine = req.user?.discordId
       ? await dbGetOwnSignup(prisma, { seriesId: signup.seriesId, label: signup.label, discordId: req.user.discordId })
       : null;

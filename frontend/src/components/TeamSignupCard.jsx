@@ -23,7 +23,8 @@ const OTHER = "__other__";
 // `startOpen`: open the form straight away for a signed-in member with no
 // entry yet (the page of its own, pages/SeasonSignup.jsx). `whenClosed`: what
 // to show once it is known that no sign-up is open here (the home page shows
-// nothing).
+// nothing); a function gets the API's answer, whose `openIn` names the series
+// where it is open, if any.
 export default function TeamSignupCard({ startOpen = false, whenClosed = null }) {
   const state = useApi(useCallback(() => api.teamSignup(), []));
   const { pathname, search } = useLocation();
@@ -51,7 +52,7 @@ export default function TeamSignupCard({ startOpen = false, whenClosed = null })
   }, [startOpen, data]);
 
   if (!data) return null;
-  if (!data.open) return whenClosed;
+  if (!data.open) return typeof whenClosed === "function" ? whenClosed(data) : whenClosed;
 
   const label = data.label;
   const openSeats = data.openSeats || [];
