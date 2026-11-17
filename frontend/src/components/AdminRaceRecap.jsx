@@ -25,14 +25,23 @@ const MODE_TEXT = {
 // The season Wrapped (pages/SeasonReview.jsx): a driver's whole season in the
 // form of a story, opened from the driver page. Public figures only, so once
 // it is on it is there for anyone who can see the driver.
+// The season Wrapped: one rule for everybody, admins included.
 const REVIEW_TEXT = {
   off: "Off. Nobody gets a season Wrapped.",
-  admins: "Admins only. League admins can open every driver's Wrapped of the seasons ticked below; drivers see nothing yet.",
-  all: "Drivers, their own. Each driver signed in with Discord gets their own Wrapped of the seasons ticked below (Home button, own driver page). Nobody else's Wrapped opens for them, and no public page links to it. Admins can open every driver's, for those seasons too.",
+  all: "On. Everyone signed in with Discord can watch their own Wrapped of the seasons ticked below, until the date below. Nobody can open anyone else's, admins included.",
 };
-const REVIEW_LABELS = { off: "Off", admins: "Admins only", all: "Drivers, their own" };
+const REVIEW_STEPS = [
+  { key: "off", label: "Off" },
+  { key: "all", label: "On" },
+];
 
-function ModeSwitch({ mode, onChange, busy, title = "Race recap", texts = MODE_TEXT, labels = { off: "Off", admins: "Admins only", all: "Everyone" }, children = null }) {
+const RECAP_STEPS = [
+  { key: "off", label: "Off" },
+  { key: "admins", label: "Admins only" },
+  { key: "all", label: "Everyone" },
+];
+
+function ModeSwitch({ mode, onChange, busy, title = "Race recap", texts = MODE_TEXT, steps = RECAP_STEPS, children = null }) {
   return (
     <div className="card flex flex-wrap items-center justify-between gap-4 p-5">
       <div className="min-w-0">
@@ -41,11 +50,7 @@ function ModeSwitch({ mode, onChange, busy, title = "Race recap", texts = MODE_T
         {children}
       </div>
       <SlidingTabs
-        items={[
-          { key: "off", label: labels.off },
-          { key: "admins", label: labels.admins },
-          { key: "all", label: labels.all },
-        ]}
+        items={steps}
         value={mode || "off"}
         onChange={(m) => !busy && m !== mode && onChange(m)}
         wrapClassName="inline-flex rounded-xl border border-border bg-surface2/60 p-1"
@@ -117,7 +122,7 @@ export default function AdminRaceRecap() {
     setDone(null);
     try {
       await api.setSeasonReviewMode(mode);
-      setDone(mode === "all" ? "Each driver can now watch their own season Wrapped." : mode === "admins" ? "The season Wrapped is on for admins only." : "The season Wrapped is off.");
+      setDone(mode === "all" ? "The season Wrapped is on: everyone can watch their own." : "The season Wrapped is off.");
       reloadReview();
     } catch (e) {
       setError(e.message);
@@ -147,7 +152,7 @@ export default function AdminRaceRecap() {
     setDone(null);
     try {
       await api.setSeasonReviewUntil(until);
-      setDone(until ? `Drivers can watch their Wrapped until the end of ${new Date(`${until}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.` : "The season Wrapped has no end date.");
+      setDone(until ? `The Wrapped is open until the end of ${new Date(`${until}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.` : "The season Wrapped has no end date.");
       reloadReview();
     } catch (e) {
       setError(e.message);
@@ -171,12 +176,12 @@ export default function AdminRaceRecap() {
 
       <ModeSwitch mode={data.mode} busy={busy} onChange={setMode} />
       {review && (
-        <ModeSwitch mode={review.mode} busy={busy} onChange={setReviewMode} title="Season Wrapped" texts={REVIEW_TEXT} labels={REVIEW_LABELS}>
+        <ModeSwitch mode={review.mode} busy={busy} onChange={setReviewMode} title="Season Wrapped" texts={REVIEW_TEXT} steps={REVIEW_STEPS}>
           {/* How long drivers can watch it: to the end of this day, then the
               Home button and their own link go away (admins keep it). */}
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <label htmlFor="wrapped-until" className="font-medium text-dark">
-              Open for drivers until
+              Open until
             </label>
             <input id="wrapped-until" type="date" className="input w-auto py-1 text-sm" value={review.until || ""} disabled={busy} onChange={(e) => setReviewUntil(e.target.value || null)} />
             {review.until ? (
@@ -267,12 +272,6 @@ export default function AdminRaceRecap() {
             </a>
           ) : (
             <span className="btn-primary pointer-events-none opacity-50">Open preview</span>
-          )}
-          {/* That driver's season Wrapped, while it is not off. */}
-          {driverId && review && review.mode !== "off" && (
-            <a href={seriesPath(`/drivers/${encodeURIComponent(driverId)}/review`)} target="_blank" rel="noreferrer" className="btn-secondary">
-              Season Wrapped
-            </a>
           )}
         </div>
         {!rounds.length && <p className="text-xs text-light">No finished round in the season being edited yet.</p>}

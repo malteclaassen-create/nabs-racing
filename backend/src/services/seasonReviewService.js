@@ -40,9 +40,10 @@ import { readSeasonAwards } from "../lib/seasonAwards.js";
 import { taggedPhotos } from "../lib/racePhotoTags.js";
 
 export const REVIEW_SETTING = "season_review";
-export const REVIEW_MODES = ["off", "admins", "all"];
-// Admins first: the league looks at it on the live site before anyone else.
-export const DEFAULT_REVIEW_MODE = "admins";
+// Off or on, the same for everybody, admins included. ("admins", a former
+// step, reads as off.)
+export const REVIEW_MODES = ["off", "all"];
+export const DEFAULT_REVIEW_MODE = "off";
 
 // The fewest rounds a season needs before it has a story to tell.
 export const MIN_ROUNDS = 2;
@@ -88,8 +89,8 @@ export async function setReviewUntil(prisma, until) {
   return value;
 }
 
-// Whether drivers may watch their own Wrapped right now: switched on for
-// them ("all" is "each driver, their own") and not past the end date.
+// Whether the Wrapped is open right now: switched on and not past the end
+// date. Everybody then watches only their own.
 export async function membersMayWatch(prisma) {
   if ((await reviewMode(prisma)) !== "all") return false;
   const until = await reviewUntil(prisma);
@@ -134,17 +135,13 @@ export async function setReviewSeasons(prisma, ids) {
   return reviewSeasons(prisma);
 }
 
-// Is the Wrapped open to THIS request at all (for that season, when given)?
-// Only the chosen seasons have one, for everybody, admins included. Within
-// them: admins (checked live by the auth middleware) whenever it is not off;
-// members while they may watch, and then only their OWN (the routes check
-// whose it is).
+// Is the Wrapped open at all (for that season, when given)? One rule for
+// everybody, admins included: switched on, not past the end date, a ticked
+// season, and then only one's OWN (the routes check whose it is).
 export async function reviewVisibleTo(prisma, req, seasonId = null) {
-  const mode = await reviewMode(prisma);
-  if (mode === "off") return false;
+  if (!(await membersMayWatch(prisma))) return false;
   if (seasonId && !(await reviewSeasons(prisma)).ids.includes(seasonId)) return false;
-  if (req?.isAdminRequest === true) return true;
-  return membersMayWatch(prisma);
+  return true;
 }
 
 // --- the pure parts -------------------------------------------------------------

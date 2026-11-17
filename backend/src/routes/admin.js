@@ -1161,9 +1161,9 @@ router.get("/season-review", async (req, res, next) => {
   }
 });
 
-// PUT /api/admin/season-review { mode?: off | admins | all, until?: YYYY-MM-DD | null }
-// "all" is each driver their own Wrapped; `until` ends it for them after
-// that day (null: no end).
+// PUT /api/admin/season-review { mode?: off | all, until?: YYYY-MM-DD | null, seasonIds? }
+// "all" is on: everybody their own Wrapped; `until` ends it after that day
+// (null: no end).
 router.put("/season-review", async (req, res, next) => {
   try {
     const mode = req.body && "mode" in req.body ? await setReviewMode(prisma, req.body.mode) : await reviewMode(prisma);

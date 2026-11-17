@@ -85,7 +85,7 @@ export default function AdminWrappedViews() {
           </div>
         </div>
         <p className="mt-2 text-sm text-light">
-          Counted when a driver, signed in with Discord, opens their own Wrapped. You looking at someone else&rsquo;s does not count. &ldquo;To the end&rdquo; means they reached the last slide.
+          Counted when someone signed in with Discord opens their own Wrapped (nobody can open anyone else's). &ldquo;To the end&rdquo; means they reached the last slide.
         </p>
         {data && (
           <div className="mt-4 grid grid-cols-3 gap-3">

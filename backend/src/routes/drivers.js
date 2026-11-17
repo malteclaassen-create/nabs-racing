@@ -70,9 +70,8 @@ router.get("/:id/profile", optionalUser, async (req, res, next) => {
     // can offer the way there (services/seasonReviewService.js).
     try {
       const rounds = (profile.perRace || []).length;
-      // Never on someone else's public page: an admin sees the way there on
-      // every page, a member only on their own.
-      const open = rounds >= MIN_ROUNDS && (profile.stats?.starts || 0) > 0 && (await reviewVisibleTo(prisma, req, driver.seasonId)) && (req.isAdminRequest === true || (await viewerOwns(req, rowId)));
+      // Never on someone else's page: only on one's own.
+      const open = rounds >= MIN_ROUNDS && (profile.stats?.starts || 0) > 0 && (await reviewVisibleTo(prisma, req, driver.seasonId)) && (await viewerOwns(req, rowId));
       profile.seasonReview = open ? { complete: await isSeasonComplete(prisma, driver.seasonId) } : null;
     } catch {
       profile.seasonReview = null;
@@ -100,9 +99,9 @@ router.get("/:id/season-review", optionalUser, async (req, res, next) => {
     // Whether the person looking is the driver themselves: the story then
     // speaks to them ("you"), as a Wrapped does; anyone else reads the name.
     const own = await viewerOwns(req, rowId);
-    // A Wrapped is personal: anyone but its driver (and the admins) is told
-    // there is nothing here.
-    if (!own && req.isAdminRequest !== true) return res.status(404).json({ error: "Not available" });
+    // A Wrapped is personal: anyone but its driver, admins too, is told there
+    // is nothing here.
+    if (!own) return res.status(404).json({ error: "Not available" });
     // A member opening their own Wrapped is noted for the admin's
     // System > Wrapped view (lib/wrappedViews.js); a failure there never
     // stops the story.
