@@ -28,6 +28,38 @@ function fieldFigures(review, skip = new Set()) {
   return all.sort((a, b) => a.rank.rank / a.rank.of - b.rank.rank / b.rank.of).slice(0, 3);
 }
 
+// The quickest lap honour carries only the circuit; it reads "At Most,
+// 1:02.673" in the story.
+function honourDetail(h) {
+  if (h.key !== "fastest-lap" || !h.detail) return h.detail || null;
+  if (!(h.ms > 0)) return `At ${h.detail}`;
+  const m = Math.floor(h.ms / 60000);
+  const sec = ((h.ms % 60000) / 1000).toFixed(3).padStart(6, "0");
+  return `At ${h.detail}, ${m ? `${m}:${sec}` : sec}`;
+}
+
+// A race photo that fits a slide (review.photos, tagged by what is on them in
+// the backend's lib/racePhotoTags.js). Only a picture with the driver's own
+// team in it is ever chosen, so a slide never shows somebody else's car as
+// theirs. Best first: a "hero" shot over an "ok" one, the subject car over a
+// car in the background. Each photo is used once per story.
+export function pickPhoto(review, used, { rounds = null, kinds = null, pair = false } = {}) {
+  const team = review.driver?.team?.id;
+  if (!team || !Array.isArray(review.photos)) return null;
+  const fits = review.photos.filter(
+    (p) =>
+      !used.has(p.url) &&
+      (rounds == null || rounds.includes(p.round)) &&
+      (kinds == null || kinds.includes(p.kind)) &&
+      (pair ? p.pair === team : p.focus === team || p.pair === team || (p.teams || []).includes(team)),
+  );
+  if (!fits.length) return null;
+  const score = (p) => (p.quality === "hero" ? 4 : 0) + (p.focus === team ? 2 : 0) + (p.pair === team ? 1 : 0);
+  const best = [...fits].sort((a, b) => score(b) - score(a))[0];
+  used.add(best.url);
+  return { url: best.url, round: best.round, kind: best.kind, track: review.rounds?.find((x) => x.round === best.round)?.track || null };
+}
+
 // Every podium of the season, feature races and sprints, in round order.
 export function podiumsOf(rounds) {
   const out = [];
@@ -78,6 +110,10 @@ function mainMate(review) {
 }
 
 export function storySlides(review) {
+  const usedPhotos = new Set();
+  // A picture of both team cars is rare: it is kept for the team-mate slide
+  // before any other slide can take it.
+  const pairPhoto = mainMate(review) ? pickPhoto(review, usedPhotos, { pair: true }) : null;
   if (!review?.season || !review?.driver || !review?.stats) return [];
   const { season, driver, stats, championship: c } = review;
   const rounds = review.rounds || [];
@@ -117,12 +153,21 @@ export function storySlides(review) {
       title: review.best.track,
       sub: `Round ${review.best.round}`,
       line: bestLine(review.best),
+      // A shot of that race with the driver's own car in it.
+      photo: pickPhoto(review, usedPhotos, { rounds: [review.best.round], kinds: ["solo", "battle", "pack", "start", "podium"] }),
     });
   }
 
   const climb = review.climb;
   if (climb && climb.gained >= 3 && !(review.best && climb.raceId === review.best.raceId && climb.sprint === review.best.sprint)) {
-    slides.push({ key: "climb", eyebrow: "Biggest climb", value: `+${climb.gained}`, title: climb.track, line: climbLine(climb) });
+    slides.push({
+      key: "climb",
+      eyebrow: "Biggest climb",
+      value: `+${climb.gained}`,
+      title: climb.track,
+      line: climbLine(climb),
+      photo: pickPhoto(review, usedPhotos, { rounds: [climb.round], kinds: ["battle", "pack", "solo", "start"] }),
+    });
   }
 
   // No "quickest lap" slide: the quickest lap of a season is on the shortest
@@ -192,13 +237,19 @@ export function storySlides(review) {
       mate,
       lines: duelLines(mate),
       line: diff === 0 ? "Level on points." : `${leader} ${season.complete ? "finished" : "is"} ${plural(Math.abs(diff), "point")} ahead.`,
+      // Both cars of the team in one picture.
+      photo: pairPhoto,
     });
   }
 
   // How often the car touched another one, and the scenery, against the field.
   if (review.contact && review.contact.races >= 2 && review.contact.cars > 0) {
     const k = review.contact;
-    slides.push({ key: "hits", cars: k.cars, scenery: k.scenery || 0, perRace: k.perRace, fieldPerRace: k.fieldPerRace, races: k.races });
+    // A crash with the driver's car in it: from the race with the most contact
+    // if there is one, else from any race.
+    const worst = [...rounds].filter((r) => r.contacts > 0).sort((a, b) => b.contacts - a.contacts)[0];
+    const crash = (worst && pickPhoto(review, usedPhotos, { rounds: [worst.round], kinds: ["crash"] })) || pickPhoto(review, usedPhotos, { kinds: ["crash"] });
+    slides.push({ key: "hits", cars: k.cars, scenery: k.scenery || 0, perRace: k.perRace, fieldPerRace: k.fieldPerRace, races: k.races, photo: crash, worstRound: worst?.round ?? null });
   }
 
   if (review.contact && review.contact.races >= 2) {
@@ -215,7 +266,7 @@ export function storySlides(review) {
   if (review.limits && review.limits.races >= 2) slides.push({ key: "limits", ...review.limits });
 
   const honours = [
-    ...(review.honours || []).map((h) => ({ key: h.key, title: h.title, detail: h.detail || null })),
+    ...(review.honours || []).map((h) => ({ key: h.key, title: h.title, detail: honourDetail(h) })),
     ...(review.awards || []).map((a, i) => ({ key: `award-${i}`, title: a.title, detail: a.note || null })),
     ...(stats.dotd > 0 ? [{ key: "dotd", title: "Driver of the Day", detail: `${stats.dotd} time${stats.dotd === 1 ? "" : "s"}` }] : []),
   ];

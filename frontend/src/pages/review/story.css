@@ -361,3 +361,10 @@
   .st-layer { animation: none !important; }
 }
 .fx-lite .st-layer { animation: none !important; }
+
+/* A race photo drifts slowly closer while the slide is up. */
+@keyframes st-drift { from { transform: scale(1.02); } to { transform: scale(1.12); } }
+.st-photo img { animation: st-drift 9s ease-out both; }
+.st-photo { box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28); }
+@media (prefers-reduced-motion: reduce) { .st-photo img { animation: none; } }
+.fx-lite .st-photo img { animation: none; }

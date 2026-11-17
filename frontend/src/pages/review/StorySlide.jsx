@@ -210,7 +210,7 @@ function Board({ board, review, d = 0 }) {
               </div>
             )}
             <div
-              className="st-in flex items-center gap-2.5 rounded-md px-2 py-1.5"
+              className="st-in flex items-center gap-2.5 rounded-md px-2 py-2"
               style={{
                 "--d": `${d + k * 110}ms`,
                 ...(r.you ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" } : null),
@@ -219,8 +219,8 @@ function Board({ board, review, d = 0 }) {
               <span className="wr-big wr-num w-7 shrink-0 text-right text-[1.3rem] leading-none">{r.rank}</span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-[14px] font-extrabold uppercase leading-tight">{r.you ? "You" : r.name}</span>
-                  <span className="wr-num shrink-0 text-[14px] font-extrabold leading-tight">{fmt(r.value)}</span>
+                  <span className="truncate text-[15px] font-extrabold uppercase leading-tight">{r.you ? "You" : r.name}</span>
+                  <span className="wr-num shrink-0 text-[15px] font-extrabold leading-tight">{fmt(r.value)}</span>
                 </span>
                 <span
                   className="mt-1 block h-[5px] overflow-hidden rounded-full"
@@ -245,20 +245,6 @@ function Board({ board, review, d = 0 }) {
     </ol>
   );
 }
-
-// A round sticker in the team colour, set at a slant over the slide.
-const Stamp = ({ d = 0, className = "", children }) => (
-  <div
-    className={`st-land absolute flex h-[6.6rem] w-[6.6rem] items-center justify-center rounded-full text-center ${className}`}
-    style={{
-      "--d": `${d}ms`,
-      background: "var(--g-mark)",
-      color: "var(--g-mark-fg)",
-    }}
-  >
-    <span className="wr-big block rotate-[-12deg] px-2 text-[0.95rem] uppercase leading-[1.02]">{children}</span>
-  </div>
-);
 
 // --- the slides --------------------------------------------------------------------------
 
@@ -413,18 +399,9 @@ function Training({ slide, review }) {
       <Line d={1000} size="min(5.4cqi, 3cqh)">
         Over <Mark>{plural(slide.weeks, "race week")}</Mark>.
       </Line>
+      {(first || topShare(slide.rank) <= 25) && <RankLine rank={slide.rank} what="training laps" d={1200} />}
       <Aside>
       <div className="relative mt-auto">
-        {!first && topShare(slide.rank) <= 25 && (
-          <Stamp d={1500} className="-top-24 right-0">
-            Top {topShare(slide.rank)}% of the league
-          </Stamp>
-        )}
-        {first && (
-          <Stamp d={1500} className="-top-24 right-0">
-            {slide.rank.shared ? "Joint most" : "Most"} in the league
-          </Stamp>
-        )}
         {slide.board?.rows?.length > 1 ? (
           <>
             <Kicker d={1200} className="mb-2 lv-mute">
@@ -447,6 +424,7 @@ function Tyres({ slide, review }) {
   const [top] = slide.tyres;
   const name = tyreCompound(top.tyre).name;
   const shown = slide.tyres.slice(0, 4);
+  const wide = useContext(Wide);
   return (
     <Card>
       <Kicker d={100}>{v.You} spent most race laps on</Kicker>
@@ -456,10 +434,10 @@ function Tyres({ slide, review }) {
         of them, <Mark>{plural(top.laps, "lap")}</Mark>.
       </Line>
       <Aside>
-      <div className="mt-auto flex items-end justify-between gap-2">
+      <div className={`flex justify-between gap-2 ${wide ? "mt-auto items-end" : "flex-1 items-center pt-6"}`}>
         {shown.map((t, k) => {
           const c = tyreCompound(t.tyre);
-          const size = `${(3.4 + (t.share / 100) * 5.2).toFixed(2)}rem`;
+          const size = `${((3.4 + (t.share / 100) * 5.2) * (wide ? 1.7 : 1.25)).toFixed(2)}rem`;
           return (
             <div key={t.tyre} className="st-land flex min-w-0 flex-col items-center" style={{ "--d": `${1200 + k * 160}ms` }}>
               <svg viewBox="0 0 100 100" style={{ width: size, height: size }} aria-hidden="true">
@@ -564,11 +542,11 @@ function Top({ slide, review }) {
               <span className="wr-big wr-num w-9 shrink-0 text-center leading-none" style={{ fontSize: "min(11cqi, 5.4cqh)", ...(k === 0 ? { color: "var(--g-mark)" } : null) }}>
                 {k + 1}
               </span>
-              <span className="wr-cover shrink-0 rounded-lg" style={{ width: "min(14cqi, 7cqh)", ...(k === 0 ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" } : null) }}>
-                <Outline track={t.track} className="h-[72%] w-[72%]" d={650 + k * 150} width={7} />
+              <span className="wr-cover shrink-0 rounded-lg" style={{ width: "min(15cqi, 7.6cqh)", ...(k === 0 ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" } : null) }}>
+                <Outline track={t.track} className="h-[84%] w-[84%]" d={650 + k * 150} width={3.6} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="wr-big block truncate uppercase leading-none" style={{ fontSize: "min(6.6cqi, 3.3cqh)" }}>
+                <span className="wr-big block truncate uppercase leading-none" style={{ fontSize: "min(5.2cqi, 2.9cqh)" }}>
                   {t.track}
                 </span>
                 <span className="mt-1.5 block truncate text-[13px] font-bold lv-mute" style={{ fontFamily: "Inter, sans-serif" }}>
@@ -584,6 +562,20 @@ function Top({ slide, review }) {
         </ol>
       </Aside>
     </Card>
+  );
+}
+
+// A race photo on a slide: framed, drifting slowly closer, with the round
+// it is from in the corner.
+function Photo({ photo, d = 300, className = "", style }) {
+  return (
+    <figure className={`st-land st-photo relative overflow-hidden rounded-2xl ${className}`} style={{ "--d": `${d}ms`, ...style }}>
+      <img src={photo.url} alt="" className="h-full w-full object-cover" draggable="false" />
+      <figcaption className="absolute bottom-2.5 left-2.5 rounded-md px-2 py-1 text-[11px] font-bold leading-none text-white" style={{ background: "rgba(0,0,0,0.62)", fontFamily: "Inter, sans-serif" }}>
+        Round {photo.round}
+        {photo.track ? ` · ${photo.track}` : ""}
+      </figcaption>
+    </figure>
   );
 }
 
@@ -608,20 +600,30 @@ function Circuit3D({ track, d = 200, className = "" }) {
   );
 }
 
-function Best({ review }) {
+function Best({ slide, review }) {
   const v = voiceOf(review);
   const b = review.best;
   const wide = useContext(Wide);
-  const picture = b.heroImageUrl ? <img src={b.heroImageUrl} alt="" className="h-full w-full rounded-xl object-cover" /> : <Circuit3D track={b.track} d={250} className="h-full w-full" />;
+  const picture = slide.photo ? (
+    <Photo photo={slide.photo} d={250} className="h-full w-full" />
+  ) : b.heroImageUrl ? (
+    <img src={b.heroImageUrl} alt="" className="h-full w-full rounded-xl object-cover" />
+  ) : (
+    <Circuit3D track={b.track} d={250} className="h-full w-full" />
+  );
   return (
     <Card>
       <Kicker d={100}>{v.Your} best race</Kicker>
       <Echo value={`P${b.position}`} d={600} size="min(48cqi, 24cqh)" />
       {wide ? (
         <Aside>
-          <div className="st-fill st-3d relative min-h-0 flex-1">
-            <div className="absolute inset-0">{picture}</div>
-          </div>
+          {slide.photo ? (
+            <Photo photo={slide.photo} d={250} className="aspect-video w-full" />
+          ) : (
+            <div className="st-fill st-3d relative min-h-0 flex-1">
+              <div className="absolute inset-0">{picture}</div>
+            </div>
+          )}
         </Aside>
       ) : (
         <div className="relative -mx-2 min-h-[8rem] flex-1">
@@ -642,7 +644,7 @@ function Best({ review }) {
   );
 }
 
-function Climb({ review }) {
+function Climb({ slide, review }) {
   const v = voiceOf(review);
   const c = review.climb;
   const wide = useContext(Wide);
@@ -665,18 +667,22 @@ function Climb({ review }) {
           </Line>
           <div className="mt-6">{fromTo}</div>
           <Aside>
-            <div className="st-fill st-3d relative min-h-0 flex-1">
-              <div className="absolute inset-0">
-                <Circuit3D track={c.track} d={500} className="h-full w-full" />
+            {slide.photo ? (
+              <Photo photo={slide.photo} d={500} className="aspect-video w-full" />
+            ) : (
+              <div className="st-fill st-3d relative min-h-0 flex-1">
+                <div className="absolute inset-0">
+                  <Circuit3D track={c.track} d={500} className="h-full w-full" />
+                </div>
               </div>
-            </div>
+            )}
           </Aside>
         </>
       ) : (
         <>
           <div className="relative -mx-2 mt-2 min-h-[7rem] flex-1">
             <div className="absolute inset-0">
-              <Circuit3D track={c.track} d={500} className="h-full w-full" />
+              {slide.photo ? <Photo photo={slide.photo} d={500} className="h-full w-full" /> : <Circuit3D track={c.track} d={500} className="h-full w-full" />}
             </div>
           </div>
           {fromTo}
@@ -824,8 +830,10 @@ function Journey({ slide, review }) {
   const rounds = review.rounds.map((r) => r.round);
   const worst = Math.max(...pts.map((p) => p.position));
   const bottom = Math.max(5, Math.ceil(worst / 5) * 5);
+  const wide = useContext(Wide);
   const W = 360;
-  const H = 190;
+  // Taller on a phone, where the chart has the lower half of the frame.
+  const H = wide ? 190 : 280;
   const PAD = { l: 8, r: 14, t: 14, b: 22 };
   const first = rounds[0] ?? 1;
   const lastR = rounds[rounds.length - 1] ?? first + 1;
@@ -860,6 +868,7 @@ function Team({ slide, review }) {
   const v = voiceOf(review);
   const { mate, lines } = slide;
   const [head, ...rest] = lines;
+  const wide = useContext(Wide);
   return (
     <Card>
       <Fill text="You" d={100} />
@@ -881,12 +890,19 @@ function Team({ slide, review }) {
           </Line>
         </div>
       )}
+      {slide.photo && (
+        <Aside>
+          <div className={wide ? "mb-6" : "relative my-4 min-h-[8rem] flex-1"}>
+            {wide ? <Photo photo={slide.photo} d={1100} className="aspect-video w-full" /> : <div className="absolute inset-0"><Photo photo={slide.photo} d={1100} className="h-full w-full" /></div>}
+          </div>
+        </Aside>
+      )}
       <Aside>
-      <div className="mt-auto space-y-2.5">
+      <div className={`space-y-2.5 ${slide.photo && !wide ? "" : "mt-auto"}`}>
         {rest.map((l, k) => (
           <div key={l.key} className="st-in flex items-baseline justify-between gap-3 border-t border-[color:var(--g-faint)] pt-2" style={{ "--d": `${1300 + k * 220}ms` }}>
-            <span className="text-[15px] font-extrabold">{l.label}</span>
-            <span className="wr-big wr-num text-[1.8rem]">
+            <span className={`${wide ? "text-[19px]" : "text-[15px]"} font-extrabold`}>{l.label}</span>
+            <span className={`wr-big wr-num ${wide ? "text-[2.6rem]" : "text-[1.8rem]"}`}>
               {l.me}-{l.them}
             </span>
           </div>
@@ -952,13 +968,25 @@ function Contact({ review }) {
 function Honours({ slide, review }) {
   const v = voiceOf(review);
   const wide = useContext(Wide);
+  // One or two titles are set as poster lines. More than that and every
+  // title gets the same size, so a long one is not tiny next to a short one.
+  const many = slide.honours.length > 2;
   const titles = (
-    <div className="space-y-3">
+    <div className={many ? "space-y-2.5" : "space-y-3"}>
       {slide.honours.map((h, k) => (
         <div key={h.key}>
-          <Fill text={h.title} d={900 + k * 250} outline={k % 2 === 1} maxHeight={200} />
+          {many ? (
+            <div
+              className="st-in wr-big uppercase leading-[0.95]"
+              style={{ "--d": `${900 + k * 180}ms`, fontSize: "min(6.6cqi, 3.9cqh)", ...(k % 2 === 1 ? { color: "transparent", WebkitTextStroke: "1.5px var(--g-fg)" } : null) }}
+            >
+              {h.title}
+            </div>
+          ) : (
+            <Fill text={h.title} d={900 + k * 250} outline={k % 2 === 1} maxHeight={200} />
+          )}
           {h.detail && (
-            <Kicker d={1000 + k * 250} className="mt-1 lv-mute normal-case tracking-normal">
+            <Kicker d={1000 + k * (many ? 180 : 250)} className="mt-1 lv-mute normal-case tracking-normal">
               {h.detail}
             </Kicker>
           )}
@@ -1042,7 +1070,7 @@ function Final({ slide, review, onReplay }) {
       >
         <div className="flex items-center gap-3">
           <div className="wr-cover w-[40%] shrink-0" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
-            {review.best ? <Outline track={review.best.track} className="h-[74%] w-[74%]" d={400} width={6} /> : null}
+            {review.best ? <Outline track={review.best.track} className="h-[80%] w-[80%]" d={400} width={3.4} /> : null}
           </div>
           <div className="min-w-0">
             <div className="text-[12px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
@@ -1159,6 +1187,7 @@ function Quiz({ slide, review, onNext }) {
   const timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
   const answer = slide.answer;
+  const wide = useContext(Wide);
   const choose = (t) => {
     if (pick) return;
     setPick(t);
@@ -1170,7 +1199,7 @@ function Quiz({ slide, review, onNext }) {
       <Fill text="Guess your" d={250} />
       <Fill text="best race" d={400} outline />
       <Aside>
-      <div data-st-keep className="mt-auto space-y-2.5">
+      <div data-st-keep className={wide ? "space-y-3" : "mt-6 flex flex-1 flex-col justify-center gap-3"}>
         {slide.options.map((t, k) => {
           const right = pick && t === answer;
           const wrong = pick === t && t !== answer;
@@ -1179,16 +1208,16 @@ function Quiz({ slide, review, onNext }) {
               <button
                 type="button"
                 onClick={() => choose(t)}
-                className="flex w-full items-center gap-3 rounded-2xl py-2 pl-2 pr-5 text-left transition-[background,color,opacity] duration-300"
+                className="flex w-full items-center gap-4 rounded-2xl py-2 pl-2 pr-5 text-left transition-[background,color,opacity] duration-300"
                 style={{
                   ...(right ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" } : { boxShadow: "inset 0 0 0 2px var(--g-fg)" }),
                   ...(pick && !right ? { opacity: wrong ? 0.6 : 0.25 } : null),
                 }}
               >
-                <span className="wr-cover w-12 shrink-0 rounded-xl" style={right ? { background: "var(--g-mark-fg)", color: "var(--g-mark)" } : undefined}>
-                  <Outline track={t} className="h-[74%] w-[74%]" draw={false} width={7} />
+                <span className="wr-cover w-16 shrink-0 rounded-xl" style={right ? { background: "var(--g-mark-fg)", color: "var(--g-mark)" } : undefined}>
+                  <Outline track={t} className="h-[84%] w-[84%]" draw={false} width={3.8} />
                 </span>
-                <span className={`wr-big min-w-0 flex-1 truncate text-[1.25rem] uppercase ${wrong ? "line-through decoration-[3px]" : ""}`}>{t}</span>
+                <span className={`wr-big min-w-0 flex-1 truncate text-[1.45rem] uppercase ${wrong ? "line-through decoration-[3px]" : ""}`}>{t}</span>
                 {pick && (right || wrong) && <span className="wr-big shrink-0 text-[1.1rem]">{right ? "P" + slide.position : "X"}</span>}
               </button>
             </div>
@@ -1337,6 +1366,7 @@ function Led({ slide }) {
 
 // Contact with other cars and with the scenery, against the field.
 function Hits({ slide, review }) {
+  const wide = useContext(Wide);
   const one = (n) => (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, "");
   const rows = [
     { k: "me", label: "You", value: slide.perRace, you: true },
@@ -1354,8 +1384,15 @@ function Hits({ slide, review }) {
           And the scenery <Mark>{times(slide.scenery)}</Mark>.
         </Line>
       )}
+      {slide.photo && (
+        <Aside>
+          <div className={wide ? "mb-6" : "relative my-4 min-h-[8rem] flex-1"}>
+            {wide ? <Photo photo={slide.photo} d={1200} className="aspect-video w-full" /> : <div className="absolute inset-0"><Photo photo={slide.photo} d={1200} className="h-full w-full" /></div>}
+          </div>
+        </Aside>
+      )}
       <Aside>
-        <div className="mt-auto space-y-3">
+        <div className={`space-y-3 ${slide.photo && !wide ? "" : "mt-auto"}`}>
           <Kicker d={1400} className="lv-mute">
             Car contact a race
           </Kicker>

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { storySlides, summaryGrid, podiumsOf, topResults, quizOptions } from "./storySlides.mjs";
+import { storySlides, summaryGrid, podiumsOf, topResults, quizOptions, pickPhoto } from "./storySlides.mjs";
 
 const review = (over = {}) => ({
   season: { label: "Season 7", complete: true, roundsRun: 10, totalRounds: 10 },
@@ -105,4 +105,20 @@ test("the best-race question has the answer among other circuits finished on, an
   assert.ok(q.includes("Jeddah"));
   assert.deepEqual([...q].sort(), ["Jeddah", "Mugello", "Spa"]);
   assert.equal(quizOptions(review({ rounds: [{ round: 6, track: "Jeddah", status: "FINISHED", position: 1 }, { round: 7, track: "Spa", status: "FINISHED", position: 9 }] })), null);
+});
+
+test("a photo is only picked with the driver's own team in it, and only once", () => {
+  const photos = [
+    { url: "a", round: 1, kind: "solo", teams: ["ferrari"], focus: "ferrari", pair: null, quality: "hero" },
+    { url: "b", round: 1, kind: "solo", teams: ["renault"], focus: "renault", pair: null, quality: "ok" },
+    { url: "c", round: 2, kind: "crash", teams: ["renault", "audi"], focus: null, pair: null, quality: "hero" },
+    { url: "d", round: 3, kind: "battle", teams: ["renault"], focus: null, pair: "renault", quality: "hero" },
+  ];
+  const r = { driver: { team: { id: "renault" } }, photos, rounds: [{ round: 1, track: "Hockenheim" }] };
+  const used = new Set();
+  assert.equal(pickPhoto(r, used, { rounds: [1] }).url, "b");
+  assert.equal(pickPhoto(r, used, { rounds: [1] }), null);
+  assert.equal(pickPhoto(r, used, { kinds: ["crash"] }).url, "c");
+  assert.equal(pickPhoto(r, used, { pair: true }).url, "d");
+  assert.equal(pickPhoto({ ...r, driver: { team: { id: "williams" } } }, new Set(), {}), null);
 });

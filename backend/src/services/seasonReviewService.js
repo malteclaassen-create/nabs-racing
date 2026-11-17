@@ -37,6 +37,7 @@ import { readPoleHolders, readManualFastestLaps } from "../lib/raceHonours.js";
 import { telemetryBySeason } from "../lib/telemetryRead.js";
 import { readRaceHeroes } from "../lib/raceHero.js";
 import { readSeasonAwards } from "../lib/seasonAwards.js";
+import { taggedPhotos } from "../lib/racePhotoTags.js";
 
 export const REVIEW_SETTING = "season_review";
 export const REVIEW_MODES = ["off", "admins", "all"];
@@ -685,11 +686,14 @@ async function buildSeasonReview(prisma, driverId) {
     names: new Map(rows.map((r) => [r.driverId, r.name])),
   }).catch(() => null);
 
-  const [honours, awards, heroes, starters] = await Promise.all([
+  const [honours, awards, heroes, starters, photos] = await Promise.all([
     facts.complete ? getSeasonHonours(prisma, row.seasonId).catch(() => null) : null,
     readSeasonAwards(prisma, [row.seasonId]).catch(() => new Map()),
     readRaceHeroes(prisma, [best?.raceId, climb?.raceId].filter(Boolean)).catch(() => new Map()),
     startersOf(prisma, [best, climb].filter(Boolean).map((c) => (c.sprint ? c.raceId : featureOf(c.raceId) || c.raceId))).catch(() => new Map()),
+    // The race photos that say what is on them (lib/racePhotoTags.js), for the
+    // story to put next to the slide they fit.
+    taggedPhotos(prisma, rounds.filter((r) => r.raceId).map((r) => ({ raceId: r.raceId, round: r.round }))).catch(() => []),
   ]);
   const fieldOf = (c) => starters.get(c.sprint ? c.raceId : featureOf(c.raceId) || c.raceId) ?? null;
   // A climb from a grid slot behind the field (a placeholder slot, a pit
@@ -784,5 +788,6 @@ async function buildSeasonReview(prisma, driverId) {
     contact,
     honours: honoursFor(honours, { driverId, teamId: team?.id || null, position, complete: facts.complete }),
     awards: myAwards,
+    photos,
   };
 }

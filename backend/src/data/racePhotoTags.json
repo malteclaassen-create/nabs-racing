@@ -1,0 +1,1453 @@
+[
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv360xz6xmg.jpg",
+  "round": 1,
+  "kind": "pack",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Five cars through hairpin, two Renaults midfield"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv360k2lttq.jpg",
+  "round": 1,
+  "kind": "battle",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": "renault_s8",
+  "focus": "renault_s8",
+  "quality": "hero",
+  "note": "Two Renaults nose to tail, front view"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv3606cwnsn.jpg",
+  "round": 1,
+  "kind": "solo",
+  "teams": [
+   "mclaren_s8"
+  ],
+  "pair": null,
+  "focus": "mclaren_s8",
+  "quality": "hero",
+  "note": "McLaren Vodafone close-up, cars blurred behind"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv3619buqul.jpg",
+  "round": 1,
+  "kind": "battle",
+  "teams": [
+   "s6_force_india_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Gold car and Force India, blurred car foreground"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv35y29jmd6.jpg",
+  "round": 1,
+  "kind": "pack",
+  "teams": [
+   "s6_brawn_gp_s8",
+   "lotus_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Brawn in pack, blurred Red Bull-logo car foreground"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv360qij2x1.jpg",
+  "round": 1,
+  "kind": "battle",
+  "teams": [
+   "s6_mercedes_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Pink-white Santander car ahead of Mercedes at grandstand"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv3607w05jm.jpg",
+  "round": 1,
+  "kind": "solo",
+  "teams": [
+   "s3_arrows_s8"
+  ],
+  "pair": null,
+  "focus": "s3_arrows_s8",
+  "quality": "ok",
+  "note": "Arrows from behind, arrows rear wing"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv360ytpb0v.jpg",
+  "round": 1,
+  "kind": "pack",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Green HAAS-wing car, red-white cars behind, low angle"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv3605fj38k.jpg",
+  "round": 1,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Motion-blurred red car, unidentifiable"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv3606kdtra.jpg",
+  "round": 1,
+  "kind": "battle",
+  "teams": [
+   "redbull_s8",
+   "ncb_mugen_s8",
+   "lotus_s8"
+  ],
+  "pair": null,
+  "focus": "redbull_s8",
+  "quality": "hero",
+  "note": "Red Bull wheel to wheel with NCB and NAZA Lotus"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv360xu526i.jpg",
+  "round": 1,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Low-angle teal car far away, mostly sky"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv361u7huwh.jpg",
+  "round": 1,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Pink touring car, not F1"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv361oo55vd.jpg",
+  "round": 1,
+  "kind": "solo",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": "renault_s8",
+  "quality": "hero",
+  "note": "Renault Snoras close-up, low angle"
+ },
+ {
+  "file": "cmraupkwl0003hzj1s4yffvfl-msnkv361np7tj9.jpg",
+  "round": 1,
+  "kind": "pack",
+  "teams": [
+   "williams_s8",
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Distant pack on straight, empty asphalt foreground"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l531g28qc.jpg",
+  "round": 2,
+  "kind": "start",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Tilted grid view, cars lined up, touring car front"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l55y6zvbv.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": "renault_s8",
+  "quality": "hero",
+  "note": "Renault Total, low dramatic angle"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l555gdhf5.jpg",
+  "round": 2,
+  "kind": "battle",
+  "teams": [
+   "s6_brawn_gp_s8"
+  ],
+  "pair": "s6_brawn_gp_s8",
+  "focus": "s6_brawn_gp_s8",
+  "quality": "hero",
+  "note": "Two Brawns side by side, tight close-up"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l55579r4l.jpg",
+  "round": 2,
+  "kind": "battle",
+  "teams": [
+   "s6_brawn_gp_s8"
+  ],
+  "pair": "s6_brawn_gp_s8",
+  "focus": "s6_brawn_gp_s8",
+  "quality": "hero",
+  "note": "Brawn team-mates running together"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l55vjgspy.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": "renault_s8",
+  "quality": "ok",
+  "note": "Renault leads train through corner, marshal foreground"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l55g0gqkr.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": "renault_s8",
+  "quality": "weak",
+  "note": "Renault in deep shadow, dark"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l55jv4jqq.jpg",
+  "round": 2,
+  "kind": "crash",
+  "teams": [
+   "ferrari_s8",
+   "skoda_s8"
+  ],
+  "pair": null,
+  "focus": "ferrari_s8",
+  "quality": "hero",
+  "note": "Ferrari sideways in tyre smoke beside SKODA"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l553xjav9.jpg",
+  "round": 2,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Sunset under I love NY bridge, cars tiny"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l555h2ist.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "axn-rb_s8"
+  ],
+  "pair": null,
+  "focus": "axn-rb_s8",
+  "quality": "weak",
+  "note": "AXN gold car half hidden behind foreground wheel"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l55hp24gh.jpg",
+  "round": 2,
+  "kind": "crash",
+  "teams": [
+   "s3_arrows_s8",
+   "williams_s8"
+  ],
+  "pair": null,
+  "focus": "s3_arrows_s8",
+  "quality": "hero",
+  "note": "Arrows flips upside down above pack, Williams nearby"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l55efukbq.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "usf1_s8"
+  ],
+  "pair": null,
+  "focus": "usf1_s8",
+  "quality": "hero",
+  "note": "USF1 rear three-quarter, cars blurred ahead"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l56uftoy8.jpg",
+  "round": 2,
+  "kind": "crash",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": "renault_s8",
+  "quality": "hero",
+  "note": "Renault spinning in smoke, wrecked car behind"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l56psg3jm.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "s6_brawn_gp_s8"
+  ],
+  "pair": null,
+  "focus": "s6_brawn_gp_s8",
+  "quality": "ok",
+  "note": "Brawn in low sun, warm haze"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l56c5mfj4.jpg",
+  "round": 2,
+  "kind": "crash",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Car spins in smoke behind black car"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l56r6csbb.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "s6_force_india_s8"
+  ],
+  "pair": null,
+  "focus": "s6_force_india_s8",
+  "quality": "hero",
+  "note": "Force India along wall, tilted angle"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l56jtqhpj.jpg",
+  "round": 2,
+  "kind": "pack",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Black car and teal car, pack ahead"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57u4h0xc.jpg",
+  "round": 2,
+  "kind": "battle",
+  "teams": [
+   "s6_brawn_gp_s8",
+   "mclaren_s8"
+  ],
+  "pair": "s6_brawn_gp_s8",
+  "focus": null,
+  "quality": "hero",
+  "note": "Two Brawns and McLaren three wide"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l576xqpc6.jpg",
+  "round": 2,
+  "kind": "pack",
+  "teams": [
+   "mclaren_s8",
+   "s6_brawn_gp_s8",
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Pack bunched in corner: McLaren, Brawn, Renault"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57a3abya.jpg",
+  "round": 2,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Track logo, blurred red car"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57vekoq4.jpg",
+  "round": 2,
+  "kind": "battle",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Blurred red car chasing Red Bull-logo car"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57uxlyg4.jpg",
+  "round": 2,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Sunset silhouette, tiny car"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l573tl2jb.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "lotus_s8"
+  ],
+  "pair": null,
+  "focus": "lotus_s8",
+  "quality": "hero",
+  "note": "Lotus NAZA front view through corner"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57rnh0ba.jpg",
+  "round": 2,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Pink touring car, not F1"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57y6qw93.jpg",
+  "round": 2,
+  "kind": "battle",
+  "teams": [
+   "axn-rb_s8"
+  ],
+  "pair": null,
+  "focus": "axn-rb_s8",
+  "quality": "ok",
+  "note": "AXN gold car chasing red car"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57rcmv9e.jpg",
+  "round": 2,
+  "kind": "battle",
+  "teams": [
+   "williams_s8"
+  ],
+  "pair": "williams_s8",
+  "focus": "williams_s8",
+  "quality": "hero",
+  "note": "Two Williams Philips cars nose to tail"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57uonl38.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "williams_s8"
+  ],
+  "pair": null,
+  "focus": "williams_s8",
+  "quality": "ok",
+  "note": "Williams Philips along blue barrier"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57yr0atk.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "s6_force_india_s8"
+  ],
+  "pair": null,
+  "focus": "s6_force_india_s8",
+  "quality": "hero",
+  "note": "Force India front three-quarter, sharp"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l574gtrbo.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "ferrari_s8"
+  ],
+  "pair": null,
+  "focus": "ferrari_s8",
+  "quality": "hero",
+  "note": "Ferrari through corner, warm light"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l57zlibmp.jpg",
+  "round": 2,
+  "kind": "pack",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Four cars, heavy motion blur"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l573bdrwg.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Backlit dark Red Bull-logo car, low angle"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l58cznaik.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Distant car, blurred foreground"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l58j4yb7r.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "ncb_mugen_s8"
+  ],
+  "pair": null,
+  "focus": "ncb_mugen_s8",
+  "quality": "hero",
+  "note": "NCB Mugen teal, sharp along wall"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l58547v2c.jpg",
+  "round": 2,
+  "kind": "solo",
+  "teams": [
+   "s3_virgin_s8"
+  ],
+  "pair": null,
+  "focus": "s3_virgin_s8",
+  "quality": "hero",
+  "note": "Virgin front view, Virgin rear wing"
+ },
+ {
+  "file": "cms7qsmnn0001drezbs5i1jvi-msz72l58e4kmr2.jpg",
+  "round": 2,
+  "kind": "battle",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "White car by barrier, blurred car foreground"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnw801bjbu.jpg",
+  "round": 3,
+  "kind": "start",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Race start, field funnels into turn one"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwal8tdma.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "mclaren_s8"
+  ],
+  "pair": null,
+  "focus": "mclaren_s8",
+  "quality": "ok",
+  "note": "McLaren against sunset hills"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwakorz2c.jpg",
+  "round": 3,
+  "kind": "pack",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Overhead pack through corner, Renaults inside"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwafbhhsy.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "mclaren_s8"
+  ],
+  "pair": null,
+  "focus": "mclaren_s8",
+  "quality": "hero",
+  "note": "McLaren Vodafone side profile"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwak5rlym.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": "renault_s8",
+  "quality": "weak",
+  "note": "Renault in near darkness"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwaqp2tib.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": "renault_s8",
+  "quality": "hero",
+  "note": "Renault Snoras panning shot"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwah5nqpg.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": "renault_s8",
+  "quality": "hero",
+  "note": "Renault Snoras side view, motion blur"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwanmemc5.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Overhead white car along Qatar wall"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwag6nkmb.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "williams_s8"
+  ],
+  "pair": null,
+  "focus": "williams_s8",
+  "quality": "ok",
+  "note": "Williams Philips framed by dark foreground"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwaq9darc.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "White car on straight, grass blur"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwatsstyp.jpg",
+  "round": 3,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Onboard view looking up, unclear"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwa3nssjn.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "lotus_s8"
+  ],
+  "pair": null,
+  "focus": "lotus_s8",
+  "quality": "ok",
+  "note": "Lotus NAZA front view, heavy blue grading"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwatm109j.jpg",
+  "round": 3,
+  "kind": "battle",
+  "teams": [
+   "ferrari_s8"
+  ],
+  "pair": null,
+  "focus": "ferrari_s8",
+  "quality": "hero",
+  "note": "Ferrari foreground, Red Bull-logo car above"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwb5h65zw.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Dark car on runoff, washed-out sky"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwb95u32l.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "williams_s8"
+  ],
+  "pair": null,
+  "focus": "williams_s8",
+  "quality": "ok",
+  "note": "Williams through bokeh, Qatar wall"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwb5w0m67.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "s6_brawn_gp_s8"
+  ],
+  "pair": null,
+  "focus": "s6_brawn_gp_s8",
+  "quality": "hero",
+  "note": "Brawn front three-quarter, crowd behind"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwbt46rao.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "s6_brawn_gp_s8"
+  ],
+  "pair": null,
+  "focus": "s6_brawn_gp_s8",
+  "quality": "hero",
+  "note": "Brawn Canon side profile"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwbj2meqc.jpg",
+  "round": 3,
+  "kind": "battle",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Tilted overhead blur, two cars"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwbdhyxrw.jpg",
+  "round": 3,
+  "kind": "battle",
+  "teams": [
+   "mclaren_s8",
+   "williams_s8"
+  ],
+  "pair": null,
+  "focus": "mclaren_s8",
+  "quality": "hero",
+  "note": "McLaren leads Williams past Qatar wall"
+ },
+ {
+  "file": "cms7qt51i0003drezvzb91vxe-mt6tbnwbu7abxg.jpg",
+  "round": 3,
+  "kind": "solo",
+  "teams": [
+   "s6_brawn_gp_s8"
+  ],
+  "pair": null,
+  "focus": "s6_brawn_gp_s8",
+  "quality": "ok",
+  "note": "Brawn low angle, wheel close-up"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1oqaz1e91.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "ncb_mugen_s8"
+  ],
+  "pair": null,
+  "focus": "ncb_mugen_s8",
+  "quality": "hero",
+  "note": "NCB Mugen teal through corner"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orlsv1qh.jpg",
+  "round": 4,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Sunset blur, car barely visible"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orq4mc7s.jpg",
+  "round": 4,
+  "kind": "pack",
+  "teams": [
+   "s3_arrows_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Cars silhouetted in dust at sunset, Arrows wing"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orec1vl0.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Blurred white-red car, motion streaks"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orhx3wwg.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": "renault_s8",
+  "quality": "ok",
+  "note": "Renault past grandstand, wide shot"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1or9w0nvh.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "usf1_s8",
+   "s6_brawn_gp_s8"
+  ],
+  "pair": null,
+  "focus": "usf1_s8",
+  "quality": "ok",
+  "note": "USF1 from behind chasing Brawn"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orj9cf0r.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "usf1_s8"
+  ],
+  "pair": null,
+  "focus": "usf1_s8",
+  "quality": "hero",
+  "note": "USF1 front close-up"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1or1il152.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "s6_force_india_s8"
+  ],
+  "pair": null,
+  "focus": "s6_force_india_s8",
+  "quality": "ok",
+  "note": "Force India panning past grandstand"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orb0ll2w.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "s6_audi_s8"
+  ],
+  "pair": null,
+  "focus": "s6_audi_s8",
+  "quality": "hero",
+  "note": "Audi from behind, Bosch rear wing"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1or41b89x.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Black car leads pack out of corner"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1or3rp17f.jpg",
+  "round": 4,
+  "kind": "pack",
+  "teams": [
+   "s3_arrows_s8",
+   "s6_brawn_gp_s8",
+   "s6_force_india_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Long train of cars from behind"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orkcujxy.jpg",
+  "round": 4,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Mercedes SLS GT car, not F1"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orlgsc7w.jpg",
+  "round": 4,
+  "kind": "pack",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "White car leads, two orange cars behind"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orwvsfjz.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "s6_mercedes_s8"
+  ],
+  "pair": null,
+  "focus": "s6_mercedes_s8",
+  "quality": "hero",
+  "note": "Mercedes Petronas silver, panning blur"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orh1vkbs.jpg",
+  "round": 4,
+  "kind": "battle",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Green HAAS-wing car ahead, blurred car foreground"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1or72gxhr.jpg",
+  "round": 4,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Autodrom Most sign, cars tiny"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orrzblxx.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "s6_brawn_gp_s8"
+  ],
+  "pair": null,
+  "focus": "s6_brawn_gp_s8",
+  "quality": "hero",
+  "note": "Brawn front close-up through corner"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1oriq9hvn.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Orange car front view, cars behind"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orxkx7g9.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "ferrari_s8"
+  ],
+  "pair": null,
+  "focus": "ferrari_s8",
+  "quality": "ok",
+  "note": "Ferrari under arch, side view"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1ornf7aak.jpg",
+  "round": 4,
+  "kind": "battle",
+  "teams": [
+   "s6_force_india_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Force India and black car chase cream car"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1orze2dog.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "redbull_s8"
+  ],
+  "pair": null,
+  "focus": "redbull_s8",
+  "quality": "ok",
+  "note": "Red Bull front view, low sun"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1oszhnkpk.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [
+   "lotus_s8"
+  ],
+  "pair": null,
+  "focus": "lotus_s8",
+  "quality": "ok",
+  "note": "Lotus front view, motion blur"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1osg4s8ua.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "White-red car in sunset haze"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1os0xfwsf.jpg",
+  "round": 4,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Blue car far down straight"
+ },
+ {
+  "file": "cms7qtdpt0005drez06nyqpln-mueie1osrlv5p6.jpg",
+  "round": 4,
+  "kind": "battle",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Two Williams in Gulf-style livery side by side (Williams not certain, left out)"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiism4d9kh.jpg",
+  "round": 5,
+  "kind": "crash",
+  "teams": [
+   "ferrari_s8",
+   "s6_audi_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Audi spins in smoke behind Ferrari"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiitjicmv5.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Silver car on Spa kerb, sharp"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiit1mov0f.jpg",
+  "round": 5,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Aerial of Spa, no clear car"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiit6hvm7b.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "s6_force_india_s8"
+  ],
+  "pair": null,
+  "focus": "s6_force_india_s8",
+  "quality": "hero",
+  "note": "Force India from behind, Kingfisher wing"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiitrw1j7r.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "s3_virgin_s8"
+  ],
+  "pair": null,
+  "focus": "s3_virgin_s8",
+  "quality": "hero",
+  "note": "Marussia Virgin rear three-quarter"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiit0llf18.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Silver car rear, sun flare"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiitu7zmfn.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Rear view, AirAsia wing, open straight"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiitoa89zg.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "ferrari_s8"
+  ],
+  "pair": null,
+  "focus": "ferrari_s8",
+  "quality": "hero",
+  "note": "Ferrari over Spa kerbs"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiitqmykw8.jpg",
+  "round": 5,
+  "kind": "battle",
+  "teams": [
+   "axn-rb_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Silver car and AXN gold car side by side"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiit0pu6s9.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "ncb_mugen_s8"
+  ],
+  "pair": null,
+  "focus": "ncb_mugen_s8",
+  "quality": "ok",
+  "note": "NCB Mugen rear silhouette, golden light"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiitvmkcji.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "redbull_s8"
+  ],
+  "pair": null,
+  "focus": "redbull_s8",
+  "quality": "hero",
+  "note": "Red Bull close-up on rough asphalt"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiux2hls7.jpg",
+  "round": 5,
+  "kind": "battle",
+  "teams": [
+   "s6_audi_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Audi edge of frame, red car ahead"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiunnwgry.jpg",
+  "round": 5,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Blurred track, no clear car"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiuvhoq2b.jpg",
+  "round": 5,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "weak",
+  "note": "Aerial, cars tiny"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiulyv2es.jpg",
+  "round": 5,
+  "kind": "battle",
+  "teams": [
+   "ferrari_s8",
+   "usf1_s8"
+  ],
+  "pair": null,
+  "focus": "ferrari_s8",
+  "quality": "hero",
+  "note": "Ferrari and USF1 wheel to wheel close-up"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiutwxhhx.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "s3_arrows_s8"
+  ],
+  "pair": null,
+  "focus": "s3_arrows_s8",
+  "quality": "hero",
+  "note": "Arrows from above, orange livery"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiu0ez9cq.jpg",
+  "round": 5,
+  "kind": "other",
+  "teams": [],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Onboard cockpit view, car ahead"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiivlqpfyq.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "ferrari_s8"
+  ],
+  "pair": null,
+  "focus": "ferrari_s8",
+  "quality": "ok",
+  "note": "Ferrari past Moet wall"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiivdyzjmk.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "axn-rb_s8"
+  ],
+  "pair": null,
+  "focus": "axn-rb_s8",
+  "quality": "hero",
+  "note": "AXN gold Carrera car close-up"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiv2k8leu.jpg",
+  "round": 5,
+  "kind": "battle",
+  "teams": [
+   "lotus_s8",
+   "ncb_mugen_s8"
+  ],
+  "pair": null,
+  "focus": "ncb_mugen_s8",
+  "quality": "hero",
+  "note": "NCB Mugen alongside Lotus, helmets close"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiveisf6y.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "skoda_s8"
+  ],
+  "pair": null,
+  "focus": "skoda_s8",
+  "quality": "hero",
+  "note": "SKODA silver-green through corner"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiivskieco.jpg",
+  "round": 5,
+  "kind": "battle",
+  "teams": [
+   "s3_arrows_s8",
+   "ferrari_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Arrows and Ferrari side by side, smoke"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiviex91t.jpg",
+  "round": 5,
+  "kind": "battle",
+  "teams": [
+   "mclaren_s8"
+  ],
+  "pair": null,
+  "focus": "mclaren_s8",
+  "quality": "ok",
+  "note": "McLaren rear chasing cars down straight"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiv82vf2c.jpg",
+  "round": 5,
+  "kind": "pack",
+  "teams": [
+   "redbull_s8",
+   "williams_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "ok",
+  "note": "Red Bull leads cars through corner"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiv1jjobz.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "ferrari_s8"
+  ],
+  "pair": null,
+  "focus": "ferrari_s8",
+  "quality": "hero",
+  "note": "Ferrari side profile, sharp"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiivjohgyg.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "williams_s8"
+  ],
+  "pair": null,
+  "focus": "williams_s8",
+  "quality": "hero",
+  "note": "Williams past Moet grandstand"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiv4oevhz.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "s6_mercedes_s8"
+  ],
+  "pair": null,
+  "focus": "s6_mercedes_s8",
+  "quality": "hero",
+  "note": "Mercedes cockpit close-up, Petronas helmet"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiivr04uvp.jpg",
+  "round": 5,
+  "kind": "battle",
+  "teams": [
+   "s3_virgin_s8"
+  ],
+  "pair": null,
+  "focus": "s3_virgin_s8",
+  "quality": "hero",
+  "note": "Virgin locks up in smoke beside red-white car"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiivzt7kwf.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "ncb_mugen_s8"
+  ],
+  "pair": null,
+  "focus": "ncb_mugen_s8",
+  "quality": "ok",
+  "note": "NCB Mugen, gold car behind"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiv8w31h7.jpg",
+  "round": 5,
+  "kind": "battle",
+  "teams": [
+   "mclaren_s8",
+   "s6_force_india_s8"
+  ],
+  "pair": null,
+  "focus": "mclaren_s8",
+  "quality": "hero",
+  "note": "McLaren leads Force India through corner"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiivo2nuwp.jpg",
+  "round": 5,
+  "kind": "crash",
+  "teams": [
+   "renault_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Cars scattered across runoff, Renault sideways"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiiv38xc0l.jpg",
+  "round": 5,
+  "kind": "solo",
+  "teams": [
+   "skoda_s8"
+  ],
+  "pair": null,
+  "focus": "skoda_s8",
+  "quality": "hero",
+  "note": "SKODA close-up, sparks under car"
+ },
+ {
+  "file": "cms7qujgx0007drezvozdj895-muutpiivsgt4a8.jpg",
+  "round": 5,
+  "kind": "battle",
+  "teams": [
+   "s6_audi_s8"
+  ],
+  "pair": null,
+  "focus": null,
+  "quality": "hero",
+  "note": "Audi passes white car, close-up"
+ }
+]
