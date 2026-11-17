@@ -38,6 +38,7 @@ import Transfers from "./pages/Transfers.jsx";
 import Races from "./pages/Races.jsx";
 import Attendance from "./pages/Attendance.jsx";
 import EventSignup from "./pages/EventSignup.jsx";
+import SeasonSignup from "./pages/SeasonSignup.jsx";
 import Live from "./pages/Live.jsx";
 import Downloads from "./pages/Downloads.jsx";
 import DiscordCallback from "./pages/DiscordCallback.jsx";
@@ -266,6 +267,7 @@ function AppRoutes() {
         <Route path="/s/:seriesSlug/calendar" element={<Races />} />
         <Route path="/s/:seriesSlug/attendance" element={<Attendance />} />
         <Route path="/s/:seriesSlug/signup" element={<EventSignup />} />
+        <Route path="/s/:seriesSlug/season-signup" element={<SeasonSignup />} />
         <Route path="/s/:seriesSlug/live" element={<Live />} />
         <Route path="/s/:seriesSlug/recap/:raceId" element={<RaceRecapPage />} />
 
@@ -361,6 +363,8 @@ function AppRoutes() {
         <Route path="/info" element={<Navigate to="/downloads" replace />} />
         {/* Sign-Up + Driver Market now live on the Races page; keep old links working. */}
         <Route path="/signup" element={<ToSeries sub="/races" />} />
+        {/* The coming season's sign-up (pages/SeasonSignup.jsx), for links in Discord. */}
+        <Route path="/season-signup" element={<ToSeries sub="/season-signup" />} />
         <Route path="/rennen" element={<ToSeries sub="/races" />} />
         <Route path="/market" element={<ToSeries sub="/races" />} />
         <Route path="/driver-market" element={<ToSeries sub="/races" />} />

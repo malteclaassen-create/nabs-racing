@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSignupSettings, parseSignupForm, cleanLine, shapeForSender } from "./teamSignups.js";
+import { parseSignupSettings, parseSignupForm, cleanLine, shapeForSender, openSeatsFrom } from "./teamSignups.js";
 
 describe("team sign-up settings", () => {
   it("is closed with no series until an admin opens it", () => {
@@ -50,5 +50,24 @@ describe("what a member sees of their own entry", () => {
     expect(out).not.toHaveProperty("discordId");
     expect(out).not.toHaveProperty("status");
     expect(out.teamName).toBe("T");
+  });
+});
+
+describe("teams with a free seat", () => {
+  const e = (discordId, teamName, driver1, driver2 = null) => ({ discordId, teamName, driver1, driver2 });
+
+  it("lists teams with one driver so far", () => {
+    const seats = openSeatsFrom([e("a", "Apex", "Max"), e("b", "Pirates", "Lou", "Kim")], "me");
+    expect(seats).toEqual([{ teamName: "Apex", driver: "Max" }]);
+  });
+
+  it("counts a team full once two drivers are down for it across entries", () => {
+    expect(openSeatsFrom([e("a", "Apex", "Max"), e("b", "apex ", "Lou", "max")], "me")).toEqual([]);
+    expect(openSeatsFrom([e("a", "Apex", "Max"), e("b", "Apex", "Max")], "me")).toEqual([{ teamName: "Apex", driver: "Max" }]);
+  });
+
+  it("leaves out the asker's own entry and the choices that are not a team", () => {
+    const seats = openSeatsFrom([e("me", "Apex", "Max"), e("b", "No team yet", "Lou"), e("c", "looking for a team", "Kim")], "me");
+    expect(seats).toEqual([]);
   });
 });

@@ -1,28 +1,41 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
 import { CheckField, Field } from "./ui.jsx";
 import { SocialIcon } from "./SocialLinks.jsx";
 import { useAsk } from "./overlay.jsx";
+import { NOT_A_TEAM, NO_TEAM, LOOKING_FOR_TEAM } from "../data/signupTeams.js";
 
 // The team sign-up on the home page (backend lib/teamSignups.js). Shows only
 // while an admin has it open for the series being viewed: "Season 7: which
-// team do you want, and who drives it?" A member fills in the team and the
-// two drivers; on their own, they leave the second seat empty. Sending again
-// changes their entry. The admins read them in the Team sign-ups tab.
+// team do you want, and who drives it?" A member picks "No team yet",
+// "Looking for a team", a team someone else signed up alone (its free seat,
+// openSeats from the backend), or types a new team, and fills in the two
+// drivers; on their own, they leave the second seat empty. Sending again
+// changes their entry. The admins read them in the Sign-ups tab.
 
 const EMPTY = { teamName: "", driver1: "", driver2: "", note: "" };
+// The dropdown's value for "a team that isn't on the list": shows a text box.
+const OTHER = "__other__";
 
-export default function TeamSignupCard() {
+// `startOpen`: open the form straight away for a signed-in member with no
+// entry yet (the page of its own, pages/SeasonSignup.jsx). `whenClosed`: what
+// to show once it is known that no sign-up is open here (the home page shows
+// nothing); a function gets the API's answer, whose `openIn` names the series
+// where it is open, if any.
+export default function TeamSignupCard({ startOpen = false, whenClosed = null }) {
   const state = useApi(useCallback(() => api.teamSignup(), []));
-  const teams = useApi(useCallback(() => api.teams().catch(() => []), []));
-  const { enabled: loginEnabled, start: startLogin } = useDiscordLogin();
+  const { pathname, search } = useLocation();
+  const { enabled: loginEnabled, start: startLogin } = useDiscordLogin(`${pathname}${search}`);
+  const opened = useRef(false);
   const ask = useAsk();
   const [mine, setMine] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [alone, setAlone] = useState(false);
+  const [teamPick, setTeamPick] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -30,16 +43,27 @@ export default function TeamSignupCard() {
   useEffect(() => {
     setMine(data?.mine || null);
   }, [data]);
+  // On the page of its own, someone who came to sign up gets the form at once.
+  const openFormRef = useRef(null);
+  useEffect(() => {
+    if (!startOpen || opened.current || !data?.open || !data.signedIn || data.mine) return;
+    opened.current = true;
+    openFormRef.current?.();
+  }, [startOpen, data]);
 
-  if (!data?.open) return null;
+  if (!data) return null;
+  if (!data.open) return typeof whenClosed === "function" ? whenClosed(data) : whenClosed;
 
   const label = data.label;
-  const teamNames = [...new Set((teams.data || []).filter((t) => t.tier !== 0).map((t) => t.name))].sort();
+  const openSeats = data.openSeats || [];
 
   function openForm() {
     const from = mine || { ...EMPTY, driver1: data.myName || "" };
+    const name = from.teamName || "";
+    const known = [...openSeats.map((t) => t.teamName), ...NOT_A_TEAM].find((n) => n.toLowerCase() === name.toLowerCase());
+    setTeamPick(known || (name ? OTHER : ""));
     setForm({
-      teamName: from.teamName || "",
+      teamName: known || name,
       driver1: from.driver1 || "",
       driver2: from.driver2 || "",
       note: from.note || "",
@@ -49,8 +73,14 @@ export default function TeamSignupCard() {
     setEditing(true);
   }
 
+  openFormRef.current = openForm;
+
   async function submit(e) {
     e.preventDefault();
+    if (!teamPick) {
+      setError("Pick a team, or say you don't have one yet.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -65,7 +95,7 @@ export default function TeamSignupCard() {
   }
 
   async function withdraw() {
-    if (!(await ask({ title: "Take your team sign-up back?", danger: true, confirmLabel: "Take it back" }))) return;
+    if (!(await ask({ title: "Take your sign-up back?", danger: true, confirmLabel: "Take it back" }))) return;
     setBusy(true);
     setError(null);
     try {
@@ -80,6 +110,15 @@ export default function TeamSignupCard() {
   }
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const pickTeam = (e) => {
+    const v = e.target.value;
+    setTeamPick(v);
+    // Taking a free seat: the driver already down for that team is the
+    // teammate, so fill them in.
+    const seat = openSeats.find((t) => t.teamName === v);
+    setForm((f) => ({ ...f, teamName: v === OTHER ? "" : v, driver2: seat ? seat.driver : f.driver2 }));
+    if (seat) setAlone(false);
+  };
 
   return (
     <section className="reveal rounded-2xl border border-border bg-card p-5 shadow-lg shadow-ink/5 sm:p-6">
@@ -90,9 +129,9 @@ export default function TeamSignupCard() {
               {data.seriesName ? `${data.seriesName} · ` : ""}
               {label}
             </div>
-            <h2 className="mt-1 font-display text-xl font-black uppercase tracking-tight text-dark sm:text-2xl">Team sign-up</h2>
+            <h2 className="mt-1 font-display text-xl font-black uppercase tracking-tight text-dark sm:text-2xl">Sign-up</h2>
             <p className="mt-1 max-w-xl text-sm text-medium">
-              Tell us which team you want to drive for and who your teammate is. On your own for now? Just put yourself down.
+              Tell us which team you want to drive for and who your teammate is. No team or teammate yet? Just say so.
             </p>
           </div>
 
@@ -114,7 +153,7 @@ export default function TeamSignupCard() {
                 </button>
               ) : (
                 <button onClick={openForm} className="btn-primary text-sm">
-                  Sign up a team
+                  Sign up
                 </button>
               )}
             </div>
@@ -138,15 +177,29 @@ export default function TeamSignupCard() {
 
         {editing && (
           <form onSubmit={submit} className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Field label="Team" required className="sm:col-span-2" hint="The team you want to drive for.">
-              <input className="input w-full" value={form.teamName} onChange={set("teamName")} maxLength={60} list="team-signup-teams" autoComplete="off" />
+            <Field label="Team" required className="sm:col-span-2" hint={openSeats.length > 0 ? "Someone signed up a team on their own? Pick it to take the free seat." : null}>
+              <select className="input w-full" value={teamPick} onChange={pickTeam}>
+                <option value="" disabled>
+                  Pick a team
+                </option>
+                <option value={NO_TEAM}>{NO_TEAM}</option>
+                <option value={LOOKING_FOR_TEAM}>{LOOKING_FOR_TEAM}</option>
+                {openSeats.length > 0 && (
+                  <optgroup label="Teams with a free seat">
+                    {openSeats.map((t) => (
+                      <option key={t.teamName} value={t.teamName}>
+                        {t.teamName} (with {t.driver})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <option value={OTHER}>New team…</option>
+              </select>
             </Field>
-            {teamNames.length > 0 && (
-              <datalist id="team-signup-teams">
-                {teamNames.map((n) => (
-                  <option key={n} value={n} />
-                ))}
-              </datalist>
+            {teamPick === OTHER && (
+              <Field label="Team name" required className="sm:col-span-2">
+                <input className="input w-full" value={form.teamName} onChange={set("teamName")} maxLength={60} autoComplete="off" />
+              </Field>
             )}
             <Field label="First driver" required>
               <input className="input w-full" value={form.driver1} onChange={set("driver1")} maxLength={60} autoComplete="off" />

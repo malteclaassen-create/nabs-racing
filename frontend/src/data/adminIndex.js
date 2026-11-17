@@ -38,7 +38,7 @@ export const TAB_GROUPS = [
       { id: "drivers", label: "Drivers" },
       { id: "transfers", label: "Transfers" },
       // The form on the home page where drivers ask for a team for next season.
-      { id: "teamsignups", label: "Team sign-ups" },
+      { id: "teamsignups", label: "Sign-ups" },
       { id: "market", label: "Driver Market" },
       // The telemetry view is held back from the members' side on purpose
       // while the league decides whether a driver's inputs are public. See
@@ -188,13 +188,13 @@ export const ADMIN_INDEX = [
   // --- League: team sign-ups ---------------------------------------------------
   {
     tab: "teamsignups",
-    title: "Let drivers sign up their team for next season",
+    title: "Let drivers sign up for next season",
     hint: "Open a form on a series' home page: the team they want and the two drivers. Close it again here.",
     keywords: "team sign up signup register registration apply next season form teammate pair duo entry open close",
   },
   {
     tab: "teamsignups",
-    title: "See who signed up which team",
+    title: "See who signed up",
     hint: "Every entry with the two drivers, tick them off once dealt with.",
     keywords: "team sign ups signups registrations list entries who wants which team teammate requests",
   },

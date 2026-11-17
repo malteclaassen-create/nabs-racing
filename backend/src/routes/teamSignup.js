@@ -1,7 +1,7 @@
 import { Router } from "express";
 import prisma from "../lib/prisma.js";
 import { optionalUser, requireUser, resolveDriverId } from "../middleware/auth.js";
-import { resolveSeries } from "../lib/series.js";
+import { resolveSeries, getSeriesById } from "../lib/series.js";
 import {
   readSignupSettings,
   parseSignupForm,
@@ -9,7 +9,7 @@ import {
   dbSaveSignup,
   dbWithdrawSignup,
   shapeForSender,
-  notifyAdminsOfSignup,
+  dbListOpenSeats,
 } from "../lib/teamSignups.js";
 
 // The members' side of the team sign-up (lib/teamSignups.js): the form on the
@@ -33,6 +33,16 @@ async function openSignupFor(req) {
   return { ...settings, series };
 }
 
+// Where the sign-up is open, if it is: the slug of that series, so a link to
+// the sign-up page that lands on another series (the short /season-signup goes
+// to the main one) can move on to it. Null when closed or the series is hidden.
+async function openSeriesSlug() {
+  const settings = await readSignupSettings(prisma);
+  if (!settings.open || !settings.seriesId) return null;
+  const s = await getSeriesById(prisma, settings.seriesId);
+  return s && (s.isPublic || s.isActive) ? s.slug : null;
+}
+
 // The member's current driver name, to fill the first seat in for them.
 async function driverNameOf(user) {
   try {
@@ -50,7 +60,7 @@ async function driverNameOf(user) {
 router.get("/", optionalUser, async (req, res, next) => {
   try {
     const signup = await openSignupFor(req);
-    if (!signup) return res.json({ open: false });
+    if (!signup) return res.json({ open: false, openIn: await openSeriesSlug() });
     const mine = req.user?.discordId
       ? await dbGetOwnSignup(prisma, { seriesId: signup.seriesId, label: signup.label, discordId: req.user.discordId })
       : null;
@@ -61,6 +71,10 @@ router.get("/", optionalUser, async (req, res, next) => {
       signedIn: !!req.user?.discordId,
       myName: req.user ? await driverNameOf(req.user) : null,
       mine: shapeForSender(mine),
+      // Only for members signed in: the form is theirs alone.
+      openSeats: req.user?.discordId
+        ? await dbListOpenSeats(prisma, { seriesId: signup.seriesId, label: signup.label, excludeDiscordId: req.user.discordId })
+        : [],
     });
   } catch (e) {
     next(e);
@@ -70,16 +84,15 @@ router.get("/", optionalUser, async (req, res, next) => {
 router.put("/", requireUser, async (req, res, next) => {
   try {
     const signup = await openSignupFor(req);
-    if (!signup) return res.status(409).json({ error: "The team sign-up is closed." });
+    if (!signup) return res.status(409).json({ error: "The sign-up is closed." });
     const form = parseSignupForm(req.body);
-    const { entry, created } = await dbSaveSignup(prisma, {
+    const { entry } = await dbSaveSignup(prisma, {
       seriesId: signup.seriesId,
       label: signup.label,
       discordId: req.user.discordId,
       senderName: await driverNameOf(req.user),
       form,
     });
-    notifyAdminsOfSignup(prisma, entry, { created }).catch(() => {});
     res.json({ ok: true, mine: shapeForSender(entry) });
   } catch (e) {
     next(e);
@@ -89,7 +102,7 @@ router.put("/", requireUser, async (req, res, next) => {
 router.delete("/", requireUser, async (req, res, next) => {
   try {
     const signup = await openSignupFor(req);
-    if (!signup) return res.status(409).json({ error: "The team sign-up is closed." });
+    if (!signup) return res.status(409).json({ error: "The sign-up is closed." });
     await dbWithdrawSignup(prisma, { seriesId: signup.seriesId, label: signup.label, discordId: req.user.discordId });
     res.json({ ok: true });
   } catch (e) {
