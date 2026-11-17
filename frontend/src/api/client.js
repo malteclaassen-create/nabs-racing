@@ -839,6 +839,15 @@ export const api = {
   // carries their name and a visitor's doesn't need an account at all.
   sendFeedback: (body) => request("/feedback", { method: "POST", body, userAuth: true }),
   adminFeedback: () => request("/admin/feedback", { auth: true }),
+  // Team sign-up for a coming season (backend lib/teamSignups.js): the form on
+  // the home page of the series an admin opened it for, and its admin list.
+  teamSignup: () => request(`/team-signup${seriesQ()}`, { userAuth: true }),
+  saveTeamSignup: (body) => request(`/team-signup${seriesQ()}`, { method: "PUT", body, userAuth: true }),
+  withdrawTeamSignup: () => request(`/team-signup${seriesQ()}`, { method: "DELETE", userAuth: true }),
+  adminTeamSignups: () => request("/admin/team-signups", { auth: true }),
+  setTeamSignupSettings: (body) => request("/admin/team-signups/settings", { method: "PUT", body, auth: true }),
+  updateTeamSignup: (id, body) => request(`/admin/team-signups/${encodeURIComponent(id)}`, { method: "PATCH", body, auth: true }),
+  deleteTeamSignup: (id) => request(`/admin/team-signups/${encodeURIComponent(id)}`, { method: "DELETE", auth: true }),
   updateFeedback: (id, body) => request(`/admin/feedback/${id}`, { method: "PATCH", body, auth: true }),
   deleteFeedback: (id) => request(`/admin/feedback/${id}`, { method: "DELETE", auth: true }),
   // The conversation on a report: the admin answers (the sender's bell rings),

@@ -47,6 +47,7 @@ import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
 import { getWrappedViews } from "../lib/wrappedViews.js";
 import { isSeasonComplete } from "../lib/seasonComplete.js";
+import { readSignupSettings, writeSignupSettings, dbListSignups, dbSetSignupStatus, dbDeleteSignup } from "../lib/teamSignups.js";
 import { leagueSince, setLeagueSince } from "../lib/leagueStats.js";
 import {
   dbListDownloads, dbGetDownload, dbCreateDownload, dbUpdateDownload, dbDeleteDownload, ensureReplaysFolder,
@@ -9050,6 +9051,63 @@ router.post("/reports/bulk-delete", async (req, res, next) => {
     if (!ids.length) return res.status(400).json({ error: "No reports picked" });
     for (const id of ids) removeAttachmentFiles(id, await dbDeleteReport(prisma, id));
     res.json({ ok: true, deleted: ids.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Team sign-ups (lib/teamSignups.js) -------------------------------------
+// The form on a series' home page where members ask for a team for the coming
+// season. Here: open or close it, and read what came in.
+
+// GET /api/admin/team-signups -> { settings, series, items, newCount }
+router.get("/team-signups", async (req, res, next) => {
+  try {
+    const [settings, series, items] = await Promise.all([
+      readSignupSettings(prisma),
+      dbListSeries(prisma, { includePrivate: true }),
+      dbListSignups(prisma),
+    ]);
+    res.json({
+      settings,
+      series: series.map((s) => ({ id: s.id, name: s.name, slug: s.slug })),
+      items,
+      newCount: items.filter((i) => i.status === "NEW").length,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PUT /api/admin/team-signups/settings { open?, seriesId?, label? }
+router.put("/team-signups/settings", async (req, res, next) => {
+  try {
+    const patch = {};
+    for (const k of ["open", "seriesId", "label"]) if (req.body && k in req.body) patch[k] = req.body[k];
+    if (patch.seriesId) {
+      const all = await dbListSeries(prisma, { includePrivate: true });
+      if (!all.some((s) => s.id === patch.seriesId)) return res.status(400).json({ error: "Unknown series" });
+    }
+    res.json({ ok: true, settings: await writeSignupSettings(prisma, patch) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PATCH /api/admin/team-signups/:id { status: NEW | DONE }
+router.patch("/team-signups/:id", async (req, res, next) => {
+  try {
+    await dbSetSignupStatus(prisma, String(req.params.id), req.body?.status);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete("/team-signups/:id", async (req, res, next) => {
+  try {
+    await dbDeleteSignup(prisma, String(req.params.id));
+    res.json({ ok: true });
   } catch (e) {
     next(e);
   }
