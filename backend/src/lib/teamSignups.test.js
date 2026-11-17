@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSignupSettings, parseSignupForm, cleanLine, shapeForSender, openSeatsFrom } from "./teamSignups.js";
+import { parseSignupSettings, parseSignupForm, cleanLine, shapeForSender, openSeatsFrom, freeAgentsFrom } from "./teamSignups.js";
 
 describe("team sign-up settings", () => {
   it("is closed with no series until an admin opens it", () => {
@@ -69,5 +69,25 @@ describe("teams with a free seat", () => {
   it("leaves out the asker's own entry and the choices that are not a team", () => {
     const seats = openSeatsFrom([e("me", "Apex", "Max"), e("b", "No team yet", "Lou"), e("c", "looking for a team", "Kim")], "me");
     expect(seats).toEqual([]);
+  });
+});
+
+describe("drivers still on their own", () => {
+  const e = (discordId, teamName, driver1, driver2 = null, note = null) => ({ discordId, teamName, driver1, driver2, note });
+
+  it("lists who has no team yet or is looking for one, without the note", () => {
+    const list = freeAgentsFrom(
+      [e("a", "No team yet", "Lobter", null, "for the admins"), e("b", "Looking for a team", "Rashford"), e("c", "Apex", "Max")],
+      "me"
+    );
+    expect(list).toEqual([
+      { name: "Lobter", choice: "No team yet" },
+      { name: "Rashford", choice: "Looking for a team" },
+    ]);
+  });
+
+  it("leaves out pairs, the asker and the same name twice", () => {
+    const list = freeAgentsFrom([e("a", "No team yet", "Lou", "Kim"), e("me", "No team yet", "Malte"), e("b", "no team yet", "Pengi"), e("c", "Looking for a team", "pengi")], "me");
+    expect(list).toEqual([{ name: "Pengi", choice: "No team yet" }]);
   });
 });

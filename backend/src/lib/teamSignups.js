@@ -13,7 +13,8 @@
 // The admin reads them in the Team sign-ups tab and ticks them off once dealt
 // with. Nothing here is shown publicly, except that a signed-in member
 // filling in the form sees which teams still have a free seat (team name and
-// the one driver, openSeatsFrom), and nothing rings the bell: the
+// the one driver, openSeatsFrom) and who has no team yet (name only,
+// freeAgentsFrom), and nothing rings the bell: the
 // admins look in the tab when they want to.
 //
 // Raw SQL like Feedback (the running dev server locks the generated Prisma
@@ -229,12 +230,42 @@ export function openSeatsFrom(entries, excludeDiscordId) {
     .sort((a, b) => a.teamName.localeCompare(b.teamName));
 }
 
-export async function dbListOpenSeats(prisma, { seriesId, label, excludeDiscordId }) {
+// Drivers in this sign-up with no team and no teammate yet ("No team yet" or
+// "Looking for a team", second seat empty), so the people on their own can
+// find each other. Name and which of the two they picked, oldest first; never
+// the note, which is written for the admins. The asker's own entry is left out.
+export function freeAgentsFrom(entries, excludeDiscordId) {
+  const notTeam = new Map(NOT_A_TEAM.map((n) => [n.toLowerCase(), n]));
+  const out = [];
+  const seen = new Set();
+  for (const e of entries || []) {
+    if (!e || (excludeDiscordId && e.discordId === excludeDiscordId)) continue;
+    const choice = notTeam.get(String(e.teamName || "").trim().toLowerCase());
+    const name = String(e.driver1 || "").trim();
+    if (!choice || !name || String(e.driver2 || "").trim()) continue;
+    if (seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    out.push({ name, choice });
+  }
+  return out;
+}
+
+async function listEntries(prisma, { seriesId, label }) {
   const rows = await prisma.$queryRaw`
     SELECT * FROM "TeamSignup"
     WHERE "seriesId" = ${seriesId || ""} AND "label" = ${label}
     ORDER BY "createdAt" ASC`;
-  return openSeatsFrom(rows.map(shape), excludeDiscordId);
+  return rows.map(shape);
+}
+
+// What a signed-in member filling in the form gets to see of the others:
+// teams with a free seat, and the drivers still on their own.
+export async function dbListForMembers(prisma, { seriesId, label, excludeDiscordId }) {
+  const entries = await listEntries(prisma, { seriesId, label });
+  return {
+    openSeats: openSeatsFrom(entries, excludeDiscordId),
+    freeAgents: freeAgentsFrom(entries, excludeDiscordId),
+  };
 }
 
 export async function dbSetSignupStatus(prisma, id, status) {
