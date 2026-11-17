@@ -68,6 +68,9 @@ const SERIES_SEGMENTS = new Set([
   "results",
   "calendar",
   "attendance",
+  // The coming season's sign-up (frontend pages/SeasonSignup.jsx). Posted in
+  // Discord, so it has to answer 200 with a preview, not 404 + noindex.
+  "season-signup",
   "live",
 ]);
 // Pages that exist only under a series, never as a flat address: a special

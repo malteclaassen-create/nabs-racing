@@ -109,11 +109,12 @@ const SECTIONS = {
   live: () => "Live timing",
   attendance: (label) => `${label} sign-ups and attendance`,
   signup: (label) => `Sign up for ${label}`,
+  "season-signup": () => "Sign-up",
 };
 // Sections whose title stands without a season in it (the Hall of Fame is
 // all-time, live timing is now), so they can be titled before the season list
 // has even loaded.
-const SEASONLESS = new Set(["records", "live"]);
+const SEASONLESS = new Set(["records", "live", "season-signup"]);
 
 // The full title for an address, brand included. `season` and `series` are the
 // context rows; `multi` says whether more than one series exists, which is the
