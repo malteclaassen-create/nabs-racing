@@ -4,6 +4,7 @@
 // slide, out of how many). Only a member opening THEIR OWN Wrapped is kept;
 // an admin looking at someone else's is not a view.
 import { isSeasonComplete } from "./seasonComplete.js";
+import { discordIdsForDrivers } from "./persons.js";
 
 export async function ensureWrappedViewTable(prisma) {
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "WrappedView" (
@@ -74,17 +75,22 @@ export async function getWrappedViews(prisma, seasonIdIn) {
     select: { id: true, name: true, discordUserId: true, team: { select: { name: true, color: true, tier: true } } },
   });
   const views = await prisma.$queryRaw`SELECT * FROM "WrappedView" WHERE "seasonId" = ${seasonId}`;
+  // A person's Discord account may sit on another season's row of theirs
+  // (the new season's, after the carry-over): sign-in finds it there, and
+  // so does this list.
+  const discordOf = await discordIdsForDrivers(prisma, drivers.map((d) => d.id)).catch(() => new Map());
   const byDriver = new Map(views.map((v) => [v.driverId, v]));
   const byDiscord = new Map(views.map((v) => [v.discordId, v]));
   const rows = drivers.map((d) => {
-    const v = byDriver.get(d.id) || (d.discordUserId ? byDiscord.get(d.discordUserId) : null) || null;
+    const discordId = discordOf.get(d.id) || d.discordUserId || null;
+    const v = byDriver.get(d.id) || (discordId ? byDiscord.get(discordId) : null) || null;
     return {
       driverId: d.id,
       name: d.name,
       team: d.team ? { name: d.team.name, color: d.team.color, tier: d.team.tier } : null,
       // Without a Discord link the driver cannot sign in as themself, so
       // they can only ever watch their Wrapped as a visitor.
-      linked: !!d.discordUserId,
+      linked: !!discordId,
       view: v
         ? {
             name: v.name || null,

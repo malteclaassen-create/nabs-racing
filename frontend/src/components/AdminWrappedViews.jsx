@@ -47,7 +47,9 @@ function Row({ row }) {
           </div>
         </>
       ) : (
-        <div className="shrink-0 text-xs text-light sm:w-[19.5rem] sm:text-right">{row.linked ? "Not yet" : "Not yet · no Discord link, can't sign in as themself"}</div>
+        <div className="shrink-0 text-xs text-light sm:w-[19.5rem] sm:text-right">
+          {row.linked ? "Not yet" : "Not yet · no Discord account linked to this driver, so they can't open it. Link them under Drivers."}
+        </div>
       )}
     </li>
   );
