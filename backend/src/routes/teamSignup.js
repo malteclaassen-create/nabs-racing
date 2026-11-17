@@ -9,7 +9,6 @@ import {
   dbSaveSignup,
   dbWithdrawSignup,
   shapeForSender,
-  notifyAdminsOfSignup,
 } from "../lib/teamSignups.js";
 
 // The members' side of the team sign-up (lib/teamSignups.js): the form on the
@@ -72,14 +71,13 @@ router.put("/", requireUser, async (req, res, next) => {
     const signup = await openSignupFor(req);
     if (!signup) return res.status(409).json({ error: "The team sign-up is closed." });
     const form = parseSignupForm(req.body);
-    const { entry, created } = await dbSaveSignup(prisma, {
+    const { entry } = await dbSaveSignup(prisma, {
       seriesId: signup.seriesId,
       label: signup.label,
       discordId: req.user.discordId,
       senderName: await driverNameOf(req.user),
       form,
     });
-    notifyAdminsOfSignup(prisma, entry, { created }).catch(() => {});
     res.json({ ok: true, mine: shapeForSender(entry) });
   } catch (e) {
     next(e);

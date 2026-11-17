@@ -11,15 +11,14 @@
 // One entry per Discord account per sign-up: sending the form again changes
 // the entry instead of adding a second one, and the member can take it back.
 // The admin reads them in the Team sign-ups tab and ticks them off once dealt
-// with. Nothing here is shown publicly.
+// with. Nothing here is shown publicly, and nothing rings the bell: the
+// admins look in the tab when they want to.
 //
 // Raw SQL like Feedback (the running dev server locks the generated Prisma
 // client on Windows). Keep the columns in sync with the TeamSignup model in
 // prisma/schema.prisma and the migration team_signups.
 // ---------------------------------------------------------------------------
 import { randomUUID } from "crypto";
-import { dbCreateNotification } from "./notifications.js";
-import { getAdminDiscordIds } from "./adminUsers.js";
 
 export const TEAM_SIGNUP_SETTING = "team_signup";
 export const SIGNUP_STATUSES = ["NEW", "DONE"];
@@ -213,26 +212,4 @@ export async function dbSetSignupStatus(prisma, id, status) {
 
 export async function dbDeleteSignup(prisma, id) {
   await prisma.$executeRaw`DELETE FROM "TeamSignup" WHERE "id" = ${id}`;
-}
-
-// Tell the admins' bell. Never makes the member wait, never fails the save.
-export async function notifyAdminsOfSignup(prisma, entry, { created }) {
-  try {
-    const ids = await getAdminDiscordIds(prisma);
-    if (!ids || ids.size === 0) return;
-    const drivers = entry.driver2 ? `${entry.driver1} and ${entry.driver2}` : `${entry.driver1}, no teammate yet`;
-    const stamp = entry.updatedAt || entry.createdAt;
-    for (const discordId of ids) {
-      await dbCreateNotification(prisma, {
-        type: "SIGNUP",
-        title: `${created ? "Team sign-up" : "Team sign-up changed"}: ${entry.teamName}`,
-        body: `${entry.label}: ${drivers}`,
-        link: "/admin?tab=teamsignups",
-        recipientId: discordId,
-        dedupeKey: `team-signup:${entry.id}:${stamp}:${discordId}`,
-      });
-    }
-  } catch {
-    /* the bell is a courtesy */
-  }
 }
