@@ -11,7 +11,9 @@
 // One entry per Discord account per sign-up: sending the form again changes
 // the entry instead of adding a second one, and the member can take it back.
 // The admin reads them in the Team sign-ups tab and ticks them off once dealt
-// with. Nothing here is shown publicly, and nothing rings the bell: the
+// with. Nothing here is shown publicly, except that a signed-in member
+// filling in the form sees which teams still have a free seat (team name and
+// the one driver, openSeatsFrom), and nothing rings the bell: the
 // admins look in the tab when they want to.
 //
 // Raw SQL like Feedback (the running dev server locks the generated Prisma
@@ -28,6 +30,9 @@ const MAX_NAME = 60;
 const MAX_NOTE = 500;
 const MAX_LABEL = 60;
 const DEFAULT_LABEL = "Next season";
+// The form's dropdown choices that are not a team. Same words as
+// frontend/src/data/signupTeams.js; keep the two in step.
+export const NOT_A_TEAM = ["No team yet", "Looking for a team"];
 
 export async function ensureTeamSignupTable(prisma) {
   await prisma.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "TeamSignup" (
@@ -198,6 +203,38 @@ export async function dbWithdrawSignup(prisma, { seriesId, label, discordId }) {
 export async function dbListSignups(prisma) {
   const rows = await prisma.$queryRaw`SELECT * FROM "TeamSignup" ORDER BY "createdAt" DESC LIMIT 1000`;
   return rows.map(shape);
+}
+
+// Teams in this sign-up with one driver so far, so someone on their own can
+// pick one in the form and take the free seat. Teams are matched by name
+// (any case); a team counts as full once two different drivers are down for
+// it, across all its entries. The asker's own entry is left out, as is
+// anything that is not a team ("No team yet"). Sorted by team name.
+export function openSeatsFrom(entries, excludeDiscordId) {
+  const notTeam = new Set(NOT_A_TEAM.map((n) => n.toLowerCase()));
+  const teams = new Map();
+  for (const e of entries || []) {
+    if (!e?.teamName || (excludeDiscordId && e.discordId === excludeDiscordId)) continue;
+    const key = e.teamName.trim().toLowerCase();
+    if (!key || notTeam.has(key)) continue;
+    if (!teams.has(key)) teams.set(key, { teamName: e.teamName.trim(), drivers: new Map() });
+    for (const d of [e.driver1, e.driver2]) {
+      const name = String(d || "").trim();
+      if (name && !teams.get(key).drivers.has(name.toLowerCase())) teams.get(key).drivers.set(name.toLowerCase(), name);
+    }
+  }
+  return [...teams.values()]
+    .filter((t) => t.drivers.size === 1)
+    .map((t) => ({ teamName: t.teamName, driver: [...t.drivers.values()][0] }))
+    .sort((a, b) => a.teamName.localeCompare(b.teamName));
+}
+
+export async function dbListOpenSeats(prisma, { seriesId, label, excludeDiscordId }) {
+  const rows = await prisma.$queryRaw`
+    SELECT * FROM "TeamSignup"
+    WHERE "seriesId" = ${seriesId || ""} AND "label" = ${label}
+    ORDER BY "createdAt" ASC`;
+  return openSeatsFrom(rows.map(shape), excludeDiscordId);
 }
 
 export async function dbSetSignupStatus(prisma, id, status) {

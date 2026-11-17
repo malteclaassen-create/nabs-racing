@@ -9,6 +9,7 @@ import {
   dbSaveSignup,
   dbWithdrawSignup,
   shapeForSender,
+  dbListOpenSeats,
 } from "../lib/teamSignups.js";
 
 // The members' side of the team sign-up (lib/teamSignups.js): the form on the
@@ -60,6 +61,10 @@ router.get("/", optionalUser, async (req, res, next) => {
       signedIn: !!req.user?.discordId,
       myName: req.user ? await driverNameOf(req.user) : null,
       mine: shapeForSender(mine),
+      // Only for members signed in: the form is theirs alone.
+      openSeats: req.user?.discordId
+        ? await dbListOpenSeats(prisma, { seriesId: signup.seriesId, label: signup.label, excludeDiscordId: req.user.discordId })
+        : [],
     });
   } catch (e) {
     next(e);

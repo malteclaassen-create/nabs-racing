@@ -9,11 +9,11 @@ import { NOT_A_TEAM, NO_TEAM, LOOKING_FOR_TEAM } from "../data/signupTeams.js";
 
 // The team sign-up on the home page (backend lib/teamSignups.js). Shows only
 // while an admin has it open for the series being viewed: "Season 7: which
-// team do you want, and who drives it?" A member picks the team from a list
-// (or "No team yet", "Looking for a team", or types a team that isn't on the
-// list) and fills in the two drivers; on their own, they leave the second
-// seat empty. Sending again changes their entry. The admins read them in the
-// Sign-ups tab.
+// team do you want, and who drives it?" A member picks "No team yet",
+// "Looking for a team", a team someone else signed up alone (its free seat,
+// openSeats from the backend), or types a new team, and fills in the two
+// drivers; on their own, they leave the second seat empty. Sending again
+// changes their entry. The admins read them in the Sign-ups tab.
 
 const EMPTY = { teamName: "", driver1: "", driver2: "", note: "" };
 // The dropdown's value for "a team that isn't on the list": shows a text box.
@@ -21,7 +21,6 @@ const OTHER = "__other__";
 
 export default function TeamSignupCard() {
   const state = useApi(useCallback(() => api.teamSignup(), []));
-  const teams = useApi(useCallback(() => api.teams().catch(() => []), []));
   const { enabled: loginEnabled, start: startLogin } = useDiscordLogin();
   const ask = useAsk();
   const [mine, setMine] = useState(null);
@@ -40,12 +39,12 @@ export default function TeamSignupCard() {
   if (!data?.open) return null;
 
   const label = data.label;
-  const teamNames = [...new Set((teams.data || []).filter((t) => t.tier !== 0).map((t) => t.name))].sort();
+  const openSeats = data.openSeats || [];
 
   function openForm() {
     const from = mine || { ...EMPTY, driver1: data.myName || "" };
     const name = from.teamName || "";
-    const known = [...teamNames, ...NOT_A_TEAM].find((n) => n.toLowerCase() === name.toLowerCase());
+    const known = [...openSeats.map((t) => t.teamName), ...NOT_A_TEAM].find((n) => n.toLowerCase() === name.toLowerCase());
     setTeamPick(known || (name ? OTHER : ""));
     setForm({
       teamName: known || name,
@@ -96,7 +95,11 @@ export default function TeamSignupCard() {
   const pickTeam = (e) => {
     const v = e.target.value;
     setTeamPick(v);
-    setForm((f) => ({ ...f, teamName: v === OTHER ? "" : v }));
+    // Taking a free seat: the driver already down for that team is the
+    // teammate, so fill them in.
+    const seat = openSeats.find((t) => t.teamName === v);
+    setForm((f) => ({ ...f, teamName: v === OTHER ? "" : v, driver2: seat ? seat.driver : f.driver2 }));
+    if (seat) setAlone(false);
   };
 
   return (
@@ -156,23 +159,23 @@ export default function TeamSignupCard() {
 
         {editing && (
           <form onSubmit={submit} className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Field label="Team" required className="sm:col-span-2" hint="The team you want to drive for.">
+            <Field label="Team" required className="sm:col-span-2" hint={openSeats.length > 0 ? "Someone signed up a team on their own? Pick it to take the free seat." : null}>
               <select className="input w-full" value={teamPick} onChange={pickTeam}>
                 <option value="" disabled>
                   Pick a team
                 </option>
                 <option value={NO_TEAM}>{NO_TEAM}</option>
                 <option value={LOOKING_FOR_TEAM}>{LOOKING_FOR_TEAM}</option>
-                {teamNames.length > 0 && (
-                  <optgroup label="Teams">
-                    {teamNames.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
+                {openSeats.length > 0 && (
+                  <optgroup label="Teams with a free seat">
+                    {openSeats.map((t) => (
+                      <option key={t.teamName} value={t.teamName}>
+                        {t.teamName} (with {t.driver})
                       </option>
                     ))}
                   </optgroup>
                 )}
-                <option value={OTHER}>Another team…</option>
+                <option value={OTHER}>New team…</option>
               </select>
             </Field>
             {teamPick === OTHER && (
