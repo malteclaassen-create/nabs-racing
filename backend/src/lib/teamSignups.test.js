@@ -95,10 +95,24 @@ describe("drivers still on their own", () => {
 describe("a solo entry once its driver is in a pair", () => {
   const e = (id, teamName, driver1, driver2 = null, extra = {}) => ({ id, seriesId: "sun", label: "S7", discordId: id, teamName, driver1, driver2, ...extra });
 
-  it("is marked with the pair that names them", () => {
-    const [solo, pair] = markCovered([e("a", "No team yet", "Lobter"), e("b", "Apex", "Max", "lobter")]);
+  it("is marked with the pair that names them, which carries its note", () => {
+    const [solo, pair] = markCovered([e("a", "No team yet", "Lobter", null, { note: "any team" }), e("b", "Apex", "Max", "lobter")]);
     expect(solo.coveredBy).toEqual({ id: "b", teamName: "Apex", with: "Max" });
     expect(pair.coveredBy).toBeUndefined();
+    expect(pair.alsoSent).toEqual([{ id: "a", senderName: null, teamName: "No team yet", note: "any team" }]);
+  });
+
+  it("folds the same pair sent by both into one, a real team first, else the newest", () => {
+    const spy = e("s", "Looking for a team", "Spy", "Lobter", { updatedAt: "2026-11-17T22:18:00Z", note: "us together" });
+    const lob = e("l", "No team yet", "Lobter", "spy", { updatedAt: "2026-11-17T22:22:00Z" });
+    const [a, b] = markCovered([spy, lob]);
+    expect(a.coveredBy).toEqual({ id: "l", teamName: "No team yet", with: null });
+    expect(b.coveredBy).toBeUndefined();
+    expect(b.alsoSent).toEqual([{ id: "s", senderName: null, teamName: "Looking for a team", note: "us together" }]);
+
+    const [c, d] = markCovered([e("s", "Apex", "Spy", "Lobter"), lob]);
+    expect(c.coveredBy).toBeUndefined();
+    expect(d.coveredBy.id).toBe("s");
   });
 
   it("stays as it is in another sign-up, or when nobody names them", () => {

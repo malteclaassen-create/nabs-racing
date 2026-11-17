@@ -123,6 +123,27 @@ function Entry({ item, onChanged }) {
           </div>
         )}
         {item.note && <p className="mt-1 whitespace-pre-line text-sm text-light">{item.note}</p>}
+        {/* Entries folded into this one (backend markCovered): the other half
+            of the pair sending the same, or a driver's earlier solo entry. */}
+        {(item.alsoSent || []).map((o) => (
+          <div key={o.id} className="mt-2 rounded-lg border border-border px-3 py-2 text-sm">
+            <div className="text-xs text-light">
+              Also sent by <span className="font-semibold text-medium">{o.senderName || "a member"}</span>
+              {o.teamName && o.teamName.trim().toLowerCase() !== item.teamName.trim().toLowerCase() ? ` as ${o.teamName}` : ""}
+              <button
+                className="ml-2 font-semibold text-light underline-offset-2 hover:text-bad hover:underline disabled:opacity-50"
+                disabled={busy}
+                onClick={async () => {
+                  if (!(await ask({ title: `Delete what ${o.senderName || "this member"} sent?`, danger: true, confirmLabel: "Delete" }))) return;
+                  run(() => api.deleteTeamSignup(o.id));
+                }}
+              >
+                Delete
+              </button>
+            </div>
+            {o.note && <p className="mt-0.5 whitespace-pre-line text-light">{o.note}</p>}
+          </div>
+        ))}
         <div className="mt-1 text-xs text-light">
           Sent by {item.senderName || "a member"} · {fmtTime(item.createdAt)}
           {item.updatedAt ? ` · changed ${fmtTime(item.updatedAt)}` : ""}
@@ -175,9 +196,8 @@ export default function AdminTeamSignups() {
 
   const group = groups.find((g) => g.key === list) || null;
   // Open ones first, then by team name so two entries for one team sit together.
-  // A driver who signed up alone and is now named in a pair's entry (backend
-  // markCovered) is folded away: the pair's entry is the one to deal with.
-  const covered = group ? group.items.filter((i) => i.coveredBy) : [];
+  // Entries folded into another one (backend markCovered) are shown inside
+  // that one ("Also sent by"), not on their own.
   const items = group ? group.items.filter((i) => !i.coveredBy) : [];
   // Three lists: the teams (by name, so two entries for one team sit
   // together), then who is looking for a team, then who has none yet. New
@@ -241,19 +261,6 @@ export default function AdminTeamSignups() {
                   </ul>
                 </section>
               ))}
-              {covered.length > 0 && (
-                <p className="mt-3 border-t border-border pt-3 text-xs text-light">
-                  Not listed, because they are now down as a pair:{" "}
-                  {covered.map((i, n) => (
-                    <span key={i.id}>
-                      {n > 0 ? "; " : ""}
-                      <span className="font-semibold text-medium">{i.driver1}</span> (signed up alone as {i.teamName}, now {i.coveredBy.teamName} with{" "}
-                      {i.coveredBy.with})
-                    </span>
-                  ))}
-                  . If that pair takes their entry back, these come back on the list.
-                </p>
-              )}
             </>
           ) : (
             <p className="text-sm text-light">Nobody has signed up yet.</p>

@@ -207,34 +207,69 @@ export async function dbListSignups(prisma) {
   return markCovered(rows.map(shape));
 }
 
-// A driver who signed up on their own and is now named in somebody else's
-// entry as one of two drivers has found their pair: their own entry is spent.
-// It is not deleted (that other entry could be taken back, or name them by
-// mistake), only marked, so the admin list and the lists members see can leave
-// it out. Adds `coveredBy: { id, teamName, with }` (the entry that names them,
-// newest wins) to each such entry; everything else is returned as it was.
-// Entries are matched within one sign-up (series + name), drivers by name in
-// any case.
+// Entries that say the same thing as another one, folded into it so the
+// admin deals with each pair once:
+//   - the same two drivers sent twice (each put the other down as teammate):
+//     the entry with a real team wins over "No team yet", else the newest;
+//   - a driver who signed up on their own and is now named in a pair's entry:
+//     their own entry is spent, the pair's entry wins.
+// Nothing is deleted (an entry could be taken back, or name someone by
+// mistake), only marked: the folded one gets `coveredBy: { id, teamName,
+// with }` (the entry it went into, and the other driver there), and that entry
+// gets `alsoSent: [{ id, senderName, teamName, note }]`, so the admin still
+// reads every note. The admin list and the lists members see leave folded
+// entries out. Entries are matched within one sign-up (series + name),
+// drivers by name in any case.
 export function markCovered(entries) {
-  const list = (entries || []).filter(Boolean);
+  const list = (entries || []).filter(Boolean).map((e) => ({ ...e }));
   const norm = (v) => String(v || "").trim().toLowerCase();
   const group = (e) => `${e.seriesId || ""}::${e.label}`;
   const stamp = (e) => e.updatedAt || e.createdAt || "";
-  const pairs = list.filter((e) => norm(e.driver1) && norm(e.driver2));
-  return list.map((e) => {
-    if (norm(e.driver2)) return e;
+  const notTeam = new Set(NOT_A_TEAM.map((n) => n.toLowerCase()));
+  const realTeam = (e) => !notTeam.has(norm(e.teamName));
+  const byId = new Map(list.map((e) => [e.id, e]));
+  const fold = (e, into, me) => {
+    const partner = me ? (norm(into.driver1) === me ? into.driver2 : into.driver1) : null;
+    e.coveredBy = { id: into.id, teamName: into.teamName, with: partner };
+  };
+
+  // The same pair more than once.
+  const pairs = new Map();
+  for (const e of list) {
+    if (!norm(e.driver1) || !norm(e.driver2)) continue;
+    const key = `${group(e)}::${[norm(e.driver1), norm(e.driver2)].sort().join("|")}`;
+    if (!pairs.has(key)) pairs.set(key, []);
+    pairs.get(key).push(e);
+  }
+  const keepers = [];
+  for (const same of pairs.values()) {
+    same.sort((a, b) => Number(realTeam(b)) - Number(realTeam(a)) || (stamp(b) > stamp(a) ? 1 : stamp(b) < stamp(a) ? -1 : 0));
+    const [keep, ...rest] = same;
+    keepers.push(keep);
+    for (const e of rest) fold(e, keep, null);
+  }
+
+  // A solo entry whose driver is now in a pair.
+  for (const e of list) {
+    if (norm(e.driver2)) continue;
     const me = norm(e.driver1);
-    if (!me) return e;
+    if (!me) continue;
     let best = null;
-    for (const p of pairs) {
+    for (const p of keepers) {
       if (p.id === e.id || group(p) !== group(e)) continue;
       if (norm(p.driver1) !== me && norm(p.driver2) !== me) continue;
       if (!best || stamp(p) > stamp(best)) best = p;
     }
-    if (!best) return e;
-    const partner = norm(best.driver1) === me ? best.driver2 : best.driver1;
-    return { ...e, coveredBy: { id: best.id, teamName: best.teamName, with: partner } };
-  });
+    if (best) fold(e, best, me);
+  }
+
+  for (const e of list) {
+    if (!e.coveredBy) continue;
+    const into = byId.get(e.coveredBy.id);
+    if (!into) continue;
+    (into.alsoSent ||= []).push({ id: e.id, senderName: e.senderName ?? null, teamName: e.teamName, note: e.note ?? null });
+  }
+  return list;
 }
 
 // Teams in this sign-up with one driver so far, so someone on their own can
