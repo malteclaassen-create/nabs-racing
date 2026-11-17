@@ -1073,6 +1073,8 @@ export const api = {
   // The race recap (backend lib/raceRecap.js): the round waiting to be shown
   // to this member, one round read again from its race page, and "seen".
   myRaceRecap: () => request("/me/race-recap", { userAuth: true }),
+  // Whether this member has a season Wrapped for that season (Home takeover).
+  mySeasonWrapped: (seasonId) => request(`/me/season-wrapped?seasonId=${encodeURIComponent(seasonId)}`, { userAuth: true }),
   myRaceRecapFor: (raceId) => request(`/me/race-recap/${encodeURIComponent(raceId)}`, { userAuth: true }),
   markRaceRecapSeen: (raceId) => request("/me/race-recap/seen", { method: "POST", body: { raceId }, userAuth: true }),
   adminRaceRecap: () => request("/admin/race-recap", { auth: true }),

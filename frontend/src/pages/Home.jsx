@@ -4,6 +4,7 @@ import { api, peekCached } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { finishesOf, startsOf } from "../utils/standingsRow.js";
 import { useAuth } from "../hooks/useAuth.js";
+import { useSeasonWrapped, WrappedTakeover, WrappedButton } from "../components/WrappedTakeover.jsx";
 import { REPORTS_OPEN_TO_MEMBERS, reportsPath, reportsWindowOpen } from "../reportsAccess.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { Skeleton, TableSkeleton, CountUp, Rank, DriverAvatar, ErrorBox } from "../components/ui.jsx";
@@ -610,6 +611,10 @@ export default function Home() {
   const seasonOver =
     !isPast && !isUpcomingSeason && champRaces.length > 0 && champRaces.every((r) => r.isCompleted);
 
+  // A finished season the member raced in: their Wrapped takes over the main
+  // card until they close or watch it (components/WrappedTakeover.jsx).
+  const wrappedState = useSeasonWrapped(season, isLoggedIn, !!(seasonOver || isPast));
+
   // Which round the hero is ABOUT, and therefore whose photo it may wear (a
   // round without an uploaded one falls through to the season's). Only the
   // latest-race hero qualifies: the season-complete and archive layouts speak
@@ -1057,6 +1062,8 @@ export default function Home() {
           }}
         />
 
+        {(seasonOver || isPast) && wrappedState.showTakeover && <WrappedTakeover wrapped={wrappedState.wrapped} onClose={wrappedState.dismiss} />}
+
         <div className="hero-hud relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
           {seasonOver || isPast ? (
             /* SEASON COMPLETE — one hero for every finished season, live finale
@@ -1100,6 +1107,7 @@ export default function Home() {
                 >
                   Constructors
                 </Link>
+                {wrappedState.wrapped && <WrappedButton wrapped={wrappedState.wrapped} />}
               </div>
             </div>
             {/* Off-season with an announced season: the celebration shares the

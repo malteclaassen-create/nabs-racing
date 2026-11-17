@@ -31,6 +31,8 @@ import { getCardRating } from "../services/cardRatingService.js";
 import { previewAccountDeletion, deleteMemberAccount } from "../services/accountDeletionService.js";
 import { recapVisibleTo, pendingRecapRace, buildRaceRecap, markRecapSeen } from "../lib/raceRecap.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
+import { getSeasonReview, reviewVisibleTo } from "../services/seasonReviewService.js";
+import { isSeasonComplete } from "../lib/seasonComplete.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -800,6 +802,38 @@ router.get("/race-recap/:raceId", async (req, res, next) => {
     const recap = await buildRaceRecap(prisma, { raceId: race.id, driverId, discordId: req.user.discordId, req });
     if (!recap) return res.status(404).json({ error: "No result yet" });
     res.json({ recap });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/me/season-wrapped?seasonId= -> { available, driverId, season, team }
+// Whether this member has a season Wrapped (services/seasonReviewService.js)
+// for that season: signed in, the Wrapped switched on for them, a row of
+// their own in the season, the season over and raced in. The Home page uses
+// it to announce the Wrapped over the main card and to keep a button to it.
+router.get("/season-wrapped", async (req, res, next) => {
+  const none = { available: false };
+  try {
+    const seasonId = String(req.query.seasonId || "");
+    if (!req.user || !seasonId) return res.json(none);
+    if (!(await reviewVisibleTo(prisma, req))) return res.json(none);
+    const driverId = await resolveDriverId(prisma, req.user);
+    if (!driverId) return res.json(none);
+    const linked = await getLinkedDriverIds(prisma, driverId);
+    const row = await prisma.driver.findFirst({ where: { id: { in: linked.length ? linked : [driverId] }, seasonId }, select: { id: true } });
+    if (!row) return res.json(none);
+    if (!(await isSeasonComplete(prisma, seasonId))) return res.json(none);
+    const review = await getSeasonReview(prisma, row.id);
+    if (!review || review.tooEarly || review.empty) return res.json(none);
+    res.json({
+      available: true,
+      driverId: row.id,
+      seriesSlug: review.series?.slug || null,
+      season: { number: review.season?.number ?? null, label: review.season?.label || null },
+      team: review.driver?.team || null,
+      championship: { position: review.championship?.position ?? null, points: review.championship?.points ?? null },
+    });
   } catch (e) {
     next(e);
   }
