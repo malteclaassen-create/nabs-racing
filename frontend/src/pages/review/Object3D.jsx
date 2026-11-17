@@ -351,6 +351,28 @@ function medalsThing({ scene, data, setCamera, el }) {
   return { fit, update, still: 6 };
 }
 
+// A photo studio to reflect in: a dark room with a broad soft box overhead
+// and tall strip lights to each side. Polished metal shows these as clean
+// bands of light on every part, the wide bowl included; the plain room left
+// the bowl a flat smear while the tight curves of stem and handles sparkled.
+function studioScene() {
+  const studio = new THREE.Scene();
+  const room = new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.MeshBasicMaterial({ color: 0x5c5a56, side: THREE.BackSide }));
+  studio.add(room);
+  const light = (w, h, x, y, z, power) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(power), side: THREE.DoubleSide }));
+    m.position.set(x, y, z);
+    m.lookAt(0, 0.5, 0);
+    studio.add(m);
+  };
+  light(8, 4, 0, 7, 1, 4); // soft box overhead
+  light(2, 8, -5, 1, 2.5, 6); // strip, front left
+  light(2, 8, 5.5, 1, 1.5, 5); // strip, front right
+  light(4, 6, 0, 1, -6, 2.5); // fill from behind
+  light(12, 3, 0, -1.5, 6, 1.6); // a low bounce in front
+  return studio;
+}
+
 // --- the trophy -----------------------------------------------------------------------------
 
 // A plain gold cup, the kind on every shelf: a turned stem with a knot, a
@@ -363,7 +385,7 @@ function trophyThing({ scene }) {
   scene.add(group);
   // Gold, a touch less mirror-like than a showroom render, so it reads as
   // metal without looking airbrushed; the flutes catch the light as it turns.
-  const gold = new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.26 });
+  const gold = new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.18 });
   // The outline below was drawn for a cup on a plinth; it stands on the
   // ground now.
   const body = new THREE.Group();
@@ -433,6 +455,19 @@ function trophyThing({ scene }) {
     pos.setZ(i, pos.getZ(i) * k);
   }
   lathe.computeVertexNormals();
+  // The lathe's first and last columns are the same seam, but each got its
+  // own normals; averaged, the thin line down the front goes.
+  {
+    const n = lathe.attributes.normal;
+    const last = pos.count - outline.length;
+    for (let j = 0; j < outline.length; j += 1) {
+      const a = new THREE.Vector3().fromBufferAttribute(n, j);
+      const b = new THREE.Vector3().fromBufferAttribute(n, last + j);
+      a.add(b).normalize();
+      n.setXYZ(j, a.x, a.y, a.z);
+      n.setXYZ(last + j, a.x, a.y, a.z);
+    }
+  }
   add(lathe, gold);
 
   // Two handles, each a round bar bent from just under the lip, out and
@@ -609,7 +644,7 @@ export default function Object3D({ kind, data, delay = 0, className = "", style,
         mark: colour("--g-mark", "#f4afc6"),
       };
       const pmrem = new THREE.PMREMGenerator(renderer);
-      const room = new RoomEnvironment();
+      const room = kind === "trophy" ? studioScene() : new RoomEnvironment();
       const env = pmrem.fromScene(room, 0.04).texture;
       const scene = new THREE.Scene();
       scene.environment = env;
@@ -694,6 +729,10 @@ export default function Object3D({ kind, data, delay = 0, className = "", style,
         textures.forEach((x) => x.dispose());
         env.dispose();
         pmrem.dispose();
+        room.traverse?.((o) => {
+          o.geometry?.dispose();
+          o.material?.dispose?.();
+        });
         room.dispose?.();
         renderer.dispose();
         renderer.forceContextLoss();
