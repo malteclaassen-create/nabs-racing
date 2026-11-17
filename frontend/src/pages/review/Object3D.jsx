@@ -12,8 +12,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { circuitFor } from "../../data/circuits.js";
 import { motionOff } from "../../hooks/motion.js";
 
@@ -319,47 +317,100 @@ function medalsThing({ scene, data, setCamera, el }) {
 
 // --- the trophy -----------------------------------------------------------------------------
 
-// The league's trophy (public/models/trophy, CC0): polished gold on a dark
-// base, rising into place and then turning slowly, nothing else around it.
-// The model comes faceted; its normals are smoothed so the cup reads as
-// polished metal rather than a low-poly toy.
+// A plain cup, the kind on every shelf: a black two-step plinth with a
+// silver plate, a turned gold stem with a knot, a round bowl with a rolled
+// lip and two handles. Built from simple shapes so it reads as a trophy, not
+// as a particular model; it rises into place and turns slowly.
 function trophyThing({ scene }) {
   keyLight(scene, [1.4, 3.5, 2.4], 1.4);
   shadowGround(scene, 6, 0.18);
   const group = new THREE.Group();
   scene.add(group);
-  const ready = new GLTFLoader().loadAsync("/models/trophy/trophy.glb").then((gltf) => {
-    gltf.scene.traverse((o) => {
-      if (!o.isMesh) return;
-      o.castShadow = true;
-      const n = o.name.toLowerCase();
-      const metal = n.includes("cup") || n.includes("plate");
-      if (metal) {
-        o.geometry.deleteAttribute("normal");
-        const smooth = mergeVertices(o.geometry, 1e-4);
-        smooth.computeVertexNormals();
-        o.geometry = smooth;
-      }
-      o.material = n.includes("cup")
-        ? new THREE.MeshStandardMaterial({
-            color: GOLD,
-            metalness: 1,
-            roughness: 0.16,
-          })
-        : n.includes("plate")
-          ? new THREE.MeshStandardMaterial({
-              color: SILVER,
-              metalness: 1,
-              roughness: 0.25,
-            })
-          : new THREE.MeshStandardMaterial({
-              color: 0x141416,
-              metalness: 0.1,
-              roughness: 0.55,
-            });
-    });
-    group.add(gltf.scene);
-  });
+  const gold = new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.17 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x141416, metalness: 0.15, roughness: 0.5 });
+  const plate = new THREE.MeshStandardMaterial({ color: SILVER, metalness: 1, roughness: 0.28 });
+  const add = (geo, mat, y = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.y = y;
+    m.castShadow = true;
+    m.receiveShadow = true;
+    group.add(m);
+    return m;
+  };
+
+  // The plinth: a wide step and a narrower one on it, edges slightly eased.
+  const step = (w, h, d) => {
+    const shape = new THREE.Shape();
+    const r = 0.012;
+    shape.moveTo(-w / 2 + r, -d / 2);
+    shape.lineTo(w / 2 - r, -d / 2);
+    shape.quadraticCurveTo(w / 2, -d / 2, w / 2, -d / 2 + r);
+    shape.lineTo(w / 2, d / 2 - r);
+    shape.quadraticCurveTo(w / 2, d / 2, w / 2 - r, d / 2);
+    shape.lineTo(-w / 2 + r, d / 2);
+    shape.quadraticCurveTo(-w / 2, d / 2, -w / 2, d / 2 - r);
+    shape.lineTo(-w / 2, -d / 2 + r);
+    shape.quadraticCurveTo(-w / 2, -d / 2, -w / 2 + r, -d / 2);
+    const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.006, bevelSegments: 2, curveSegments: 4 });
+    g.rotateX(-Math.PI / 2);
+    return g;
+  };
+  add(step(0.6, 0.14, 0.6), dark, 0);
+  add(step(0.46, 0.08, 0.46), dark, 0.15);
+  const tag = add(new THREE.BoxGeometry(0.34, 0.07, 0.008), plate, 0.075);
+  tag.position.z = 0.304;
+
+  // The gold body, turned on a lathe from one outline (radius, height).
+  const outline = [
+    [0, 0.235],
+    [0.17, 0.235],
+    [0.172, 0.25],
+    [0.15, 0.262],
+    [0.11, 0.28],
+    [0.07, 0.31],
+    [0.048, 0.36],
+    [0.042, 0.4],
+    [0.05, 0.43],
+    [0.078, 0.452],
+    [0.08, 0.465],
+    [0.06, 0.485],
+    [0.042, 0.51],
+    [0.046, 0.54],
+    [0.07, 0.565],
+    [0.12, 0.59],
+    [0.18, 0.63],
+    [0.226, 0.69],
+    [0.256, 0.77],
+    [0.27, 0.86],
+    [0.276, 0.94],
+    [0.288, 0.975],
+    [0.296, 0.988],
+    [0.29, 1.0],
+    [0.272, 0.996],
+    [0.258, 0.96],
+    [0.25, 0.88],
+    [0.236, 0.79],
+    [0.2, 0.7],
+    [0.12, 0.64],
+    [0, 0.62],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  add(new THREE.LatheGeometry(outline, 128), gold);
+
+  // Two handles, each a round bar bent from just under the lip, out and
+  // down, back into the bowl's side.
+  for (const side of [1, -1]) {
+    const path = new THREE.CatmullRomCurve3(
+      [
+        [0.262, 0.92],
+        [0.36, 0.935],
+        [0.425, 0.88],
+        [0.42, 0.78],
+        [0.35, 0.71],
+        [0.235, 0.7],
+      ].map(([x, y]) => new THREE.Vector3(x * side, y, 0)),
+    );
+    add(new THREE.TubeGeometry(path, 64, 0.021, 16, false), gold);
+  }
   const fit = (cam, aspect) => {
     const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     const d = Math.max(0.68 / tv, 0.62 / (tv * aspect));
@@ -373,7 +424,7 @@ function trophyThing({ scene }) {
     group.visible = t > 0;
     group.rotation.y = -0.5 + t * 0.32;
   };
-  return { fit, update, still: 5, ready };
+  return { fit, update, still: 5 };
 }
 // --- the chequered flag -------------------------------------------------------------------
 
