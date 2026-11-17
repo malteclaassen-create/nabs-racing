@@ -317,25 +317,17 @@ function medalsThing({ scene, data, setCamera, el }) {
 
 // --- the trophy -----------------------------------------------------------------------------
 
-// A plain cup, the kind on every shelf: a turned stem with a knot, a round
-// bowl with a rolled lip and two handles, standing on its own foot. It is
-// painted in the slide's own colour with three hard bands of light, like a
-// printed picture, not polished gold; it rises into place and turns slowly.
-function trophyThing({ scene, pal }) {
+// A plain gold cup, the kind on every shelf: a turned stem with a knot, a
+// fluted round bowl with a rolled lip and two handles, standing on its own
+// foot. It rises into place and turns slowly.
+function trophyThing({ scene }) {
   keyLight(scene, [1.4, 3.5, 2.4], 1.4);
   shadowGround(scene, 6, 0.18);
   const group = new THREE.Group();
   scene.add(group);
-  const bands = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1, THREE.RedFormat);
-  bands.minFilter = bands.magFilter = THREE.NearestFilter;
-  bands.needsUpdate = true;
-  // White type: a white cup whose bands go grey. Black type (a light team
-  // colour): not a black hole but a deep shade of the team colour, its
-  // darkest band still lit a little, so the cup keeps its shape.
-  const light = pal.fg.r + pal.fg.g + pal.fg.b > 1.5;
-  const gold = light
-    ? new THREE.MeshToonMaterial({ color: pal.fg, gradientMap: bands })
-    : new THREE.MeshToonMaterial({ color: pal.bg.clone().multiplyScalar(0.3), emissive: pal.bg.clone().multiplyScalar(0.035), gradientMap: bands });
+  // Gold, a touch less mirror-like than a showroom render, so it reads as
+  // metal without looking airbrushed; the flutes catch the light as it turns.
+  const gold = new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.26 });
   // The outline below was drawn for a cup on a plinth; it stands on the
   // ground now.
   const body = new THREE.Group();
@@ -383,7 +375,29 @@ function trophyThing({ scene, pal }) {
     [0.12, 0.64],
     [0, 0.62],
   ].map(([r, y]) => new THREE.Vector2(r, y));
-  add(new THREE.LatheGeometry(outline, 128), gold);
+  // A round cup looks the same from every side, so turning it showed
+  // nothing but the handles. The lower bowl is fluted, the way cups are:
+  // shallow grooves round it that turn with it.
+  const lathe = new THREE.LatheGeometry(outline, 192);
+  const FLUTES = 14;
+  const ramp = (x) => Math.min(1, Math.max(0, x));
+  const outerTop = outline.findIndex((v) => v.y >= 0.86);
+  const pos = lathe.attributes.position;
+  for (let i = 0; i < pos.count; i += 1) {
+    const j = i % outline.length;
+    const y = pos.getY(i);
+    if (j > outerTop || y < 0.6 || y > 0.84) continue;
+    // Full depth along most of the bowl, easing in and out at the ends, so
+    // the grooves run straight up rather than fading into blobs.
+    const fade = ramp((y - 0.6) / 0.05) * ramp((0.84 - y) / 0.05);
+    const phi = Math.atan2(pos.getX(i), pos.getZ(i));
+    const groove = (0.5 + 0.5 * Math.cos(FLUTES * phi)) ** 4;
+    const k = 1 - 0.075 * fade * groove;
+    pos.setX(i, pos.getX(i) * k);
+    pos.setZ(i, pos.getZ(i) * k);
+  }
+  lathe.computeVertexNormals();
+  add(lathe, gold);
 
   // Two handles, each a round bar bent from just under the lip, out and
   // down, back into the bowl's side.
