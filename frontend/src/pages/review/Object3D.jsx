@@ -329,7 +329,13 @@ function trophyThing({ scene, pal }) {
   const bands = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1, THREE.RedFormat);
   bands.minFilter = bands.magFilter = THREE.NearestFilter;
   bands.needsUpdate = true;
-  const gold = new THREE.MeshToonMaterial({ color: pal.fg, gradientMap: bands });
+  // White type: a white cup whose bands go grey. Black type (a light team
+  // colour): not a black hole but a deep shade of the team colour, its
+  // darkest band still lit a little, so the cup keeps its shape.
+  const light = pal.fg.r + pal.fg.g + pal.fg.b > 1.5;
+  const gold = light
+    ? new THREE.MeshToonMaterial({ color: pal.fg, gradientMap: bands })
+    : new THREE.MeshToonMaterial({ color: pal.bg.clone().multiplyScalar(0.3), emissive: pal.bg.clone().multiplyScalar(0.035), gradientMap: bands });
   // The outline below was drawn for a cup on a plinth; it stands on the
   // ground now.
   const body = new THREE.Group();
@@ -384,12 +390,15 @@ function trophyThing({ scene, pal }) {
   for (const side of [1, -1]) {
     const path = new THREE.CatmullRomCurve3(
       [
-        [0.262, 0.92],
-        [0.36, 0.935],
-        [0.425, 0.88],
-        [0.42, 0.78],
-        [0.35, 0.71],
-        [0.235, 0.7],
+        // Both ends run into the bowl's wall, so the bar grows out of the
+        // cup instead of stopping at its surface.
+        [0.24, 0.93],
+        [0.33, 0.945],
+        [0.415, 0.895],
+        [0.418, 0.795],
+        [0.35, 0.72],
+        [0.262, 0.7],
+        [0.214, 0.692],
       ].map(([x, y]) => new THREE.Vector3(x * side, y, 0)),
     );
     add(new THREE.TubeGeometry(path, 64, 0.021, 16, false), gold);
