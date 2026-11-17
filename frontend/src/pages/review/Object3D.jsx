@@ -272,8 +272,11 @@ function medalsThing({ scene, data, setCamera }) {
     return { holder, k, col: k % cols, row: Math.floor(k / cols) };
   });
 
-  let cell = 1;
-  const fit = (_c, aspect) => {
+  // Each row is 1.05 columns tall, with `band` pixels between rows for the
+  // labels the slide sets there (one scene for all rows, see Podiums).
+  const ROW = 1.05;
+  let cell = ROW;
+  const fit = (_c, aspect, px) => {
     const w = cols;
     const h = w / aspect;
     Object.assign(cam, {
@@ -283,12 +286,13 @@ function medalsThing({ scene, data, setCamera }) {
       bottom: -h / 2,
     });
     cam.updateProjectionMatrix();
-    cell = h / rows;
+    const band = data.band && px ? (data.band * w) / px : 0;
+    cell = band ? ROW : h / rows;
     const r = Math.min(0.4, cell * 0.42);
     for (const c of coins) {
       c.holder.scale.setScalar(r);
       c.holder.userData.x = -w / 2 + 0.5 + c.col;
-      c.holder.userData.y = h / 2 - cell * (c.row + 0.5);
+      c.holder.userData.y = h / 2 - c.row * (cell + band) - cell / 2;
     }
   };
   const update = (t) => {
@@ -435,6 +439,14 @@ function flagThing({ scene }) {
 
 const THINGS = { track: trackThing, medals: medalsThing, trophy: trophyThing, flag: flagThing };
 
+// A figure counting up wants every frame for itself; setting a scene up at
+// the same moment makes the count stutter. Slides say until when they are
+// counting, and the scene waits until then.
+let busyUntil = 0;
+export function holdBuildUntil(t) {
+  busyUntil = Math.max(busyUntil, t);
+}
+
 export default function Object3D({ kind, data, delay = 0, className = "", style, fallback = null, label }) {
   const box = useRef(null);
   const [failed, setFailed] = useState(() => !has3D());
@@ -444,7 +456,8 @@ export default function Object3D({ kind, data, delay = 0, className = "", style,
     if (failed) return undefined;
     // The scene is built once the slide has nearly finished coming in, so
     // setting it up does not make the transition stutter on a slow phone.
-    const SETTLE_MS = 420;
+    // Slides take 720 to 820 ms to come in.
+    const SETTLE_MS = 840;
     const start = () => {
       const el = box.current;
       if (!el) return undefined;
@@ -520,7 +533,7 @@ export default function Object3D({ kind, data, delay = 0, className = "", style,
           camera.aspect = w / h;
           camera.updateProjectionMatrix();
         }
-        thing?.fit?.(camera, w / h);
+        thing?.fit?.(camera, w / h, w, h);
         if (still) draw(thing?.still ?? 6);
       };
       size();
@@ -533,9 +546,17 @@ export default function Object3D({ kind, data, delay = 0, className = "", style,
         draw(t);
         raf = requestAnimationFrame(frame);
       };
-      if (still) draw(thing?.still ?? 6);
-      else raf = requestAnimationFrame(frame);
       let gone = false;
+      // The shaders are prepared off the page's own thread where the browser
+      // can, so the first frame does not hold everything up; then it runs.
+      const go = () => {
+        if (gone) return;
+        last = performance.now();
+        if (still) draw(thing?.still ?? 6);
+        else raf = requestAnimationFrame(frame);
+      };
+      if (typeof renderer.compileAsync === "function") renderer.compileAsync(scene, camera).then(go, go);
+      else go();
       thing?.ready?.then(() => !gone && still && draw(thing.still ?? 6)).catch(() => {});
 
       return () => {
@@ -560,9 +581,16 @@ export default function Object3D({ kind, data, delay = 0, className = "", style,
       };
     };
     let cleanup;
-    const wait = setTimeout(() => {
+    let wait = 0;
+    const attempt = () => {
+      const rest = busyUntil - performance.now();
+      if (rest > 16) {
+        wait = setTimeout(attempt, rest + 80);
+        return;
+      }
       cleanup = start();
-    }, SETTLE_MS);
+    };
+    wait = setTimeout(attempt, SETTLE_MS);
     return () => {
       clearTimeout(wait);
       cleanup?.();

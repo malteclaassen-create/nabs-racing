@@ -168,7 +168,7 @@ export function WrappedButton({ wrapped }) {
         growInto(e.currentTarget, colour, () => navigate(wrappedPath(wrapped)));
       }}
       data-wrapped-origin=""
-      className="inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-bold uppercase tracking-wide shadow-lg transition hover:brightness-105"
+      className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-3 text-sm sm:px-6 font-bold uppercase tracking-wide shadow-lg transition hover:brightness-105"
       style={{ background: colour, color: readableInkOn(colour) }}
     >
       <Play size={15} strokeWidth={2.5} fill="currentColor" />

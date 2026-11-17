@@ -116,13 +116,23 @@ export function shrinkBack(go, fromColour) {
   origin = null;
   const start = fromColour || from.colour;
   const sheet = makeSheet(start, screen(), 0);
-  go();
-  const t0 = performance.now();
-  const land = () => {
+  // First the slide's words and pictures dissolve into its colour, so the
+  // story does not just vanish; then the page changes underneath.
+  sheet.style.opacity = "0";
+  const dissolve = sheet.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: "cubic-bezier(0.33, 0, 0.2, 1)", fill: "forwards" });
+  dissolve.onfinish = () => {
+    sheet.style.opacity = "1";
+    dissolve.cancel();
+    go();
+    requestAnimationFrame(land);
+  };
+  let t0 = 0;
+  const land = (now) => {
+    if (!t0) t0 = now;
     const target = document.querySelector("[data-wrapped-origin]");
     if (!target) {
       // The page is still loading; give it a little while, then just fade.
-      if (performance.now() - t0 < 1500) requestAnimationFrame(land);
+      if (now - t0 < 1500) requestAnimationFrame(land);
       else fadeAway(sheet);
       return;
     }
@@ -151,5 +161,4 @@ export function shrinkBack(go, fromColour) {
       },
     );
   };
-  requestAnimationFrame(land);
 }

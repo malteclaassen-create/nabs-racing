@@ -1093,17 +1093,20 @@ export default function Home() {
               {/* No hero-anim wrapper here: the podium columns stagger their
                   own entrances (P3 → P2 → champion, see .podium-col). */}
               <Podium entries={heroPodium} />
-              <div className="hero-anim flex flex-wrap justify-center gap-3" style={{ animationDelay: "0.34s" }}>
+              {/* On a phone the three sit as a block: the standings across the
+                  top, the other two side by side under it, all the same height
+                  and edges. From sm up they sit in one centred row. */}
+              <div className="hero-anim mx-auto grid w-full max-w-sm grid-cols-2 gap-2.5 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center sm:gap-3" style={{ animationDelay: "0.34s" }}>
                 <Link
                   to="/drivers"
-                  className="shine group inline-flex items-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
+                  className="shine group col-span-2 inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink shadow-lg shadow-brand/30 transition hover:brightness-105"
                 >
                   Final Standings
                   <span className="transition group-hover:translate-x-0.5">→</span>
                 </Link>
                 <Link
                   to="/constructors"
-                  className="inline-flex items-center rounded-lg border border-ink/15 bg-ink/[0.03] px-6 py-3 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15"
+                  className={`inline-flex items-center justify-center rounded-lg border border-ink/15 bg-ink/[0.03] px-3 py-3 sm:px-6 text-sm font-bold uppercase tracking-wide text-ink backdrop-blur-sm transition hover:bg-ink/[0.06] dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:bg-white/15 ${wrappedState.wrapped ? "" : "col-span-2"}`}
                 >
                   Constructors
                 </Link>

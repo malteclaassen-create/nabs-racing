@@ -19,7 +19,7 @@ import { nth } from "./copy.mjs";
 import { seasonList } from "./storySlides.mjs";
 import { saveSharePicture } from "./sharePicture.js";
 import { motionOff } from "../../hooks/motion.js";
-import Object3D, { has3D } from "./Object3D.jsx";
+import Object3D, { has3D, holdBuildUntil } from "./Object3D.jsx";
 
 // How long a slide's opening line holds the frame before the slide itself
 // comes in (review/story.css shifts every animation by it).
@@ -111,6 +111,7 @@ function useCountUp(v, delay) {
     let raf = 0;
     const t0 = performance.now() + delay;
     const dur = Math.min(1500, 650 + target * 4);
+    holdBuildUntil(t0 + dur);
     const tick = (t) => {
       const p = Math.max(0, Math.min(1, (t - t0) / dur));
       setN(Math.round(target * (1 - Math.pow(1 - p, 3))));
@@ -727,6 +728,11 @@ function Climb({ slide, review }) {
 
 // The podiums as medals: solid, metal, dropping in one after another and
 // spinning to face out, four to a row with the circuit under each.
+// The label band under each row of medals, and the room between rows, in
+// pixels: the medal scene leaves exactly this much between its rows.
+const MEDAL_LABEL = 38;
+const MEDAL_GAP = 12;
+
 function Podiums({ slide, review }) {
   const v = voiceOf(review);
   const n = slide.podiums.length;
@@ -762,30 +768,40 @@ function Podiums({ slide, review }) {
       </div>
       <Aside>
         <div className={`st-3d space-y-3 ${wide ? "" : "flex flex-1 flex-col justify-center pt-4"}`}>
-          {has3D()
-            ? rows.map((row, r) => (
-                <div key={r}>
-                  <Thing
-                    kind="medals"
-                    data={{ places: row.map((p) => p.position), cols }}
-                    d={1000 + r * cols * 180}
-                    className="w-full"
-                    style={{ aspectRatio: `${cols} / 1.05` }}
-                    label={`Podium places: ${row.map((p) => `P${p.position}`).join(", ")}`}
-                  />
-                  <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-                    {row.map((p, k) => (
-                      <div key={`${p.round}-${p.sprint}`} className="st-in min-w-0 text-center" style={{ "--d": `${1300 + (r * cols + k) * 180}ms` }}>
-                        <div className="truncate text-[12px] font-extrabold uppercase">{p.track}</div>
-                        <div className="text-[11px] font-bold opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
-                          {p.sprint ? "Sprint" : `Round ${p.round}`}
+          {has3D() ? (
+            // One scene for every medal: each row of its own made the
+            // browser set up 3D several times at once, and the slide stuttered.
+            // The canvas lies behind the rows; the rows keep the room the
+            // medals need and carry the labels under them.
+            <div className="relative">
+              <Thing
+                kind="medals"
+                data={{ places: shown.map((p) => p.position), cols, band: MEDAL_LABEL + MEDAL_GAP }}
+                d={1000}
+                style={{ position: "absolute", inset: 0 }}
+                label={`Podium places: ${shown.map((p) => `P${p.position}`).join(", ")}`}
+              />
+              <div className="relative flex flex-col" style={{ gap: MEDAL_GAP }}>
+                {rows.map((row, r) => (
+                  <div key={r}>
+                    <div style={{ aspectRatio: `${cols} / 1.05` }} />
+                    <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, height: MEDAL_LABEL }}>
+                      {row.map((p, k) => (
+                        <div key={`${p.round}-${p.sprint}`} className="st-in min-w-0 text-center" style={{ "--d": `${1300 + (r * cols + k) * 180}ms` }}>
+                          <div className="truncate text-[12px] font-extrabold uppercase">{p.track}</div>
+                          <div className="text-[11px] font-bold opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
+                            {p.sprint ? "Sprint" : `Round ${p.round}`}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))
-            : flat}
+                ))}
+              </div>
+            </div>
+          ) : (
+            flat
+          )}
         </div>
       </Aside>
     </Card>

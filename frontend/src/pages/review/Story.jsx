@@ -8,7 +8,7 @@
 //
 // It is drawn in the site's own look on purpose (review/story.css): every
 // earlier "Wrapped" was turned down for its neon slides, 3D and confetti.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Pause, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useScrollLock, useFocusTrap } from "../../components/overlay.jsx";
@@ -42,6 +42,7 @@ export default function Story({ review, slides, onClose }) {
   useEffect(() => () => clearTimeout(fromTimer.current), []);
   const frameRef = useRef(null);
   const barRef = useRef(null);
+  const barsRef = useRef(null);
   const progress = useRef(0);
   const hold = useRef({ timer: 0, held: false, x: 0, t: 0 });
   const last = slides.length - 1;
@@ -65,6 +66,18 @@ export default function Story({ review, slides, onClose }) {
   );
   const next = useCallback(() => (i < last ? go(i + 1) : null), [i, last, go]);
   const prev = useCallback(() => go(i - 1), [i, go]);
+
+  // Every bar but the running one is set outright on each change of slide:
+  // the ones behind full, the ones ahead empty, however the story got here
+  // (an answer that moves on by itself, a jump back, a double tap).
+  useLayoutEffect(() => {
+    const bars = barsRef.current?.children || [];
+    for (let k = 0; k < bars.length; k += 1) {
+      const el = bars[k].firstElementChild;
+      if (el && k !== i) el.style.setProperty("--p", k < i ? "1" : "0");
+      if (el && k === i) el.style.setProperty("--p", "0");
+    }
+  }, [i, slides.length]);
 
   // The clock of the slide on show: fills its bar, then moves on. The bar is
   // set straight on the element, so the slide itself does not redraw sixty
@@ -176,10 +189,10 @@ export default function Story({ review, slides, onClose }) {
         onContextMenu={(e) => e.preventDefault()}
       >
         <div className="absolute inset-x-0 top-0 z-10 px-3.5 pt-3">
-          <div className="st-bars" aria-hidden="true">
+          <div ref={barsRef} className="st-bars" aria-hidden="true">
             {slides.map((s, k) => (
               <span key={s.key} className="st-bar">
-                <i ref={k === i ? barRef : undefined} style={{ "--p": k < i ? 1 : k > i ? 0 : undefined }} />
+                <i ref={k === i ? barRef : undefined} />
               </span>
             ))}
           </div>
