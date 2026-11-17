@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { storySlides, summaryGrid, podiumsOf, topResults, quizOptions, pickPhoto } from "./storySlides.mjs";
+import { storySlides, summaryGrid, podiumsOf, topResults, quizOptions, pickPhoto, bestRun } from "./storySlides.mjs";
 
 const review = (over = {}) => ({
   season: { label: "Season 7", complete: true, roundsRun: 10, totalRounds: 10 },
@@ -121,4 +121,27 @@ test("a photo is only picked with the driver's own team in it, and only once", (
   assert.equal(pickPhoto(r, used, { kinds: ["crash"] }).url, "c");
   assert.equal(pickPhoto(r, used, { pair: true }).url, "d");
   assert.equal(pickPhoto({ ...r, driver: { team: { id: "williams" } } }, new Set(), {}), null);
+});
+
+test("the best run counts points in a row first, then finishes, and a missed round breaks it", () => {
+  const R = (round, points, status = "FINISHED", position = 8) => ({ round, track: `T${round}`, points, status, position });
+  const pts = bestRun([R(1, 4), R(2, 2), R(3, 0), R(4, 1), R(5, 6), R(6, 2), R(7, 0)]);
+  assert.equal(pts.kind, "points");
+  assert.deepEqual(pts.rounds, [4, 5, 6]);
+  const fin = bestRun([R(1, 0), R(2, 0), R(3, 0), R(4, 0), R(5, 0, "DNS", null), R(6, 0)]);
+  assert.equal(fin.kind, "finishes");
+  assert.equal(fin.n, 4);
+  assert.equal(bestRun([R(1, 0), R(2, 0, "DNF", null), R(3, 0)]), null);
+});
+
+test("a Tier 2 driver is ranked among Tier 2 and gets a Tier 2 slide", () => {
+  const tier = { tier: 2, field: 27, position: 6, wins: 1, podiums: 3, perRound: [{ round: 2, rank: 1 }], ranks: { overtakes: { rank: 1, of: 40 }, lapsLed: { rank: 9, of: 40 } }, boards: {} };
+  const s = storySlides({ ...review(), tier });
+  const keys = s.map((x) => x.key);
+  assert.ok(keys.includes("tier"));
+  assert.equal(keys.indexOf("tier"), keys.indexOf("journey") + 1);
+  assert.deepEqual(s.find((x) => x.key === "passes").rank, { rank: 1, of: 40 });
+  // Laps led: 4th of 64 in the league says more than 9th of 40 in Tier 2.
+  assert.equal(s.find((x) => x.key === "led").scope, null);
+  assert.equal(s.find((x) => x.key === "passes").scope, "Tier 2");
 });

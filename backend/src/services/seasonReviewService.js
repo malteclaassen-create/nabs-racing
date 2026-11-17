@@ -646,6 +646,50 @@ async function buildSeasonReview(prisma, driverId) {
   const minTel = Math.max(3, Math.ceil(Math.max(...all("telemetryStarts"), 0) / 2));
   const fieldRates = others.filter((t) => t.telemetryStarts >= minTel).map((t) => t.contacts / t.telemetryStarts);
 
+  // A Tier 2 driver's season measured against Tier 2 alone, the way the Home
+  // page's Tier view does: the place among Tier 2 in the table, a "win" for
+  // the best-placed Tier 2 car of a round, the ranks and leaderboards among
+  // Tier 2 drivers only. Tier 1 has no block: overall is their measure.
+  const myTier = me ? me.team?.tier ?? me.tier ?? null : null;
+  let tier = null;
+  if (myTier === 2) {
+    const tierRows = rows.filter((r) => (r.team?.tier ?? r.tier) === myTier);
+    if (tierRows.length >= 3) {
+      const ids = new Set(tierRows.map((r) => r.driverId));
+      const tt = others.filter((t) => ids.has(t.driverId));
+      const allT = (key) => tt.map((t) => t[key]);
+      const perRound = [];
+      for (const [round, cell] of Object.entries(me.perRace || {})) {
+        if (!cell || cell.status !== "FINISHED" || cell.position == null) continue;
+        let rank = 1;
+        for (const o of tierRows) {
+          if (o.driverId === driverId) continue;
+          const c = o.perRace?.[round];
+          if (c && c.status === "FINISHED" && c.position != null && c.position < cell.position) rank += 1;
+        }
+        perRound.push({ round: Number(round), rank });
+      }
+      perRound.sort((a, b) => a.round - b.round);
+      tier = {
+        tier: myTier,
+        field: tierRows.length,
+        position: tierRows.findIndex((r) => r.driverId === driverId) + 1 || null,
+        wins: perRound.filter((p) => p.rank === 1).length,
+        podiums: perRound.filter((p) => p.rank <= 3).length,
+        avgRank: avg(perRound.map((p) => p.rank)),
+        perRound,
+        ranks: {
+          overtakes: rankAmong(allT("overtakes"), mine.overtakes),
+          lapsLed: rankAmong(allT("lapsLed"), mine.lapsLed),
+          lapsRaced: rankAmong(allT("lapsRaced"), mine.lapsRaced),
+          fastestLaps: rankAmong(allT("fastestLaps"), mine.fastestLaps),
+          poles: rankAmong(allT("poles"), mine.poles),
+        },
+        boards: { overtakes: board("overtakes", tt), lapsLed: board("lapsLed", tt), lapsRaced: board("lapsRaced", tt), fastestLaps: board("fastestLaps", tt) },
+      };
+    }
+  }
+
   // Team-mates: the other drivers of the same roster team who raced. The
   // reserve pool is no team, so a reserve gets no team-mate.
   const team = profile.driver.team;
@@ -789,5 +833,6 @@ async function buildSeasonReview(prisma, driverId) {
     honours: honoursFor(honours, { driverId, teamId: team?.id || null, position, complete: facts.complete }),
     awards: myAwards,
     photos,
+    tier,
   };
 }

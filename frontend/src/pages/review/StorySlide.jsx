@@ -319,8 +319,9 @@ function Intro({ review }) {
 function RoundTile({ r, d }) {
   const fin = r.status === "FINISHED" && r.position != null;
   const podium = fin && r.position <= 3;
+  // A podium in its medal: gold, silver, bronze.
   const style = podium
-    ? { background: "var(--g-mark)", color: "var(--g-mark-fg)" }
+    ? { background: MEDAL[r.position - 1], color: MEDAL_INK[r.position - 1] }
     : fin
       ? { background: "var(--g-fg)", color: "var(--g-bg)" }
       : r.status === "DNS"
@@ -346,6 +347,9 @@ function Rounds({ review }) {
   const s = review.stats;
   const n = review.rounds.length;
   const laps = review.racing;
+  // A Tier 2 driver's race laps are ranked among Tier 2.
+  const lapRank = review.tier?.ranks?.lapsRaced || laps?.rank || null;
+  const lapScope = review.tier?.ranks?.lapsRaced ? `Tier ${review.tier.tier}` : null;
   return (
     <Card>
       <Fill text={`${v.You} started`} d={100} />
@@ -370,9 +374,9 @@ function Rounds({ review }) {
           )}
           {laps?.laps > 0 ? <>. {fmt(laps.laps)} race laps.</> : "."}
         </Line>
-        {laps?.rank && (
+        {lapRank && (
           <Kicker d={1500 + n * 70} className="mt-2 lv-mute normal-case tracking-normal">
-            {topShare(laps.rank) <= 25 ? `More race laps than ${100 - topShare(laps.rank)}% of the league.` : rankWords(laps.rank, "race laps")}
+            {topShare(lapRank) <= 25 ? `More race laps than ${100 - topShare(lapRank)}% of ${lapScope || "the league"}.` : rankWords(lapRank, "race laps", lapScope)}
           </Kicker>
         )}
       </div>
@@ -382,9 +386,10 @@ function Rounds({ review }) {
 }
 
 // "The most race laps of 64 drivers", "7th most of 64 (shared)".
-function rankWords(rank, what) {
+function rankWords(rank, what, scope = null) {
   if (!rank) return null;
   const joint = rank.shared ? "joint " : "";
+  if (scope) return rank.rank === 1 ? `${joint ? "Joint most" : "Most"} ${what} in ${scope}.` : `${joint ? "Joint " : ""}${nth(rank.rank)} for ${what}, out of ${rank.of} in ${scope}.`;
   return rank.rank === 1 ? `${joint ? "Joint most" : "Most"} ${what} of all ${rank.of} drivers.` : `${joint ? "Joint " : ""}${nth(rank.rank)} for ${what}, out of ${rank.of} drivers.`;
 }
 
@@ -809,7 +814,7 @@ function Field({ slide, review }) {
       {rank.shared && <Fill text="joint" d={600} outline maxHeight={150} />}
       <Echo value={nth(rank.rank)} d={750} size={slide.board ? "min(40cqi, 18cqh)" : "min(54cqi, 28cqh)"} />
       <Line d={1150}>
-        out of <Mark>{rank.of} drivers</Mark>.
+        out of <Mark>{rank.of} {slide.scope ? `in ${slide.scope}` : "drivers"}</Mark>.
       </Line>
       <Aside>
       {slide.board?.rows?.length > 1 ? (
@@ -1109,6 +1114,185 @@ function SeasonCover({ review }) {
   );
 }
 
+// --- closing card versions (compare with ?card=a|b|c|d) -------------------------
+
+// The driver's picture in a circle, or their initial.
+function Face({ review, size = 72, ring = "var(--g-mark-fg)" }) {
+  const [broken, setBroken] = useState(false);
+  const url = review.driver?.photoUrl && !broken ? review.driver.photoUrl : null;
+  return (
+    <span className="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full" style={{ width: size, height: size, boxShadow: `0 0 0 3px ${ring}`, background: "rgba(0,0,0,0.18)" }}>
+      {url ? (
+        <img src={url} alt="" className="h-full w-full object-cover" onError={() => setBroken(true)} draggable="false" />
+      ) : (
+        <span className="wr-big" style={{ fontSize: size * 0.45 }}>
+          {String(review.driver?.name || "?").slice(0, 1).toUpperCase()}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const small = { fontFamily: "Inter, sans-serif" };
+
+// B: a poster in the team colour, the name big, six figures in a hairline grid.
+function CardPoster({ slide, review }) {
+  const c = review.championship;
+  const cells = [
+    { k: "pos", value: c.position ? `P${c.position}` : "–", label: "Championship" },
+    { k: "pts", value: slide.points, label: "Points" },
+    ...seasonList(slide, review).map((g) => ({ k: g.k, value: g.value, label: g.label })),
+  ].slice(0, 6);
+  return (
+    <div className="st-land flex shrink-0 flex-col overflow-hidden rounded-xl" style={{ "--d": "100ms", background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
+      <div className="flex items-center gap-4 p-5">
+        <Face review={review} size={76} />
+        <div className="min-w-0">
+          <div className="text-[12px] font-bold uppercase tracking-[0.14em] opacity-75" style={small}>
+            {slide.eyebrow}
+          </div>
+          <div className="wr-big uppercase" style={nameFit(review.driver.name)}>
+            {review.driver.name}
+          </div>
+          {review.driver.team?.name && (
+            <div className="mt-0.5 text-[13px] font-bold opacity-75" style={small}>
+              {review.driver.team.name}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-px" style={{ background: "color-mix(in srgb, currentColor 25%, transparent)" }}>
+        {cells.map((g) => (
+          <div key={g.k} className="px-5 py-4" style={{ background: "var(--g-mark)" }}>
+            <div className="wr-big wr-num leading-none" style={{ fontSize: "min(11cqi, 5.2cqh)" }}>
+              {g.value}
+            </div>
+            <div className="mt-1.5 text-[11px] font-bold uppercase tracking-[0.12em] opacity-75" style={small}>
+              {g.label}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="px-5 py-3 text-[11px] font-bold uppercase tracking-[0.12em] opacity-70" style={small}>
+        NABS Racing League · {review.season.label}
+      </div>
+    </div>
+  );
+}
+
+// C: a paddock pass on a lanyard: punched slot, the team band, the face and
+// name, and a barcode made of the season's rounds (taller the better the
+// finish, podiums in their medal).
+function CardPass({ slide, review }) {
+  const c = review.championship;
+  const team = review.driver.team;
+  const field = Math.max(20, ...review.rounds.map((r) => r.position || 0));
+  return (
+    <div className="st-land relative flex shrink-0 flex-col overflow-hidden rounded-2xl" style={{ "--d": "100ms", background: "var(--g-fg)", color: "var(--g-bg)" }}>
+      <div className="flex items-center justify-between px-5 pb-3 pt-6" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
+        <span className="absolute left-1/2 top-2.5 h-2.5 w-16 -translate-x-1/2 rounded-full" style={{ background: "var(--g-bg)" }} aria-hidden="true" />
+        <span className="font-mono text-[12px] font-bold uppercase tracking-[0.2em]">Paddock pass</span>
+        <span className="font-mono text-[12px] font-bold uppercase tracking-[0.2em]">{review.season.label}</span>
+      </div>
+      <div className="flex items-center gap-4 px-5 pt-5">
+        <Face review={review} size={84} ring="var(--g-mark)" />
+        <div className="min-w-0">
+          <div className="wr-big uppercase" style={nameFit(review.driver.name)}>
+            {review.driver.name}
+          </div>
+          <div className="mt-1 flex items-center gap-1.5 text-[13px] font-bold opacity-70" style={small}>
+            {team && team.tier !== 0 && <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={16} />}
+            {team?.name || "Reserve"}
+            {review.driver.number != null ? ` · #${review.driver.number}` : ""}
+          </div>
+        </div>
+      </div>
+      <div className="mt-5 grid grid-cols-3 border-y px-5" style={{ borderColor: "color-mix(in srgb, currentColor 14%, transparent)" }}>
+        {[
+          [c.position ? `P${c.position}` : "–", "Final place"],
+          [slide.points, "Points"],
+          [`${review.stats.finishes}/${review.stats.starts}`, "Finished"],
+        ].map(([v, l], k) => (
+          <div key={l} className={`py-3.5 ${k ? "border-l pl-4" : ""}`} style={{ borderColor: "color-mix(in srgb, currentColor 14%, transparent)" }}>
+            <div className="wr-big wr-num leading-none" style={{ fontSize: "min(8.4cqi, 4.2cqh)" }}>
+              {v}
+            </div>
+            <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] opacity-60" style={small}>
+              {l}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="px-5 pb-5 pt-4">
+        <div className="flex h-16 items-end gap-[3px]" aria-label="Every round, taller for a better finish">
+          {review.rounds.map((r, k) => {
+            const fin = r.status === "FINISHED" && r.position != null;
+            const h = fin ? 22 + (1 - (r.position - 1) / field) * 78 : 10;
+            const medal = fin && r.position <= 3 ? MEDAL[r.position - 1] : null;
+            return (
+              <span
+                key={r.round}
+                className="st-grow-y block flex-1 rounded-t-[2px]"
+                style={{ "--d": `${600 + k * 50}ms`, height: `${h}%`, background: medal || "currentColor", opacity: fin ? 1 : 0.25 }}
+              />
+            );
+          })}
+        </div>
+        <div className="mt-2 flex justify-between font-mono text-[10px] font-bold uppercase tracking-[0.18em] opacity-60">
+          <span>R{review.rounds[0]?.round ?? 1}</span>
+          <span>Every round</span>
+          <span>R{review.rounds[review.rounds.length - 1]?.round ?? ""}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// D: a printout from the timing box: monospace, dotted leaders to every
+// figure, a torn bottom edge.
+function CardPrintout({ slide, review }) {
+  const c = review.championship;
+  const top = slide.top || [];
+  const row = (a, b, strong = false) => (
+    <div key={a} className={`flex items-baseline gap-2 ${strong ? "font-black" : "font-bold"}`}>
+      <span className="shrink-0">{a}</span>
+      <span className="min-w-[1rem] flex-1 translate-y-[-3px] border-b-2 border-dotted" style={{ borderColor: "color-mix(in srgb, currentColor 35%, transparent)" }} />
+      <span className="shrink-0 wr-num">{b}</span>
+    </div>
+  );
+  return (
+    <div
+      className="st-land shrink-0 px-5 pb-8 pt-5 font-mono text-[13px] uppercase leading-[1.7]"
+      style={{
+        "--d": "100ms",
+        background: "#f6f5f1",
+        color: "#141416",
+        WebkitMaskImage: "linear-gradient(-45deg, transparent 6px, #000 6px), linear-gradient(45deg, transparent 6px, #000 6px)",
+        WebkitMaskSize: "12px 100%",
+        WebkitMaskPosition: "bottom",
+        WebkitMaskRepeat: "repeat-x",
+        borderRadius: "6px 6px 0 0",
+      }}
+    >
+      <div className="text-center font-black tracking-[0.2em]">NABS Racing League</div>
+      <div className="text-center text-[11px] font-bold tracking-[0.2em] opacity-70">
+        {review.season.label} · final classification
+      </div>
+      <div className="my-2 border-t-2 border-dashed" style={{ borderColor: "currentColor" }} />
+      {row("Driver", review.driver.name, true)}
+      {row("Team", review.driver.team?.name || "Reserve")}
+      {row("Position", c.position ? `P${c.position}` : "–", true)}
+      {row("Points", slide.points, true)}
+      <div className="my-2 border-t-2 border-dashed" style={{ borderColor: "currentColor" }} />
+      {seasonList(slide, review).map((g) => row(g.label, g.value))}
+      <div className="my-2 border-t-2 border-dashed" style={{ borderColor: "currentColor" }} />
+      <div className="text-[11px] font-bold tracking-[0.2em] opacity-70">Best results</div>
+      {top.slice(0, 3).map((t) => row(`R${t.round} ${t.track}`, `P${t.position}`))}
+      <div className="mt-2 text-center text-[11px] font-bold tracking-[0.3em] opacity-60">*** end of season ***</div>
+    </div>
+  );
+}
+
 // The last slide: the summary card, the way Wrapped ends. A cover on top,
 // two lists side by side, the two big numbers at the foot. The picture that
 // "Save picture" makes is this card.
@@ -1133,7 +1317,10 @@ function Final({ slide, review, onReplay }) {
   };
   const c = review.championship;
   const top = slide.top || [];
-  const card = (
+  // Which closing card to show while the versions are compared (?card=b,
+  // c or d); the default is the Wrapped-style card below.
+  const variant = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("card") || "a").toLowerCase() : "a";
+  const cardA = (
       <div
         className="st-land flex shrink-0 flex-col rounded-xl p-5"
         style={{
@@ -1208,6 +1395,7 @@ function Final({ slide, review, onReplay }) {
         </div>
       </div>
   );
+  const card = variant === "b" ? <CardPoster slide={slide} review={review} /> : variant === "c" ? <CardPass slide={slide} review={review} /> : variant === "d" ? <CardPrintout slide={slide} review={review} /> : cardA;
   const actions = (
       <div className="st-in pt-4" style={{ "--d": "700ms" }}>
         <div className="flex flex-wrap gap-2">
@@ -1338,21 +1526,21 @@ function Tease({ text }) {
 }
 
 // "That put you in the top 8% of the league", or where the rank put you.
-function RankLine({ rank, what, d }) {
+function RankLine({ rank, what, d, scope = null }) {
   if (!rank) return null;
   const share = topShare(rank);
   return (
     <Line d={d} size="min(5.4cqi, 3cqh)">
       {rank.rank === 1 ? (
         <>
-          <Mark>{rank.shared ? "Joint most" : "Most"}</Mark> in the whole league.
+          <Mark>{rank.shared ? "Joint most" : "Most"}</Mark> {scope ? `in ${scope}` : "in the whole league"}.
         </>
       ) : share <= 25 ? (
         <>
-          Only <Mark>{share}%</Mark> of the league did more.
+          Only <Mark>{share}%</Mark> of {scope || "the league"} did more.
         </>
       ) : (
-        rankWords(rank, what)
+        rankWords(rank, what, scope)
       )}
     </Line>
   );
@@ -1370,7 +1558,7 @@ function Passes({ slide }) {
       <Fill text="You passed" d={100} />
       <Echo value={fmt(slide.value)} d={350} />
       <Fill text="cars" d={800} outline />
-      <RankLine rank={slide.rank} what="overtakes" d={1100} />
+      <RankLine rank={slide.rank} what="overtakes" d={1100} scope={slide.scope} />
       <Aside>
         <div className="mt-auto">
           <div className={`flex items-end gap-1.5 ${wide ? "h-64" : "h-28"}`}>
@@ -1431,7 +1619,7 @@ function Led({ slide }) {
           .
         </Line>
       )}
-      <RankLine rank={slide.rank} what="laps led" d={1400} />
+      <RankLine rank={slide.rank} what="laps led" d={1400} scope={slide.scope} />
     </Card>
   );
 }
@@ -1495,6 +1683,98 @@ function Hits({ slide, review }) {
   );
 }
 
+// A round tile for a rank among Tier 2: the medal colours for the top three
+// Tier 2 cars of the round, plain ink for the rest.
+function TierTile({ p, d }) {
+  const medal = p.rank <= 3;
+  return (
+    <div
+      className="st-land flex aspect-square flex-col justify-between rounded-md p-1.5"
+      style={{ "--d": `${d}ms`, ...(medal ? { background: MEDAL[p.rank - 1], color: MEDAL_INK[p.rank - 1] } : { background: "var(--g-fg)", color: "var(--g-bg)" }) }}
+    >
+      <span className="text-[10px] font-bold leading-none opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
+        R{p.round}
+      </span>
+      <span className="wr-big wr-num text-right leading-none" style={{ fontSize: "1.35rem" }}>
+        {p.rank}
+      </span>
+    </div>
+  );
+}
+
+// The season inside Tier 2: the place among Tier 2, how often the driver was
+// the best Tier 2 car of a round, and every round as a Tier 2 rank.
+function Tier({ slide }) {
+  const label = `Tier ${slide.tier}`;
+  return (
+    <Card>
+      <Kicker d={100}>Just counting {label}</Kicker>
+      <Fill text="You finished" d={200} />
+      <Echo value={`P${slide.position}`} d={450} />
+      <Fill text={`in ${label}`} d={850} outline />
+      <Line d={1100} size="min(5.4cqi, 3cqh)">
+        {slide.wins > 0 ? (
+          <>
+            Best {label} car <Mark>{times(slide.wins)}</Mark>
+            {slide.podiums > slide.wins ? <>, top three {times(slide.podiums)}.</> : "."}
+          </>
+        ) : slide.podiums > 0 ? (
+          <>
+            Top three in {label} <Mark>{times(slide.podiums)}</Mark>.
+          </>
+        ) : (
+          <>
+            Out of <Mark>{slide.field} drivers</Mark> in {label}.
+          </>
+        )}
+      </Line>
+      <Aside>
+        <div className="mt-auto">
+          <Kicker d={1300} className="mb-2 lv-mute">
+            Your place among {label}, round by round
+          </Kicker>
+          <div className="grid grid-cols-6 gap-1.5">
+            {slide.perRound.map((p, k) => (
+              <TierTile key={p.round} p={p} d={1400 + k * 70} />
+            ))}
+          </div>
+        </div>
+      </Aside>
+    </Card>
+  );
+}
+
+// The best run of the season: rounds in a row with points, or with the flag.
+function Streak({ slide, review }) {
+  const wide = useContext(Wide);
+  const inRun = new Set(slide.rounds);
+  const points = slide.kind === "points";
+  return (
+    <Card>
+      <Kicker d={100}>Your best run</Kicker>
+      <Echo value={slide.n} d={300} />
+      <Fill text="rounds in a row" d={750} outline />
+      <Line d={1050} size="min(5.4cqi, 3cqh)">
+        {points ? "In the points" : "Saw the flag"} from <Mark>{slide.from.track}</Mark> to <Mark>{slide.to.track}</Mark>.
+      </Line>
+      <Aside>
+        <div className="mt-auto">
+          <div className={`grid grid-cols-6 ${wide ? "gap-2" : "gap-1.5"}`}>
+            {review.rounds.map((r, k) => (
+              <div key={r.round} style={inRun.has(r.round) ? null : { opacity: 0.28 }}>
+                <RoundTile r={r} d={1300 + k * 70} />
+              </div>
+            ))}
+          </div>
+          <Kicker d={2100} className="mt-3 lv-mute normal-case tracking-normal">
+            Rounds {slide.from.round} to {slide.to.round}, without a break.
+          </Kicker>
+        </div>
+      </Aside>
+    </Card>
+  );
+}
+
 const SLIDES = {
   quiz: Quiz,
   intro: Intro,
@@ -1513,6 +1793,8 @@ const SLIDES = {
   passes: Passes,
   led: Led,
   hits: Hits,
+  tier: Tier,
+  streak: Streak,
   honours: Honours,
   final: Final,
 };

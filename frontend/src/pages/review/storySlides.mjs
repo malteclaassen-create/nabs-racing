@@ -109,8 +109,49 @@ function mainMate(review) {
   return [...mates].sort((a, b) => b.races + b.starts - (a.races + a.starts))[0];
 }
 
+// The longest run of rounds in a row that scored points, or failing that
+// (fewer than three), the longest run that saw the flag (at least four).
+// Rounds the driver did not start break a run.
+export function bestRun(rounds) {
+  const list = [...(rounds || [])].sort((a, b) => a.round - b.round);
+  const longest = (ok) => {
+    let best = null;
+    let cur = [];
+    for (const r of list) {
+      if (ok(r)) {
+        cur.push(r);
+        if (!best || cur.length > best.length) best = [...cur];
+      } else cur = [];
+    }
+    return best || [];
+  };
+  const pts = longest((r) => (r.points || 0) > 0);
+  if (pts.length >= 3) return { kind: "points", n: pts.length, rounds: pts.map((r) => r.round), from: pts[0], to: pts[pts.length - 1] };
+  const fin = longest((r) => r.status === "FINISHED" && r.position != null);
+  if (fin.length >= 4) return { kind: "finishes", n: fin.length, rounds: fin.map((r) => r.round), from: fin[0], to: fin[fin.length - 1] };
+  return null;
+}
+
 export function storySlides(review) {
   const usedPhotos = new Set();
+  // A Tier 2 driver is measured against Tier 2 (review.tier, from the
+  // backend): their ranks and leaderboards come from there when they exist.
+  const T = review.tier || null;
+  const scope = T ? `Tier ${T.tier}` : null;
+  // Whichever says more: the place in the whole league when it is the better
+  // share (the most passes in the league beats the most in Tier 2), else the
+  // place in Tier 2.
+  const share = (x) => (x ? x.rank / x.of : 1);
+  const pick = (k) => {
+    const all = review.ranks?.[k] || null;
+    const mine = T?.ranks?.[k] || null;
+    if (!mine) return { rank: all, scope: null };
+    if (all && share(all) <= share(mine)) return { rank: all, scope: null };
+    return { rank: mine, scope };
+  };
+  const rankOf = (k) => pick(k).rank;
+  const scopeOf = (k) => pick(k).scope;
+  const boardOf = (k) => (T ? T.boards?.[k] : null) || review.boards?.[k] || null;
   // A picture of both team cars is rare: it is kept for the team-mate slide
   // before any other slide can take it.
   const pairPhoto = mainMate(review) ? pickPhoto(review, usedPhotos, { pair: true }) : null;
@@ -179,7 +220,8 @@ export function storySlides(review) {
     slides.push({
       key: "passes",
       value: stats.overtakes,
-      rank: review.ranks?.overtakes || null,
+      rank: rankOf("overtakes"),
+      scope: scopeOf("overtakes"),
       perRound: rounds.map((r) => ({ round: r.round, track: r.track, n: r.overtakes ?? null })),
     });
   }
@@ -202,20 +244,24 @@ export function storySlides(review) {
     slides.push({
       key: "led",
       value: stats.lapsLed,
-      rank: review.ranks?.lapsLed || null,
+      rank: rankOf("lapsLed"),
+      scope: scopeOf("lapsLed"),
       where: rounds.filter((r) => r.lapsLed > 0).map((r) => ({ round: r.round, track: r.track, laps: r.lapsLed })).sort((a, b) => b.laps - a.laps),
     });
   }
 
   // The figures that have a slide of their own stay out of this one.
   const own = new Set(slides.map((x) => x.key));
-  const figures = fieldFigures(review, new Set([own.has("passes") && "overtakes", own.has("led") && "lapsLed"].filter(Boolean)));
+  const keys = ["overtakes", "lapsLed", "fastestLaps", "poles", "wins"];
+  const rv = T ? { ...review, ranks: { ...review.ranks, ...Object.fromEntries(keys.map((k) => [k, rankOf(k)])) } } : review;
+  const figures = fieldFigures(rv, new Set([own.has("passes") && "overtakes", own.has("led") && "lapsLed"].filter(Boolean)));
   if (figures.length >= 2) {
     slides.push({
       key: "field",
       eyebrow: "Against the field",
       figures: figures.map((f) => ({ ...f, rankText: rankText(f.rank) })),
-      board: review.boards?.[figures[0].k] || null,
+      board: scopeOf(figures[0].k) ? boardOf(figures[0].k) : review.boards?.[figures[0].k] || null,
+      scope: scopeOf(figures[0].k),
       line: `Among the drivers who raced in this table.`,
     });
   }
@@ -226,6 +272,9 @@ export function storySlides(review) {
     const last = c.journey[c.journey.length - 1];
     slides.push({ key: "journey", eyebrow: "Championship", value: `P${last.position}`, unit: season.complete ? "at the end" : `after round ${last.round}`, line: journeyLine(review) });
   }
+
+  // Tier 2 on its own: the place among Tier 2 and the rounds as Tier 2 ranks.
+  if (T && T.position) slides.push({ key: "tier", ...T });
 
   const mate = mainMate(review);
   if (mate) {
@@ -242,6 +291,10 @@ export function storySlides(review) {
       photo: pairPhoto,
     });
   }
+
+  // The best run of the season, for every kind of season.
+  const run = bestRun(rounds);
+  if (run) slides.push({ key: "streak", ...run });
 
   // How often the car touched another one, and the scenery, against the field.
   if (review.contact && review.contact.races >= 2 && review.contact.cars > 0) {
