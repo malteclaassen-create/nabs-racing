@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { Modal } from "./overlay.jsx";
+import { teamLabel, tierLabel } from "../utils/teamLabel.js";
 
 // ---------------------------------------------------------------------------
 // Transfer dialog: "<driver> drives for <team> from round <n>".
@@ -100,7 +101,8 @@ export default function TransferDialog({ driver, initialTeamId, teams, onClose, 
   }
 
   const moved = plan?.rounds || [];
-  const teamName = teams.find((t) => t.id === teamId)?.name || (teamId === "reserve" ? "Reserve" : "");
+  const team = teams.find((t) => t.id === teamId);
+  const teamName = team ? teamLabel(team) : teamId === "reserve" ? "Reserve" : "";
 
   return (
     <Modal
@@ -116,7 +118,7 @@ export default function TransferDialog({ driver, initialTeamId, teams, onClose, 
             <span className="text-eyebrow">To team</span>
             <select className="input mt-1 w-full" value={teamId} disabled={busy} onChange={(e) => setTeamId(e.target.value)}>
               {teams.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>{teamLabel(t)}</option>
               ))}
               {!teams.some((t) => t.tier === 0) && <option value="reserve">Reserve</option>}
             </select>
@@ -167,7 +169,7 @@ export default function TransferDialog({ driver, initialTeamId, teams, onClose, 
                   <ul className="mt-1 space-y-0.5 text-xs text-medium">
                     {r.delta.map((d) => (
                       <li key={`${d.teamId}-${d.tier}`}>
-                        {d.name} (Tier {d.tier}): {d.from} to {d.to}
+                        {d.name} ({tierLabel(d.tier)}): {d.from} to {d.to}
                         <span className={d.to > d.from ? "ml-1 font-semibold text-emerald-500" : "ml-1 font-semibold text-rose-500"}>
                           {d.to > d.from ? `+${d.to - d.from}` : d.to - d.from}
                         </span>
