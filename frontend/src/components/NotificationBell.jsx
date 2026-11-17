@@ -43,6 +43,7 @@ const TYPE_ICONS = {
   FEEDBACK: ChatBubble, // a bug report / idea landed (admins only)
   REPLY: ChatBubble, // somebody answered your comment under a news article
   ADMIN: UserPlus, // a login waiting to be given a driver
+  SIGNUP: UserPlus, // a team sign-up for the coming season came in (admins only)
   AWARD: Medal, // achievement unlocks (Cockpit)
 };
 function TypeIcon({ type }) {

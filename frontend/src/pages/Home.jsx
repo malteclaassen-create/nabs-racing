@@ -24,6 +24,7 @@ import { fmtRaceTime, raceKickoff } from "../utils/raceTime.js";
 import { heroFor, heroOnError, carFor } from "../utils/heroImage.js";
 import { seasonGameLabel } from "../utils/seasonGame.js";
 import NextSeasonTeaser from "../components/NextSeasonTeaser.jsx";
+import TeamSignupCard from "../components/TeamSignupCard.jsx";
 import IdleFilm from "../components/IdleFilm.jsx";
 import EventFilm from "../components/EventFilm.jsx";
 import { useIdleFilm } from "../hooks/useIdleFilm.js";
@@ -1206,6 +1207,11 @@ export default function Home() {
         </div>
       </section>
       </>)}
+
+      {/* ===================== TEAM SIGN-UP (when an admin opened it) ======== */}
+      {/* Straight under the main card while it runs, so nobody misses it.
+          Renders nothing unless the sign-up is open for this series. */}
+      {!isPast && <TeamSignupCard />}
 
       {/* ===================== LATEST NEWS (other heroes) ===================== */}
       {/* A running season has the news beside its result; the full-width heroes
