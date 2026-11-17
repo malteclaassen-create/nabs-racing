@@ -1462,7 +1462,8 @@ function Passes({ slide }) {
 // Laps in the lead, under a chequered flag.
 function Led({ slide }) {
   const wide = useContext(Wide);
-  const flag = <Thing kind="flag" d={200} className="st-3d h-full w-full" label="A chequered flag" fallback={null} />;
+  // On a wide screen two chequered flags, poles crossed.
+  const flag = <Thing kind="flag" data={{ style: "crossed" }} d={200} className="st-3d h-full w-full" label="Two crossed chequered flags" fallback={null} />;
   const where = slide.where.slice(0, 3);
   return (
     <Card>

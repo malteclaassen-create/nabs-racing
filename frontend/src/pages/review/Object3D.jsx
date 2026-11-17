@@ -528,67 +528,102 @@ function chequer() {
 
 // A chequered flag on a pole: it is run up the pole, then waves, the cloth
 // rippling away from the pole and the free end moving the most.
-// `banner` (the phone): no pole, a wide flag edge to edge like a finish
-// line held across the frame, waving all along its length.
-function flagThing({ scene, data }) {
-  keyLight(scene, [2, 3.5, 3], 1.6);
-  const group = new THREE.Group();
-  scene.add(group);
-  const banner = !!data?.banner;
-  const W = banner ? 3.2 : 1.5;
-  const H = banner ? 1.0 : 1.0;
+// One chequered flag on its pole: the cloth hangs from the pole's top and
+// waves from it; the pole's foot is at the unit's origin, so the unit can be
+// held, planted or swung from there.
+function flagUnit(W, H, poleLen) {
+  const unit = new THREE.Group();
   const cloth = new THREE.PlaneGeometry(W, H, 48, 24);
   cloth.translate(W / 2, 0, 0);
   const base = cloth.attributes.position.array.slice();
   const flag = new THREE.Mesh(cloth, new THREE.MeshStandardMaterial({ map: chequer(), roughness: 0.62, metalness: 0, side: THREE.DoubleSide }));
   flag.castShadow = true;
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.5, 24), new THREE.MeshStandardMaterial({ color: SILVER, metalness: 1, roughness: 0.3 }));
-  pole.position.set(-0.03, -0.2, 0);
+  const top = poleLen;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.032, poleLen, 24), new THREE.MeshStandardMaterial({ color: SILVER, metalness: 1, roughness: 0.3 }));
+  pole.position.set(-0.03, poleLen / 2, 0);
+  pole.castShadow = true;
   const cap = new THREE.Mesh(new THREE.SphereGeometry(0.055, 24, 16), new THREE.MeshStandardMaterial({ color: GOLD, metalness: 1, roughness: 0.2 }));
-  cap.position.set(-0.03, 1.07, 0);
+  cap.position.set(-0.03, top + 0.03, 0);
   const holder = new THREE.Group();
+  holder.position.y = top - H / 2 - 0.02;
   holder.add(flag);
-  if (banner) {
-    group.add(holder);
-    group.position.x = -W / 2;
-    group.rotation.x = -0.12;
-  } else {
-    group.add(pole, cap, holder);
-    group.position.x = -0.6;
-    group.rotation.y = 0.35;
-  }
-
-  const fit = (cam, aspect) => {
-    const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
-    if (banner) {
-      // The cloth's width fills the frame; its waves may run just past it.
-      const d = Math.max((H * 0.62) / tv, (W * 0.47) / (tv * aspect));
-      cam.position.set(0, 0, d);
-      cam.lookAt(0, 0, 0);
-      return;
-    }
-    const d = Math.max(1.5 / tv, 1.25 / (tv * aspect)) * 1.02;
-    cam.position.set(0, 0.25, d);
-    cam.lookAt(0, 0.12, 0);
-  };
+  unit.add(pole, cap, holder);
   const pos = cloth.attributes.position;
-  const update = (t) => {
-    // Run up the pole; the banner rises into place instead.
-    if (banner) holder.position.y = -0.5 * (1 - easeOut(t / 0.9));
-    else holder.position.y = -1.0 + 1.5 * easeOut(t / 1.1);
-    group.visible = !banner || t > 0;
-    const amp = 0.06 + 0.06 * easeOut(t / 1.2);
+  const wave = (t, amp, lift = 1) => {
     for (let i = 0; i < pos.count; i += 1) {
       const x = base[i * 3];
       const y = base[i * 3 + 1];
-      const k = banner ? 0.45 + 0.55 * (x / W) : x / W;
+      const k = (x / W) * lift + (1 - lift);
       pos.array[i * 3 + 2] = Math.sin(x * 4.2 - t * 5.2 + y * 0.9) * amp * k + Math.sin(x * 2.1 - t * 3.1) * amp * 0.6 * k;
       pos.array[i * 3 + 1] = y - k * k * 0.06;
     }
     pos.needsUpdate = true;
     cloth.computeVertexNormals();
   };
-  return { fit, update, still: 4 };
+  return { unit, holder, wave, cloth };
+}
+
+// The chequered flag (data.style):
+//   banner  (the phone) a wide flag edge to edge, a finish line across the frame
+//   crossed (a wide screen) two flags with their poles crossed, the old
+//           racing emblem
+function flagThing({ scene, data }) {
+  keyLight(scene, [2, 3.5, 3], 1.6);
+  const style = data?.banner || data?.style === "banner" ? "banner" : "crossed";
+  const group = new THREE.Group();
+  scene.add(group);
+  let fit;
+  let update;
+
+  if (style === "banner") {
+    const W = 3.2;
+    const H = 1.0;
+    const { unit, holder, wave } = flagUnit(W, H, 0.01);
+    unit.children.slice(0, 2).forEach((m) => (m.visible = false));
+    holder.position.y = 0;
+    group.add(unit);
+    unit.position.x = -W / 2;
+    group.rotation.x = -0.12;
+    fit = (cam, aspect) => {
+      const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+      const d = Math.max((H * 0.62) / tv, (W * 0.47) / (tv * aspect));
+      cam.position.set(0, 0, d);
+      cam.lookAt(0, 0, 0);
+    };
+    update = (t) => {
+      unit.position.y = -0.5 * (1 - easeOut(t / 0.9));
+      group.visible = t > 0;
+      wave(t, 0.06 + 0.06 * easeOut(t / 1.2), 0.55);
+    };
+  } else {
+    // Two flags, poles crossing low down, each cloth flying outward.
+    const a = flagUnit(1.15, 0.78, 1.95);
+    const b = flagUnit(1.15, 0.78, 1.95);
+    const left = new THREE.Group();
+    const right = new THREE.Group();
+    left.add(a.unit);
+    right.add(b.unit);
+    a.unit.scale.x = -1; // the left flag flies to the left
+    left.position.set(0.32, -0.95, 0);
+    right.position.set(-0.32, -0.95, 0);
+    group.add(left, right);
+    group.rotation.y = 0.12;
+    fit = (cam, aspect) => {
+      const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+      const d = Math.max(1.15 / tv, 1.7 / (tv * aspect));
+      cam.position.set(0, 0.05, d);
+      cam.lookAt(0, 0.05, 0);
+    };
+    update = (t) => {
+      const open = easeOut(t / 1.1);
+      left.rotation.z = 0.05 + 0.42 * open + Math.sin(t * 1.3) * 0.03;
+      right.rotation.z = -0.05 - 0.42 * open - Math.sin(t * 1.3 + 0.8) * 0.03;
+      group.visible = t > 0;
+      a.wave(t, 0.08);
+      b.wave(t + 0.6, 0.08);
+    };
+  }
+  return { fit: (cam, aspect) => fit(cam, aspect), update: (t) => update(t), still: 4 };
 }
 
 const THINGS = { track: trackThing, medals: medalsThing, trophy: trophyThing, flag: flagThing };
