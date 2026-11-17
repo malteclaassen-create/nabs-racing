@@ -3,6 +3,7 @@ import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { CardHead, ErrorBox } from "./ui.jsx";
 import { useAsk } from "./overlay.jsx";
+import { isNotATeam } from "../data/signupTeams.js";
 
 // Admin League > Team sign-ups. Opens or closes the form on a series' home
 // page ("Season 7: which team do you want, who drives it?") and lists what
@@ -170,7 +171,7 @@ export default function AdminTeamSignups() {
   const items = group
     ? [...group.items].sort((a, b) => (a.status === b.status ? a.teamName.localeCompare(b.teamName) : a.status === "NEW" ? -1 : 1))
     : [];
-  const teamCount = new Set(items.map((i) => i.teamName.toLowerCase())).size;
+  const teamCount = new Set(items.filter((i) => !isNotATeam(i.teamName)).map((i) => i.teamName.toLowerCase())).size;
   const alone = items.filter((i) => !i.driver2).length;
 
   return (
