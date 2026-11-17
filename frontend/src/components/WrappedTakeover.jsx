@@ -68,47 +68,36 @@ export function useSeasonWrapped(season, isLoggedIn, finished) {
 }
 
 // The takeover: covers the whole main card.
-// The card grows into the story: a sheet in the card's colour is laid over
-// it, swells to fill the window, and the story opens underneath. The sheet
-// lives on <body> (not in the page), so it survives the change of page and
-// only fades once the story is there.
-function growInto(card, colour, go) {
-  const box = card?.getBoundingClientRect();
-  if (!box || motionOff() || typeof card.animate !== "function") {
+// The card (or the small button) grows into the story: a sheet in its
+// colour covers the window but is clipped to exactly where the card sits,
+// and the clip opens out to the whole window, the corners rounding off on the
+// way; then the story opens underneath and the sheet fades. The curve starts
+// slow, runs fast through the middle and settles slowly, the way system
+// animations on a phone move. The sheet lives on <body>, so it survives the
+// change of page.
+const GROW_MS = 760;
+const GROW_EASE = "cubic-bezier(0.65, 0, 0.35, 1)";
+export function growInto(el, colour, go) {
+  const box = el?.getBoundingClientRect();
+  if (!box || motionOff() || typeof el.animate !== "function") {
     go();
     return;
   }
-  const radius = getComputedStyle(card.parentElement || card).borderRadius || "24px";
-  const sheet = document.createElement("div");
-  Object.assign(sheet.style, {
-    position: "fixed",
-    left: "0",
-    top: "0",
-    width: "100vw",
-    height: "100dvh",
-    background: colour,
-    zIndex: "2147483000",
-    pointerEvents: "none",
-    transformOrigin: "0 0",
-  });
-  document.body.appendChild(sheet);
+  const radius = parseFloat(getComputedStyle(el).borderTopLeftRadius) || parseFloat(getComputedStyle(el.parentElement || el).borderTopLeftRadius) || 16;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const from = `translate(${box.left}px, ${box.top}px) scale(${box.width / vw}, ${box.height / vh})`;
-  const grow = sheet.animate(
-    [
-      { transform: from, borderRadius: radius },
-      { transform: "translate(0, 0) scale(1, 1)", borderRadius: "0px" },
-    ],
-    { duration: 620, easing: "cubic-bezier(0.76, 0, 0.18, 1)", fill: "forwards" },
-  );
+  const sheet = document.createElement("div");
+  Object.assign(sheet.style, { position: "fixed", inset: "0", background: colour, zIndex: "2147483000", pointerEvents: "none" });
+  document.body.appendChild(sheet);
+  const from = `inset(${box.top}px ${vw - box.right}px ${vh - box.bottom}px ${box.left}px round ${radius}px)`;
+  const grow = sheet.animate([{ clipPath: from }, { clipPath: "inset(0px 0px 0px 0px round 0px)" }], { duration: GROW_MS, easing: GROW_EASE, fill: "forwards" });
   grow.onfinish = () => {
     go();
-    // Give the story a moment to paint, then let the sheet go.
+    // Give the story a moment to paint, then let the sheet go, slowly.
     setTimeout(() => {
-      const fade = sheet.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: "ease-out", fill: "forwards" });
+      const fade = sheet.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 360, easing: "cubic-bezier(0.33, 0, 0.2, 1)", fill: "forwards" });
       fade.onfinish = () => sheet.remove();
-    }, 180);
+    }, 160);
   };
 }
 
@@ -202,9 +191,15 @@ export function WrappedTakeover({ wrapped, onClose }) {
 // closed.
 export function WrappedButton({ wrapped }) {
   const colour = teamColourOf(wrapped);
+  const navigate = useNavigate();
   return (
     <Link
       to={wrappedPath(wrapped)}
+      onClick={(e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        growInto(e.currentTarget, colour, () => navigate(wrappedPath(wrapped)));
+      }}
       className="inline-flex items-center gap-2 rounded-lg px-6 py-3 text-sm font-bold uppercase tracking-wide shadow-lg transition hover:brightness-105"
       style={{ background: colour, color: readableInkOn(colour) }}
     >

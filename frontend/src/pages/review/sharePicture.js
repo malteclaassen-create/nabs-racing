@@ -97,7 +97,7 @@ export async function drawSharePicture(review, slide) {
   roundRect(ctx, L, cy + P, cs, cs, 14);
   ctx.fillStyle = vars["--g-mark"];
   ctx.fill();
-  const num = /d+$/.exec(String(review.season?.label || ""))?.[0] || "";
+  const num = /\d+$/.exec(String(review.season?.label || ""))?.[0] || "";
   const photo = await loadImage(review.driver?.photoUrl);
   if (photo) {
     ctx.save();
@@ -145,13 +145,16 @@ export async function drawSharePicture(review, slide) {
   // The results get the wider column: circuit names are longer than figures.
   const colL = (R - L - 40) * 0.58;
   const colR = R - L - 40 - colL;
+  // Without a classified finish there are no results to list: the season
+  // figures take the whole width instead of sitting beside an empty column.
+  const top = (slide.top || []).map((t, k) => [`${k + 1} ${t.track}`, `P${t.position}`]);
   const lists = [
-    ["Top results", (slide.top || []).map((t, k) => [`${k + 1} ${t.track}`, `P${t.position}`])],
+    ...(top.length ? [["Top results", top]] : []),
     ["The season", seasonList(slide, review).map((g) => [String(g.value), g.label])],
   ];
   lists.forEach(([title, rows], i) => {
     const x = L + (i ? colL + 40 : 0);
-    const colW = i ? colR : colL;
+    const colW = lists.length === 1 ? R - L : i ? colR : colL;
     ctx.globalAlpha = 0.7;
     ctx.font = font(700, 28, SMALL);
     ctx.fillText(title, x, y);

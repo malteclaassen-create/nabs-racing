@@ -394,3 +394,20 @@
 .st-frame-wide .text-\[14px\] { font-size: clamp(15px, 1.35vw, 25px); }
 .st-frame-wide .text-\[15px\] { font-size: clamp(16px, 1.45vw, 27px); }
 .st-frame-wide .st-kick { letter-spacing: 0.12em; }
+
+/* A slide's wink (storySlides.mjs quipFor): a short aside in the slide's
+   accent, set slightly askew like something scribbled on afterwards. */
+.st-quip {
+  margin-top: var(--gap-m);
+  align-self: flex-start;
+  transform-origin: left center;
+  rotate: -1.5deg;
+  padding: 0.3em 0.6em 0.35em;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--g-fg) 10%, transparent);
+  font-family: "Montserrat", "Inter", sans-serif;
+  font-weight: 800;
+  font-style: italic;
+  font-size: clamp(14px, min(4.4cqi, 2.5cqh), 28px);
+  line-height: 1.25;
+}

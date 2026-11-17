@@ -172,6 +172,19 @@ export function useWideStory() {
   return wide;
 }
 
+// The slide's wink (storySlides.mjs quipFor), set by StorySlide for Card to
+// place at the end of the words.
+const QuipCtx = createContext(null);
+function Quip() {
+  const text = useContext(QuipCtx);
+  if (!text) return null;
+  return (
+    <div className="st-quip st-in" style={{ "--d": "2200ms" }}>
+      {text}
+    </div>
+  );
+}
+
 // The part of a slide that goes to the right column on a wide screen. On a
 // phone it stays exactly where it is written.
 const Aside = ({ children }) => children;
@@ -186,12 +199,20 @@ function Card({ children, className = "" }) {
     const left = kids.filter((k) => k?.type !== Aside);
     return (
       <div className={`st-wide relative z-10 grid min-h-0 flex-1 ${right.length ? "" : "st-wide-one"} ${className}`}>
-        <div className="st-col flex min-h-0 flex-col justify-center">{left}</div>
+        <div className="st-col flex min-h-0 flex-col justify-center">
+          {left}
+          <Quip />
+        </div>
         {right.length > 0 && <div className="st-col st-aside flex min-h-0 flex-col justify-center">{right}</div>}
       </div>
     );
   }
-  return <div className={`relative z-10 flex min-h-0 flex-1 flex-col px-6 pb-8 pt-[5.2rem] sm:px-7 ${className}`}>{children}</div>;
+  return (
+    <div className={`relative z-10 flex min-h-0 flex-1 flex-col px-6 pb-8 pt-[5.2rem] sm:px-7 ${className}`}>
+      {children}
+      <Quip />
+    </div>
+  );
 }
 
 // A leaderboard the way Wrapped lists a top five: the place, the name, a bar
@@ -366,6 +387,10 @@ function Rounds({ review }) {
           {s.finishes === s.starts ? (
             <>
               You saw the flag <Mark>every time</Mark>
+            </>
+          ) : !s.finishes ? (
+            <>
+              The flag <Mark>will have to wait</Mark>
             </>
           ) : (
             <>
@@ -1092,7 +1117,7 @@ const nameFit = (name) => {
 // without a picture, the season number itself in the team colour.
 function SeasonCover({ review }) {
   const [broken, setBroken] = useState(false);
-  const num = /d+$/.exec(String(review.season?.label || ""))?.[0] || "";
+  const num = /\d+$/.exec(String(review.season?.label || ""))?.[0] || "";
   const photo = review.driver?.photoUrl && !broken ? review.driver.photoUrl : null;
   return (
     <div className="wr-cover relative w-[40%] shrink-0" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
@@ -1164,7 +1189,8 @@ function Final({ slide, review, onReplay }) {
             )}
           </div>
         </div>
-        <div className="mt-6 grid grid-cols-[1.3fr_1fr] gap-4">
+        <div className={`mt-6 grid gap-4 ${top.length ? "grid-cols-[1.3fr_1fr]" : "grid-cols-1"}`}>
+          {top.length > 0 && (
           <div className="min-w-0">
             <div className="text-[12px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
               Top results
@@ -1177,6 +1203,7 @@ function Final({ slide, review, onReplay }) {
               ))}
             </ol>
           </div>
+          )}
           <div className="min-w-0">
             <div className="text-[12px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
               The season
@@ -1620,7 +1647,11 @@ export default function StorySlide({ slide, review, onReplay, onNext }) {
   const Comp = SLIDES[slide.key];
   if (!Comp) return null;
   const tease = teaseOf(slide.key, review);
-  const body = <Comp slide={slide} review={review} onReplay={onReplay} onNext={onNext} />;
+  const body = (
+    <QuipCtx.Provider value={slide.quip || null}>
+      <Comp slide={slide} review={review} onReplay={onReplay} onNext={onNext} />
+    </QuipCtx.Provider>
+  );
   if (!tease) return body;
   return (
     <Offset.Provider value={TEASE_MS}>
