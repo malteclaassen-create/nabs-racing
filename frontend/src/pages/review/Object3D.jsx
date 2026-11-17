@@ -202,35 +202,65 @@ function trackThing({ scene, camera, pal, data }) {
 
 // --- medals ---------------------------------------------------------------------------------
 
-function medalFace(metal, text) {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 512;
-  const g = c.getContext("2d");
-  const base = new THREE.Color(metal);
-  const css = (col, f) => `#${col.clone().multiplyScalar(f).getHexString()}`;
-  const grad = g.createRadialGradient(200, 180, 30, 256, 256, 300);
-  grad.addColorStop(0, css(base, 1.12));
-  grad.addColorStop(1, css(base, 0.86));
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 512, 512);
-  g.lineWidth = 22;
-  g.strokeStyle = css(base, 0.7);
-  g.beginPath();
-  g.arc(256, 256, 214, 0, Math.PI * 2);
-  g.stroke();
-  g.fillStyle = css(base, 0.55);
-  g.font = "900 200px Montserrat, Inter, sans-serif";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.fillText(text, 256, 268);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  // The cap of a cylinder lies a quarter turn off once the coin is stood up.
-  tex.center.set(0.5, 0.5);
-  tex.rotation = Math.PI / 2;
-  return tex;
+// A struck medal's face as two maps: how high each part stands (bump) and
+// how shiny it is (roughness). The field is satin with fine lines turned
+// into it; the raised parts (the place, a ring, a ring of beads) are
+// polished, so they flash as the medal turns, the way a real one does.
+function medalFace(text) {
+  const S = 1024;
+  const C = S / 2;
+  const R = S * 0.47;
+  const paint = (field, raised, line) => {
+    const c = document.createElement("canvas");
+    c.width = S;
+    c.height = S;
+    const g = c.getContext("2d");
+    g.fillStyle = field;
+    g.fillRect(0, 0, S, S);
+    // Turned lines across the field.
+    g.strokeStyle = line;
+    g.lineWidth = 1.4;
+    for (let r = 18; r < R * 0.8; r += 7) {
+      g.beginPath();
+      g.arc(C, C, r, 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.fillStyle = raised;
+    g.strokeStyle = raised;
+    // A ring inside the rim, and a ring of beads outside it.
+    g.lineWidth = 16;
+    g.beginPath();
+    g.arc(C, C, R * 0.82, 0, Math.PI * 2);
+    g.stroke();
+    for (let k = 0; k < 44; k += 1) {
+      const a = (k / 44) * Math.PI * 2;
+      g.beginPath();
+      g.arc(C + Math.cos(a) * R * 0.91, C + Math.sin(a) * R * 0.91, 9, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.font = "900 380px Montserrat, Inter, sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(text, C, C + 22);
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 8;
+    // The cap of a cylinder lies a quarter turn off once the coin is stood up.
+    tex.center.set(0.5, 0.5);
+    tex.rotation = Math.PI / 2;
+    return tex;
+  };
+  return {
+    bump: paint("#6a6a6a", "#ffffff", "#5c5c5c"),
+    // Green carries roughness: satin field, polished relief.
+    rough: paint("rgb(0,118,0)", "rgb(0,34,0)", "rgb(0,150,0)"),
+    // The field a shade deeper than the relief, as a worn medal darkens in
+    // its hollows; it keeps the place readable on bronze too.
+    tint: (() => {
+      const t = paint("#d0d0d0", "#ffffff", "#c6c6c6");
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })(),
+  };
 }
 
 // One medal a podium, in a grid that matches the labels the slide sets
@@ -250,22 +280,28 @@ function medalsThing({ scene, data, setCamera, el }) {
 
   const coins = places.map((pos, k) => {
     const metal = MEDAL_METAL[pos - 1] ?? GOLD;
-    const face = medalFace(metal, `P${pos}`);
-    const side = new THREE.MeshStandardMaterial({
-      color: metal,
-      metalness: 1,
-      roughness: 0.26,
-    });
+    const face = medalFace(`P${pos}`);
+    const polished = new THREE.MeshStandardMaterial({ color: metal, metalness: 1, roughness: 0.2 });
     const front = new THREE.MeshStandardMaterial({
-      map: face,
-      metalness: 0.9,
-      roughness: 0.3,
+      color: metal,
+      map: face.tint,
+      metalness: 1,
+      roughness: 1,
+      roughnessMap: face.rough,
+      bumpMap: face.bump,
+      bumpScale: 4,
     });
-    const geo = new THREE.CylinderGeometry(1, 1, 0.16, 72);
-    const m = new THREE.Mesh(geo, [side, front, front]);
-    m.rotation.x = Math.PI / 2;
     const holder = new THREE.Group();
-    holder.add(m);
+    // The disc, its faces carrying the relief, and a raised rim round each
+    // face that catches the light all the way round.
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.13, 128), [polished, front, front]);
+    disc.rotation.x = Math.PI / 2;
+    holder.add(disc);
+    for (const z of [0.065, -0.065]) {
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.06, 20, 160), polished);
+      rim.position.z = z;
+      holder.add(rim);
+    }
     scene.add(holder);
     return { holder, k, col: k % cols, row: Math.floor(k / cols) };
   });
@@ -457,12 +493,15 @@ function chequer() {
 
 // A chequered flag on a pole: it is run up the pole, then waves, the cloth
 // rippling away from the pole and the free end moving the most.
-function flagThing({ scene }) {
+// `banner` (the phone): no pole, a wide flag edge to edge like a finish
+// line held across the frame, waving all along its length.
+function flagThing({ scene, data }) {
   keyLight(scene, [2, 3.5, 3], 1.6);
   const group = new THREE.Group();
   scene.add(group);
-  const W = 1.5;
-  const H = 1.0;
+  const banner = !!data?.banner;
+  const W = banner ? 3.2 : 1.5;
+  const H = banner ? 1.0 : 1.0;
   const cloth = new THREE.PlaneGeometry(W, H, 48, 24);
   cloth.translate(W / 2, 0, 0);
   const base = cloth.attributes.position.array.slice();
@@ -474,25 +513,40 @@ function flagThing({ scene }) {
   cap.position.set(-0.03, 1.07, 0);
   const holder = new THREE.Group();
   holder.add(flag);
-  group.add(pole, cap, holder);
-  group.position.x = -0.6;
-  group.rotation.y = 0.35;
+  if (banner) {
+    group.add(holder);
+    group.position.x = -W / 2;
+    group.rotation.x = -0.12;
+  } else {
+    group.add(pole, cap, holder);
+    group.position.x = -0.6;
+    group.rotation.y = 0.35;
+  }
 
   const fit = (cam, aspect) => {
     const tv = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+    if (banner) {
+      // The cloth's width fills the frame; its waves may run just past it.
+      const d = Math.max((H * 0.62) / tv, (W * 0.47) / (tv * aspect));
+      cam.position.set(0, 0, d);
+      cam.lookAt(0, 0, 0);
+      return;
+    }
     const d = Math.max(1.5 / tv, 1.25 / (tv * aspect)) * 1.02;
     cam.position.set(0, 0.25, d);
     cam.lookAt(0, 0.12, 0);
   };
   const pos = cloth.attributes.position;
   const update = (t) => {
-    // Run up the pole.
-    holder.position.y = -1.0 + 1.5 * easeOut(t / 1.1);
+    // Run up the pole; the banner rises into place instead.
+    if (banner) holder.position.y = -0.5 * (1 - easeOut(t / 0.9));
+    else holder.position.y = -1.0 + 1.5 * easeOut(t / 1.1);
+    group.visible = !banner || t > 0;
     const amp = 0.06 + 0.06 * easeOut(t / 1.2);
     for (let i = 0; i < pos.count; i += 1) {
       const x = base[i * 3];
       const y = base[i * 3 + 1];
-      const k = x / W;
+      const k = banner ? 0.45 + 0.55 * (x / W) : x / W;
       pos.array[i * 3 + 2] = Math.sin(x * 4.2 - t * 5.2 + y * 0.9) * amp * k + Math.sin(x * 2.1 - t * 3.1) * amp * 0.6 * k;
       pos.array[i * 3 + 1] = y - k * k * 0.06;
     }

@@ -1454,8 +1454,12 @@ function Led({ slide }) {
           </div>
         </Aside>
       ) : (
-        <div className="relative -mx-4 min-h-[7rem] flex-1">
-          <div className="absolute inset-0">{flag}</div>
+        // On a phone the flag is a finish line: a wide band edge to edge
+        // between the figure and the words, no pole to stand about on.
+        <div className="relative -mx-6 my-3 min-h-[7rem] flex-1 sm:-mx-7">
+          <div className="absolute inset-0">
+            <Thing kind="flag" data={{ banner: true }} d={200} className="st-3d h-full w-full" label="A chequered flag" fallback={null} />
+          </div>
         </div>
       )}
       {where.length > 0 && (
