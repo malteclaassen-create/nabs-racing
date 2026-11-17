@@ -16,6 +16,7 @@ import { ensureNewsCommentTable } from "./newsComments.js";
 import { ensureNewsReactionTables } from "./newsReactions.js";
 import { ensureSeasonAwardTable } from "./seasonAwards.js";
 import { ensureWrappedViewTable } from "./wrappedViews.js";
+import { ensureTeamSignupTable } from "./teamSignups.js";
 
 // Add a column only if it isn't already there (SQLite has no
 // ADD COLUMN IF NOT EXISTS). `def` is everything after the name, e.g. "INTEGER".
@@ -961,6 +962,8 @@ export async function ensureAppSchema(prisma) {
   // migration season_awards).
   await ensureSeasonAwardTable(prisma);
   await ensureWrappedViewTable(prisma);
+  // Team sign-ups for a coming season (lib/teamSignups.js, migration team_signups).
+  await ensureTeamSignupTable(prisma);
 
   await migrateLiveLinksToSeries(prisma);
   await resetReferralsOnce(prisma);

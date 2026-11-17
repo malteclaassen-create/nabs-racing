@@ -26,6 +26,7 @@ import steamAuthRoutes from "./routes/steamAuth.js";
 import downloadsRoutes from "./routes/downloads.js";
 import notificationsRoutes from "./routes/notifications.js";
 import feedbackRoutes from "./routes/feedback.js";
+import teamSignupRoutes from "./routes/teamSignup.js";
 import reportsRoutes from "./routes/reports.js";
 import liveIncidentsRoutes from "./routes/liveIncidents.js";
 import raceControlRoutes from "./routes/raceControl.js";
@@ -481,6 +482,7 @@ app.use("/api/downloads", downloadsRoutes);
 app.use("/api/content-check", contentCheckRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/feedback", feedbackRoutes);
+app.use("/api/team-signup", teamSignupRoutes);
 app.use("/api/reports", reportsRoutes);
 // The league's articles and the desk they are written at (routes/news.js).
 app.use("/api/news", newsRoutes);

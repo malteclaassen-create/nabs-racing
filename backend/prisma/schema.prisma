@@ -693,6 +693,28 @@ model FeedbackReply {
   @@index([feedbackId])
 }
 
+// A member asking for a team for the coming season (the form on a series'
+// home page while an admin has the sign-up open). One per Discord account per
+// sign-up; driver2 empty means they are still looking for a teammate. Read in
+// the admin's Team sign-ups tab. Raw SQL like Feedback; see
+// backend/src/lib/teamSignups.js, which must be kept in sync with this model.
+model TeamSignup {
+  id         String    @id
+  seriesId   String    @default("")
+  label      String // the sign-up's name, e.g. "Season 7"
+  discordId  String // MemberAccount.discordId of who sent it
+  senderName String? // their driver name when they sent it
+  teamName   String
+  driver1    String
+  driver2    String?
+  note       String?
+  status     String    @default("NEW") // NEW | DONE
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime?
+
+  @@unique([seriesId, label, discordId])
+}
+
 // An incident report: "someone hit me on lap 14". Private to the person who
 // filed it, the driver it names, the admins, and anyone an admin lets in.
 // `source` is SITE for one written on the site, INGAME for one the webPenalty

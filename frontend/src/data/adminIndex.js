@@ -37,6 +37,8 @@ export const TAB_GROUPS = [
       { id: "teams", label: "Teams" },
       { id: "drivers", label: "Drivers" },
       { id: "transfers", label: "Transfers" },
+      // The form on the home page where drivers ask for a team for next season.
+      { id: "teamsignups", label: "Team sign-ups" },
       { id: "market", label: "Driver Market" },
       // The telemetry view is held back from the members' side on purpose
       // while the league decides whether a driver's inputs are public. See
@@ -182,6 +184,19 @@ export const ADMIN_INDEX = [
     title: "Preview a round's recap as any driver",
     hint: "Pick a finished round and a driver and open the pages exactly as that driver would see them.",
     keywords: "recap preview test look try round driver see what members see pages rating points championship",
+  },
+  // --- League: team sign-ups ---------------------------------------------------
+  {
+    tab: "teamsignups",
+    title: "Let drivers sign up their team for next season",
+    hint: "Open a form on a series' home page: the team they want and the two drivers. Close it again here.",
+    keywords: "team sign up signup register registration apply next season form teammate pair duo entry open close",
+  },
+  {
+    tab: "teamsignups",
+    title: "See who signed up which team",
+    hint: "Every entry with the two drivers, tick them off once dealt with.",
+    keywords: "team sign ups signups registrations list entries who wants which team teammate requests",
   },
   // --- League: transfers ------------------------------------------------------
   {

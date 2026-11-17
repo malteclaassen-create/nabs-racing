@@ -72,6 +72,7 @@ const TAB_CHUNKS = {
   AdminMembers: () => import("../components/AdminMembers.jsx"),
   AdminNotifications: () => import("../components/AdminNotifications.jsx"),
   AdminFeedback: () => import("../components/AdminFeedback.jsx"),
+  AdminTeamSignups: () => import("../components/AdminTeamSignups.jsx"),
   AdminTokens: () => import("../components/AdminTokens.jsx"),
   AdminReports: () => import("../components/AdminReports.jsx"),
   AdminDiscordConnections: () => import("../components/AdminDiscordConnections.jsx"),
@@ -99,6 +100,7 @@ const AdminWrappedViews = lazy(TAB_CHUNKS.AdminWrappedViews);
 const AdminMembers = lazy(TAB_CHUNKS.AdminMembers);
 const AdminNotifications = lazy(TAB_CHUNKS.AdminNotifications);
 const AdminFeedback = lazy(TAB_CHUNKS.AdminFeedback);
+const AdminTeamSignups = lazy(TAB_CHUNKS.AdminTeamSignups);
 const AdminTokens = lazy(TAB_CHUNKS.AdminTokens);
 const AdminReports = lazy(TAB_CHUNKS.AdminReports);
 const AdminDiscordConnections = lazy(TAB_CHUNKS.AdminDiscordConnections);
@@ -640,6 +642,7 @@ export default function Admin() {
           {tab === "market" && <MarketAdmin />}
           {tab === "drivers" && <Drivers />}
           {tab === "transfers" && <AdminTransfers />}
+          {tab === "teamsignups" && <AdminTeamSignups />}
           {tab === "members" && <AdminMembers />}
           {tab === "racecontrol" && <RaceControlDesk />}
           {tab === "reports" && <AdminReports />}
