@@ -35,7 +35,7 @@ const review = (over = {}) => ({
 });
 
 test("a full season runs intro to final, one moment per slide", () => {
-  assert.deepEqual(storySlides(review()).map((s) => s.key), ["intro", "rounds", "top", "quiz", "best", "climb", "passes", "podiums", "led", "field", "journey", "team", "hits", "contact", "final"]);
+  assert.deepEqual(storySlides(review()).map((s) => s.key), ["intro", "rounds", "quiz", "top", "best", "climb", "passes", "podiums", "led", "field", "journey", "team", "hits", "contact", "final"]);
 });
 
 test("slides whose moment the season does not have are left out", () => {
@@ -96,7 +96,7 @@ test("the top results rank best place first, sprints included", () => {
 test("training, tyres and track limits join when the season has them, a quickest lap does not", () => {
   const r = { ...review(), training: { laps: 900, weeks: 10, rank: { rank: 1, of: 40 } }, boards: { training: { of: 40, rows: [] } }, tyres: [{ tyre: "M", laps: 90, share: 60 }], limits: { cuts: 12, penalties: 3, races: 6 } };
   r.stats = { ...r.stats, bestLap: { bestLapMs: 92000, track: "Monza", number: 4 } };
-  assert.deepEqual(storySlides(r).map((s) => s.key), ["intro", "rounds", "training", "top", "quiz", "best", "climb", "passes", "podiums", "led", "field", "tyres", "journey", "team", "hits", "contact", "limits", "final"]);
+  assert.deepEqual(storySlides(r).map((s) => s.key), ["intro", "rounds", "training", "quiz", "top", "best", "climb", "passes", "podiums", "led", "field", "tyres", "journey", "team", "hits", "contact", "limits", "final"]);
 });
 
 test("the best-race question has the answer among other circuits finished on, and needs two of them", () => {

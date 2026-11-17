@@ -90,7 +90,7 @@ export function WrappedTakeover({ wrapped, onClose }) {
       <div className="relative flex h-full flex-col justify-center gap-6 px-7 py-10 sm:px-12 lg:flex-row lg:items-center lg:justify-between lg:gap-10">
         <div className="min-w-0">
           <div className="st-in text-[13px] font-bold uppercase tracking-[0.14em]" style={{ "--d": "150ms", fontFamily: "Inter, sans-serif" }}>
-            The season is over. Here is yours.
+            The season's done. Here's how yours went.
           </div>
           <div className="mt-3 flex items-end gap-4">
             <div className="st-in wr-big uppercase" style={{ "--d": "300ms", fontSize: "clamp(3rem, 9vw, 7.5rem)", lineHeight: 0.85 }}>
@@ -124,7 +124,7 @@ export function WrappedTakeover({ wrapped, onClose }) {
                 <TeamLogo id={team.id} name={team.name} color={team.color} logoUrl={team.logoUrl} size={36} />
               </span>
               <span className="text-[14px] font-bold" style={{ fontFamily: "Inter, sans-serif", opacity: 0.85 }}>
-                Your season with {team.name}, told in a story.
+                Your year at {team.name}, in a few slides.
               </span>
             </div>
           )}

@@ -139,11 +139,12 @@ export function storySlides(review) {
     slides.push({ key: "training", value: review.training.laps, weeks: review.training.weeks, rank: review.training.rank, board: review.boards?.training || null });
   }
 
-  const top = topResults(rounds);
-  if (top.length >= 3) slides.push({ key: "top", eyebrow: "Top results", list: top });
-
+  // The guess comes before the list that would give it away.
   const quiz = quizOptions(review);
   if (quiz) slides.push({ key: "quiz", answer: review.best.track, position: review.best.position, options: quiz });
+
+  const top = topResults(rounds);
+  if (top.length >= 3) slides.push({ key: "top", eyebrow: "Top results", list: top });
 
   if (review.best) {
     slides.push({

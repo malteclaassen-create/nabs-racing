@@ -6,8 +6,7 @@
 // is downloaded.
 //
 // Plain on purpose, like the page: one card, hairlines, the team colour as
-// the one accent, the season's real circuit outline of the best round.
-import { circuitFor } from "../../data/circuits.js";
+// the one accent, the driver's own picture on the cover.
 import { slideColours, storyColour } from "./wrapPalette.js";
 import { seasonList } from "./storySlides.mjs";
 
@@ -52,27 +51,22 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// The circuit's outline from the site's own data, fitted into the box.
-function outline(ctx, track, x, y, w, h, color) {
-  const c = circuitFor(track);
-  if (!c?.path || typeof Path2D === "undefined") return false;
-  const [bx, by, bw, bh] = String(c.box || "0 0 100 100").split(/\s+/).map(Number);
-  const s = Math.min(w / bw, h / bh);
-  ctx.save();
-  ctx.translate(x + (w - bw * s) / 2 - bx * s, y + (h - bh * s) / 2 - by * s);
-  ctx.scale(s, s);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 9 / s;
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
-  ctx.stroke(new Path2D(c.path));
-  ctx.restore();
-  return true;
+// The driver's picture, loaded for drawing (same origin, so the canvas stays
+// exportable). Null when there is none or it does not load.
+function loadImage(src) {
+  return new Promise((resolve) => {
+    if (!src) return resolve(null);
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
 }
 
 // The summary card of the story's last slide, as a Wrapped summary card:
 // the team colour round it, the card in the slide's ink, a cover with the
-// best result's circuit, two lists side by side, the two big numbers.
+// driver's picture (or the season number), two lists side by side, the two
+// big numbers.
 export async function drawSharePicture(review, slide) {
   await fontsReady();
   const vars = slideColours("final", storyColour(review));
@@ -103,7 +97,31 @@ export async function drawSharePicture(review, slide) {
   roundRect(ctx, L, cy + P, cs, cs, 14);
   ctx.fillStyle = vars["--g-mark"];
   ctx.fill();
-  if (review.best) outline(ctx, review.best.track, L + 40, cy + P + 40, cs - 80, cs - 80, vars["--g-mark-fg"]);
+  const num = /d+$/.exec(String(review.season?.label || ""))?.[0] || "";
+  const photo = await loadImage(review.driver?.photoUrl);
+  if (photo) {
+    ctx.save();
+    roundRect(ctx, L, cy + P, cs, cs, 14);
+    ctx.clip();
+    const sc = Math.max(cs / photo.width, cs / photo.height);
+    ctx.drawImage(photo, L + (cs - photo.width * sc) / 2, cy + P + (cs - photo.height * sc) / 2, photo.width * sc, photo.height * sc);
+    ctx.restore();
+    if (num) {
+      ctx.font = font(900, 40, HEAVY);
+      const bw = ctx.measureText(`S${num}`).width + 24;
+      roundRect(ctx, L + cs - bw - 12, cy + P + cs - 64, bw, 52, 10);
+      ctx.fillStyle = vars["--g-mark"];
+      ctx.fill();
+      ctx.fillStyle = vars["--g-mark-fg"];
+      ctx.fillText(`S${num}`, L + cs - bw, cy + P + cs - 24);
+    }
+  } else if (num) {
+    ctx.fillStyle = vars["--g-mark-fg"];
+    ctx.font = font(900, 230, HEAVY);
+    ctx.textAlign = "center";
+    ctx.fillText(num, L + cs / 2, cy + P + cs / 2 + 80);
+    ctx.textAlign = "left";
+  }
   const tx = L + cs + 40;
   const tw = R - tx;
   ctx.fillStyle = bg;

@@ -13,6 +13,7 @@ import { MEDAL, readableInkOn } from "../../components/ui.jsx";
 import CircuitMap from "../../components/CircuitMap.jsx";
 import TeamLogo from "../../components/TeamLogo.jsx";
 import { tyreCompound } from "../../data/liveTiming.js";
+import { TyreBadge } from "../../components/TyreStrategy.jsx";
 import { circuitFor } from "../../data/circuits.js";
 import { nth } from "./copy.mjs";
 import { seasonList } from "./storySlides.mjs";
@@ -360,18 +361,18 @@ function Rounds({ review }) {
         <Line d={1300 + n * 70} className="mt-4" size="min(5.6cqi, 3cqh)">
           {s.finishes === s.starts ? (
             <>
-              Finished <Mark>every one</Mark>
+              You saw the flag <Mark>every time</Mark>
             </>
           ) : (
             <>
-              Saw the flag in <Mark>{plural(s.finishes, "race")}</Mark>
+              You saw the flag <Mark>{times(s.finishes)}</Mark>
             </>
           )}
-          {laps?.laps > 0 ? <>, {fmt(laps.laps)} laps in all.</> : "."}
+          {laps?.laps > 0 ? <>. {fmt(laps.laps)} race laps.</> : "."}
         </Line>
         {laps?.rank && (
           <Kicker d={1500 + n * 70} className="mt-2 lv-mute normal-case tracking-normal">
-            {topShare(laps.rank) <= 25 ? `That put ${v.you} in the top ${topShare(laps.rank)}% of the league for race laps.` : rankWords(laps.rank, "race laps")}
+            {topShare(laps.rank) <= 25 ? `More race laps than ${100 - topShare(laps.rank)}% of the league.` : rankWords(laps.rank, "race laps")}
           </Kicker>
         )}
       </div>
@@ -384,7 +385,7 @@ function Rounds({ review }) {
 function rankWords(rank, what) {
   if (!rank) return null;
   const joint = rank.shared ? "joint " : "";
-  return rank.rank === 1 ? `The ${joint}most ${what} of ${rank.of} drivers.` : `The ${joint}${nth(rank.rank)} most ${what} of ${rank.of} drivers.`;
+  return rank.rank === 1 ? `${joint ? "Joint most" : "Most"} ${what} of all ${rank.of} drivers.` : `${joint ? "Joint " : ""}${nth(rank.rank)} for ${what}, out of ${rank.of} drivers.`;
 }
 
 // Training laps on the league's practice servers between the rounds.
@@ -397,7 +398,7 @@ function Training({ slide, review }) {
       <Echo value={fmt(slide.value)} d={300} />
       <Fill text="training laps" d={750} outline />
       <Line d={1000} size="min(5.4cqi, 3cqh)">
-        Over <Mark>{plural(slide.weeks, "race week")}</Mark>.
+        Spread over <Mark>{plural(slide.weeks, "race week")}</Mark>.
       </Line>
       {(first || topShare(slide.rank) <= 25) && <RankLine rank={slide.rank} what="training laps" d={1200} />}
       <Aside>
@@ -418,47 +419,61 @@ function Training({ slide, review }) {
   );
 }
 
-// The tyres the race laps were done on: a ring a compound, as big as its share.
-function Tyres({ slide, review }) {
-  const v = voiceOf(review);
+// The tyres the race laps were done on: one bar of every race lap split by
+// compound in the compound colours (the way the race pages draw a tyre
+// strategy), then a row a compound with the site's tyre badge.
+function Tyres({ slide }) {
   const [top] = slide.tyres;
   const name = tyreCompound(top.tyre).name;
   const shown = slide.tyres.slice(0, 4);
   const wide = useContext(Wide);
   return (
     <Card>
-      <Kicker d={100}>{v.You} spent most race laps on</Kicker>
+      <Kicker d={100}>Your go-to tyre</Kicker>
       <Fill text={`${name}s`} d={250} />
       <Echo value={`${top.share}%`} d={500} />
       <Line d={900} size="min(5.4cqi, 3cqh)">
-        of them, <Mark>{plural(top.laps, "lap")}</Mark>.
+        of your race laps. <Mark>{plural(top.laps, "lap")}</Mark> on them.
       </Line>
       <Aside>
-      <div className={`flex justify-between gap-2 ${wide ? "mt-auto items-end" : "flex-1 items-center pt-6"}`}>
-        {shown.map((t, k) => {
-          const c = tyreCompound(t.tyre);
-          const size = `${((3.4 + (t.share / 100) * 5.2) * (wide ? 1.7 : 1.25)).toFixed(2)}rem`;
-          return (
-            <div key={t.tyre} className="st-land flex min-w-0 flex-col items-center" style={{ "--d": `${1200 + k * 160}ms` }}>
-              <svg viewBox="0 0 100 100" style={{ width: size, height: size }} aria-hidden="true">
-                <circle cx="50" cy="50" r="44" fill="#16161a" />
-                <circle cx="50" cy="50" r="33" fill="none" stroke={c.color} strokeWidth="9" />
-                <text x="50" y="50" dy="0.35em" textAnchor="middle" fill="#f6f5f1" style={{ font: "900 28px Montserrat, sans-serif" }}>
-                  {c.label}
-                </text>
-              </svg>
-              <span className="mt-2 text-[13px] font-extrabold uppercase">{c.name}</span>
-              <span className="wr-num text-[12px] font-bold opacity-70" style={{ fontFamily: "Inter, sans-serif" }}>
-                {fmt(t.laps)} laps · {t.share}%
-              </span>
-            </div>
-          );
-        })}
-      </div>
+        <div className={wide ? "" : "mt-auto pt-6"}>
+          <Kicker d={1100} className="lv-mute">
+            Every race lap, by tyre
+          </Kicker>
+          <div className="mt-3 flex h-4 w-full gap-[3px] overflow-hidden rounded-full">
+            {shown.map((t, k) => (
+              <span
+                key={t.tyre}
+                className="st-grow-x block h-full first:rounded-l-full last:rounded-r-full"
+                style={{ "--d": `${1200 + k * 160}ms`, width: `${t.share}%`, background: tyreCompound(t.tyre).color }}
+              />
+            ))}
+          </div>
+          <ul className={`mt-5 ${wide ? "space-y-4" : "space-y-3"}`}>
+            {shown.map((t, k) => {
+              const c = tyreCompound(t.tyre);
+              return (
+                <li key={t.tyre} className="st-in flex items-center gap-3.5" style={{ "--d": `${1350 + k * 160}ms` }}>
+                  <TyreBadge t={c} size={wide ? 42 : 34} />
+                  <span className="wr-big min-w-0 flex-1 truncate uppercase leading-none" style={{ fontSize: wide ? "1.6rem" : "1.2rem" }}>
+                    {c.name}
+                  </span>
+                  <span className="shrink-0 text-[14px] font-bold lv-mute" style={{ fontFamily: "Inter, sans-serif" }}>
+                    {plural(t.laps, "lap")}
+                  </span>
+                  <span className="wr-big wr-num w-[3.2em] shrink-0 text-right leading-none" style={{ fontSize: wide ? "1.6rem" : "1.2rem" }}>
+                    {t.share}%
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       </Aside>
     </Card>
   );
 }
+
 
 // Track limits: every cut as a square, then the rate against the field's.
 function Limits({ slide, review }) {
@@ -512,10 +527,10 @@ function Limits({ slide, review }) {
         <Line d={2100} className="pt-1" size="min(5cqi, 2.8cqh)">
           {slide.penalties > 0 ? (
             <>
-              The game handed out <Mark>{plural(slide.penalties, "penalty", "penalties")}</Mark>.
+              Cost you <Mark>{plural(slide.penalties, "penalty", "penalties")}</Mark> from the game.
             </>
           ) : (
-            <>Not one penalty from the game.</>
+            <>And not a single penalty for it.</>
           )}
         </Line>
       </div>
@@ -634,7 +649,7 @@ function Best({ slide, review }) {
       <Line d={1550} size="min(5.6cqi, 3cqh)">
         {b.grid > 0 ? (
           <>
-            From <Mark>P{b.grid} on the grid</Mark>, round {b.round}.
+            Started <Mark>P{b.grid}</Mark>, round {b.round}.
           </>
         ) : (
           <>Round {b.round}.</>
@@ -663,7 +678,7 @@ function Climb({ slide, review }) {
       {wide ? (
         <>
           <Line d={1400}>
-            In one race, at <Mark>{c.track}</Mark>.
+            All in one race, at <Mark>{c.track}</Mark>.
           </Line>
           <div className="mt-6">{fromTo}</div>
           <Aside>
@@ -687,7 +702,7 @@ function Climb({ slide, review }) {
           </div>
           {fromTo}
           <Line d={1400} className="mt-2" size="min(5.6cqi, 3cqh)">
-            In one race, at <Mark>{c.track}</Mark>.
+            All in one race, at <Mark>{c.track}</Mark>.
           </Line>
         </>
       )}
@@ -823,7 +838,9 @@ function Field({ slide, review }) {
   );
 }
 
-// The place in the table after every round, as one bold line in the accent.
+// The place in the table after every round, as one bold line in the accent,
+// with the places marked down the side, the best place picked out and the
+// last one named at the end of the line.
 function Journey({ slide, review }) {
   const v = voiceOf(review);
   const pts = review.championship.journey;
@@ -833,8 +850,8 @@ function Journey({ slide, review }) {
   const wide = useContext(Wide);
   const W = 360;
   // Taller on a phone, where the chart has the lower half of the frame.
-  const H = wide ? 190 : 280;
-  const PAD = { l: 8, r: 14, t: 14, b: 22 };
+  const H = wide ? 210 : 280;
+  const PAD = { l: 30, r: 34, t: 16, b: 34 };
   const first = rounds[0] ?? 1;
   const lastR = rounds[rounds.length - 1] ?? first + 1;
   const x = (n) => PAD.l + ((n - first) / Math.max(1, lastR - first)) * (W - PAD.l - PAD.r);
@@ -842,27 +859,57 @@ function Journey({ slide, review }) {
   const line = pts.map((p, k) => `${k ? "L" : "M"}${x(p.round).toFixed(1)} ${y(p.position).toFixed(1)}`).join(" ");
   const last = pts[pts.length - 1];
   const done = review.season.complete;
+  const peak = pts.reduce((b, p) => (!b || p.position < b.position ? p : b), null);
+  const showPeak = peak && peak.position < last.position;
+  const marks = [1, ...Array.from({ length: Math.floor(bottom / 5) }, (_, k) => (k + 1) * 5)].filter((p) => p <= bottom);
+  const label = { font: "700 10px Inter, sans-serif" };
   return (
     <Card>
       <Kicker d={100}>{done ? `${v.You} finished the season` : `After round ${last.round}, ${v.you} ${v.are}`}</Kicker>
       <Echo value={slide.value} d={300} />
       <Fill text="in the championship" d={750} outline />
       <Aside>
-      <div className="st-in mt-auto" style={{ "--d": "1100ms" }}>
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" role="img" aria-label="Place in the championship after each round">
-          <path d={line} pathLength="1" className="st-draw" style={{ "--d": "1200ms" }} fill="none" stroke="var(--g-mark)" strokeWidth="7" strokeLinejoin="round" strokeLinecap="round" />
-          <circle cx={x(last.round)} cy={y(last.position)} r="9" fill="var(--g-fg)" />
-          {rounds.map((n) => (
-            <text key={n} x={x(n)} y={H - 2} textAnchor="middle" fill="var(--g-mute)" style={{ font: "700 11px Inter, sans-serif" }}>
-              {n}
+        <div className="st-in mt-auto" style={{ "--d": "1100ms" }}>
+          <Kicker d={1100} className="mb-2 lv-mute">
+            Your place after every round
+          </Kicker>
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full overflow-visible" role="img" aria-label="Place in the championship after each round">
+            {marks.map((p) => (
+              <g key={p}>
+                <line x1={PAD.l} x2={W - PAD.r + 6} y1={y(p)} y2={y(p)} stroke="var(--g-faint)" strokeWidth="1" strokeDasharray={p === 1 ? undefined : "3 4"} />
+                <text x={PAD.l - 8} y={y(p)} dy="0.35em" textAnchor="end" fill="var(--g-mute)" style={label}>
+                  P{p}
+                </text>
+              </g>
+            ))}
+            <path d={line} pathLength="1" className="st-draw" style={{ "--d": "1200ms" }} fill="none" stroke="var(--g-mark)" strokeWidth="6" strokeLinejoin="round" strokeLinecap="round" />
+            {showPeak && (
+              <g className="st-in" style={{ "--d": "2300ms" }}>
+                <circle cx={x(peak.round)} cy={y(peak.position)} r="5" fill="var(--g-bg)" stroke="var(--g-fg)" strokeWidth="2.5" />
+                <text x={x(peak.round)} y={y(peak.position) - 11} textAnchor="middle" fill="var(--g-fg)" style={{ font: "800 11px Montserrat, sans-serif" }}>
+                  Best P{peak.position}
+                </text>
+              </g>
+            )}
+            <circle cx={x(last.round)} cy={y(last.position)} r="8" fill="var(--g-fg)" />
+            <text x={x(last.round) + 13} y={y(last.position)} dy="0.35em" fill="var(--g-fg)" style={{ font: "900 13px Montserrat, sans-serif" }}>
+              P{last.position}
             </text>
-          ))}
-        </svg>
-      </div>
+            {rounds.map((n) => (
+              <text key={n} x={x(n)} y={H - 16} textAnchor="middle" fill="var(--g-mute)" style={label}>
+                {n}
+              </text>
+            ))}
+            <text x={PAD.l} y={H - 1} fill="var(--g-mute)" style={{ font: "700 9px Inter, sans-serif", letterSpacing: "0.12em" }}>
+              ROUND
+            </text>
+          </svg>
+        </div>
       </Aside>
     </Card>
   );
 }
+
 
 function Team({ slide, review }) {
   const v = voiceOf(review);
@@ -955,7 +1002,7 @@ function Contact({ review }) {
           })}
         </div>
         <Kicker d={1700} className="mt-3 lv-mute normal-case tracking-normal">
-          Contact with other cars, round by round: {k.cars} in all.
+          Cars touched, round by round. {k.cars} in total.
         </Kicker>
       </div>
       </Aside>
@@ -978,7 +1025,7 @@ function Honours({ slide, review }) {
           {many ? (
             <div
               className="st-in wr-big uppercase leading-[0.95]"
-              style={{ "--d": `${900 + k * 180}ms`, fontSize: "min(6.6cqi, 3.9cqh)", ...(k % 2 === 1 ? { color: "transparent", WebkitTextStroke: "1.5px var(--g-fg)" } : null) }}
+              style={{ "--d": `${900 + k * 180}ms`, fontSize: "min(6.6cqi, 3.9cqh)", ...(k % 2 === 1 ? { color: "var(--g-pop)" } : null) }}
             >
               {h.title}
             </div>
@@ -1035,6 +1082,33 @@ const nameFit = (name) => {
   };
 };
 
+// The cover of the summary card, as a Wrapped card shows the face of the
+// year: the driver's own picture with the season number pinned to it, or,
+// without a picture, the season number itself in the team colour.
+function SeasonCover({ review }) {
+  const [broken, setBroken] = useState(false);
+  const num = /d+$/.exec(String(review.season?.label || ""))?.[0] || "";
+  const photo = review.driver?.photoUrl && !broken ? review.driver.photoUrl : null;
+  return (
+    <div className="wr-cover relative w-[40%] shrink-0" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
+      {photo ? (
+        <>
+          <img src={photo} alt="" className="absolute inset-0 h-full w-full object-cover" onError={() => setBroken(true)} draggable="false" />
+          {num && (
+            <span className="wr-big wr-num absolute bottom-1.5 right-1.5 rounded-md px-1.5 py-0.5 leading-none" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)", fontSize: "min(7cqi, 3.2cqh)" }}>
+              S{num}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="wr-big wr-num leading-none" style={{ fontSize: "min(26cqi, 13cqh)" }}>
+          {num || "S"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // The last slide: the summary card, the way Wrapped ends. A cover on top,
 // two lists side by side, the two big numbers at the foot. The picture that
 // "Save picture" makes is this card.
@@ -1069,9 +1143,7 @@ function Final({ slide, review, onReplay }) {
         }}
       >
         <div className="flex items-center gap-3">
-          <div className="wr-cover w-[40%] shrink-0" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
-            {review.best ? <Outline track={review.best.track} className="h-[80%] w-[80%]" d={400} width={3.4} /> : null}
-          </div>
+          <SeasonCover review={review} />
           <div className="min-w-0">
             <div className="text-[12px] font-bold uppercase tracking-[0.12em] opacity-60" style={{ fontFamily: "Inter, sans-serif" }}>
               {slide.eyebrow}
@@ -1226,7 +1298,7 @@ function Quiz({ slide, review, onNext }) {
         <div className="h-8 pt-1">
           {pick && (
             <Line d={0} size="min(5.6cqi, 3cqh)">
-              {pick === answer ? <Mark>Right.</Mark> : <>Not quite.</>}
+              {pick === answer ? <Mark>Got it.</Mark> : <>Nope.</>}
             </Line>
           )}
         </div>
@@ -1242,11 +1314,11 @@ function teaseOf(key, review) {
   const v = voiceOf(review);
   switch (key) {
     case "training":
-      return `${v.You} did not only drive on race nights.`;
+      return `${v.You} didn't just show up on race night.`;
     case "field":
-      return `So how did ${v.you} compare with everyone else?`;
+      return `So how do ${v.you} stack up against everyone?`;
     case "tyres":
-      return `Which tyre did ${v.you} trust the most?`;
+      return `Which tyre did ${v.you} live on?`;
     case "journey":
       return "And the championship?";
     default:
@@ -1273,11 +1345,11 @@ function RankLine({ rank, what, d }) {
     <Line d={d} size="min(5.4cqi, 3cqh)">
       {rank.rank === 1 ? (
         <>
-          <Mark>{rank.shared ? "Joint most" : "The most"}</Mark> in the league.
+          <Mark>{rank.shared ? "Joint most" : "Most"}</Mark> in the whole league.
         </>
       ) : share <= 25 ? (
         <>
-          That is the <Mark>top {share}%</Mark> of the league.
+          Only <Mark>{share}%</Mark> of the league did more.
         </>
       ) : (
         rankWords(rank, what)
@@ -1317,7 +1389,7 @@ function Passes({ slide }) {
           </div>
           {top && (
             <Kicker d={1900} className="mt-3 lv-mute normal-case tracking-normal">
-              Most in one race: {top.n} at {top.track}.
+              {top.n} of them in one race, at {top.track}.
             </Kicker>
           )}
         </div>
@@ -1381,7 +1453,7 @@ function Hits({ slide, review }) {
       <Fill text={slide.cars === 1 ? "other car" : "other cars"} d={800} outline />
       {slide.scenery > 0 && (
         <Line d={1100} size="min(5.4cqi, 3cqh)">
-          And the scenery <Mark>{times(slide.scenery)}</Mark>.
+          Plus the wall <Mark>{times(slide.scenery)}</Mark>.
         </Line>
       )}
       {slide.photo && (
@@ -1409,12 +1481,12 @@ function Hits({ slide, review }) {
           ))}
           {rows.length > 1 && (
             <Line d={2000} className="pt-1" size="min(5cqi, 2.8cqh)">
-              {cleaner ? <>Cleaner than the field.</> : <>Busier than the field.</>}
+              {cleaner ? <>Less than the average driver.</> : <>More than the average driver.</>}
             </Line>
           )}
           {review.contact?.races ? (
             <Kicker d={2200} className="lv-mute normal-case tracking-normal">
-              Over {plural(review.contact.races, "race")} the race server counted.
+              From the {plural(review.contact.races, "race")} the server logged.
             </Kicker>
           ) : null}
         </div>
