@@ -321,6 +321,8 @@ function navLinks(p) {
     // `tour` marks the ones the newcomer tour walks you along (see Tour.jsx).
     { to: p("/races"), label: "Races", tour: "nav-races" },
     { to: p("/attendance"), label: "Attendance", tour: "nav-attendance" },
+    // The coming season's sign-up (pages/SeasonSignup.jsx), only while open.
+    { to: p("/season-signup"), label: "Sign-up" },
     { to: p("/live"), label: "Live", tour: "nav-live" },
     { to: "/news", label: "News" },
     { to: "/downloads", label: "Race Info" },
@@ -1092,6 +1094,26 @@ export default function NavBar() {
     return () => { alive = false; };
   }, [attCacheKey, location.pathname]);
 
+  // The Sign-up item: the same idea for the coming season's sign-up, which an
+  // admin opens for one series at a time (lib/teamSignups.js). Re-checked when
+  // the series changes; it stays open for weeks, so that is often enough.
+  const signupCacheKey = `nav-season-signup-open:${seriesSlug}`;
+  const [seasonSignupOpen, setSeasonSignupOpen] = useState(() => {
+    try { return localStorage.getItem(signupCacheKey) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    let alive = true;
+    try { setSeasonSignupOpen(localStorage.getItem(signupCacheKey) === "1"); } catch { /* private mode */ }
+    api.teamSignup()
+      .then((r) => {
+        if (!alive) return;
+        setSeasonSignupOpen(!!r?.open);
+        try { localStorage.setItem(signupCacheKey, r?.open ? "1" : "0"); } catch { /* private mode */ }
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [signupCacheKey]);
+
   const isEvent = current?.kind === "event";
   const { race: eventRace, phase: eventPhase } = useEventRace(isEvent);
   const eventSignedUp = useMyEventEntry(isEvent && eventPhase !== "after" ? eventRace?.id : null);
@@ -1103,7 +1125,9 @@ export default function NavBar() {
       : [];
   const links = isEvent
     ? [...eventNavLinks(seriesPath, eventRace, eventPhase, eventSignedUp, serverUp), ...eventReport]
-    : navLinks(seriesPath).filter((l) => l.label !== "Attendance" || attendanceOpen);
+    : navLinks(seriesPath).filter(
+        (l) => (l.label !== "Attendance" || attendanceOpen) && (l.label !== "Sign-up" || seasonSignupOpen)
+      );
   // Reserve drivers only, and only until they have looked or applied.
   const seats = useReserveSeats();
   // Handed to GlobalSearch so its expanded field + dropdown line up their left
@@ -1453,6 +1477,9 @@ export default function NavBar() {
                       ) : null
                     }
                   />
+                )}
+                {!isEvent && seasonSignupOpen && (
+                  <SheetTile to={seriesPath("/season-signup")} Icon={Users} label="Sign-up" hint="Next season" />
                 )}
                 <SheetTile
                   to={seriesPath("/live")}

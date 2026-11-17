@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
 import { useDiscordLogin } from "../hooks/useDiscordLogin.js";
@@ -19,9 +20,15 @@ const EMPTY = { teamName: "", driver1: "", driver2: "", note: "" };
 // The dropdown's value for "a team that isn't on the list": shows a text box.
 const OTHER = "__other__";
 
-export default function TeamSignupCard() {
+// `startOpen`: open the form straight away for a signed-in member with no
+// entry yet (the page of its own, pages/SeasonSignup.jsx). `whenClosed`: what
+// to show once it is known that no sign-up is open here (the home page shows
+// nothing).
+export default function TeamSignupCard({ startOpen = false, whenClosed = null }) {
   const state = useApi(useCallback(() => api.teamSignup(), []));
-  const { enabled: loginEnabled, start: startLogin } = useDiscordLogin();
+  const { pathname, search } = useLocation();
+  const { enabled: loginEnabled, start: startLogin } = useDiscordLogin(`${pathname}${search}`);
+  const opened = useRef(false);
   const ask = useAsk();
   const [mine, setMine] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -35,8 +42,16 @@ export default function TeamSignupCard() {
   useEffect(() => {
     setMine(data?.mine || null);
   }, [data]);
+  // On the page of its own, someone who came to sign up gets the form at once.
+  const openFormRef = useRef(null);
+  useEffect(() => {
+    if (!startOpen || opened.current || !data?.open || !data.signedIn || data.mine) return;
+    opened.current = true;
+    openFormRef.current?.();
+  }, [startOpen, data]);
 
-  if (!data?.open) return null;
+  if (!data) return null;
+  if (!data.open) return whenClosed;
 
   const label = data.label;
   const openSeats = data.openSeats || [];
@@ -56,6 +71,8 @@ export default function TeamSignupCard() {
     setError(null);
     setEditing(true);
   }
+
+  openFormRef.current = openForm;
 
   async function submit(e) {
     e.preventDefault();
