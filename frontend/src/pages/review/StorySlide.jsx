@@ -614,10 +614,47 @@ function Top({ slide, review }) {
 
 // A race photo on a slide: framed, drifting slowly closer, with the round
 // it is from in the corner.
+// A picture that never shows the browser's broken-image mark: it stays
+// hidden (the frame shows its own quiet ground) until it has loaded, fades
+// in, and a failed load is tried again twice, a moment apart, before giving
+// up quietly. A phone on a shaky connection, or a request that met the
+// server mid-restart, then still gets its picture.
+export function SafeImg({ src, className = "", onGiveUp, ...rest }) {
+  const [tries, setTries] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    setTries(0);
+    setLoaded(false);
+    setGone(false);
+  }, [src]);
+  if (!src || gone) return null;
+  const url = tries ? `${src}${src.includes("?") ? "&" : "?"}r=${tries}` : src;
+  return (
+    <img
+      key={url}
+      src={url}
+      alt=""
+      className={`${className} transition-opacity duration-500`}
+      style={{ opacity: loaded ? 1 : 0 }}
+      onLoad={() => setLoaded(true)}
+      onError={() => {
+        if (tries < 2) setTimeout(() => setTries((t) => t + 1), 700 * (tries + 1));
+        else {
+          setGone(true);
+          onGiveUp?.();
+        }
+      }}
+      draggable="false"
+      {...rest}
+    />
+  );
+}
+
 function Photo({ photo, d = 300, className = "", style }) {
   return (
     <figure className={`st-land st-photo relative overflow-hidden rounded-2xl ${className}`} style={{ "--d": `${d}ms`, ...style }}>
-      <img src={photo.url} alt="" className="h-full w-full object-cover" draggable="false" />
+      <SafeImg src={photo.url} className="h-full w-full object-cover" />
       <figcaption className="absolute bottom-2.5 left-2.5 rounded-md px-2 py-1 text-[11px] font-bold leading-none text-white" style={{ background: "rgba(0,0,0,0.62)", fontFamily: "Inter, sans-serif" }}>
         Round {photo.round}
         {photo.track ? ` · ${photo.track}` : ""}
@@ -654,7 +691,7 @@ function Best({ slide, review }) {
   const picture = slide.photo ? (
     <Photo photo={slide.photo} d={250} className="h-full w-full" />
   ) : b.heroImageUrl ? (
-    <img src={b.heroImageUrl} alt="" className="h-full w-full rounded-xl object-cover" />
+    <SafeImg src={b.heroImageUrl} className="h-full w-full rounded-xl object-cover" />
   ) : (
     <Circuit3D track={b.track} d={250} className="h-full w-full" />
   );
@@ -1149,7 +1186,7 @@ function SeasonCover({ review }) {
     <div className="wr-cover relative w-[40%] shrink-0" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)" }}>
       {photo ? (
         <>
-          <img src={photo} alt="" className="absolute inset-0 h-full w-full object-cover" onError={() => setBroken(true)} draggable="false" />
+          <SafeImg src={photo} className="absolute inset-0 h-full w-full object-cover" onGiveUp={() => setBroken(true)} />
           {num && (
             <span className="wr-big wr-num absolute bottom-1.5 right-1.5 rounded-md px-1.5 py-0.5 leading-none" style={{ background: "var(--g-mark)", color: "var(--g-mark-fg)", fontSize: "min(7cqi, 3.2cqh)" }}>
               S{num}

@@ -367,7 +367,7 @@
    smoothly; drawn by the page it moved in whole pixels and stepped. */
 @keyframes st-drift { from { transform: scale3d(1.02, 1.02, 1); } to { transform: scale3d(1.12, 1.12, 1); } }
 .st-photo img { animation: st-drift 9s cubic-bezier(0.25, 0.1, 0.25, 1) both; will-change: transform; backface-visibility: hidden; }
-.st-photo { box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28); }
+.st-photo { box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28); background: color-mix(in srgb, var(--g-fg) 10%, var(--g-bg)); }
 @media (prefers-reduced-motion: reduce) { .st-photo img { animation: none; } }
 .fx-lite .st-photo img { animation: none; }
 

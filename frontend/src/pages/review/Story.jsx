@@ -50,6 +50,18 @@ export default function Story({ review, slides, onClose, onProgress }) {
   const wide = useWideStory();
   useScrollLock(true);
   useFocusTrap(true, frameRef);
+  // Every picture the story will show is fetched as it opens, so a photo
+  // is already there when its slide comes in rather than loading late.
+  useEffect(() => {
+    const urls = new Set([review.driver?.photoUrl, review.best?.heroImageUrl, ...slides.map((sl) => sl.photo?.url)].filter(Boolean));
+    const held = [...urls].map((u) => {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = u;
+      return img;
+    });
+    return () => held.splice(0);
+  }, [review, slides]);
   // The slide on show, for whoever keeps count (SeasonReview: how far a
   // member got through their own Wrapped).
   useEffect(() => {
