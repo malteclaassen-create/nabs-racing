@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseSignupSettings, parseSignupForm, cleanLine, shapeForSender, openSeatsFrom, freeAgentsFrom } from "./teamSignups.js";
+import { parseSignupSettings, parseSignupForm, cleanLine, shapeForSender, openSeatsFrom, freeAgentsFrom, markCovered } from "./teamSignups.js";
 
 describe("team sign-up settings", () => {
   it("is closed with no series until an admin opens it", () => {
@@ -89,5 +89,26 @@ describe("drivers still on their own", () => {
   it("leaves out pairs, the asker and the same name twice", () => {
     const list = freeAgentsFrom([e("a", "No team yet", "Lou", "Kim"), e("me", "No team yet", "Malte"), e("b", "no team yet", "Pengi"), e("c", "Looking for a team", "pengi")], "me");
     expect(list).toEqual([{ name: "Pengi", choice: "No team yet" }]);
+  });
+});
+
+describe("a solo entry once its driver is in a pair", () => {
+  const e = (id, teamName, driver1, driver2 = null, extra = {}) => ({ id, seriesId: "sun", label: "S7", discordId: id, teamName, driver1, driver2, ...extra });
+
+  it("is marked with the pair that names them", () => {
+    const [solo, pair] = markCovered([e("a", "No team yet", "Lobter"), e("b", "Apex", "Max", "lobter")]);
+    expect(solo.coveredBy).toEqual({ id: "b", teamName: "Apex", with: "Max" });
+    expect(pair.coveredBy).toBeUndefined();
+  });
+
+  it("stays as it is in another sign-up, or when nobody names them", () => {
+    const list = markCovered([e("a", "No team yet", "Lobter"), e("b", "Apex", "Max", "Lobter", { label: "S6" }), e("c", "Apex", "Max", "Kim")]);
+    expect(list[0].coveredBy).toBeUndefined();
+  });
+
+  it("drops out of the free seats and the drivers on their own", () => {
+    const list = markCovered([e("a", "Pirates", "Lou"), e("b", "No team yet", "Pengi"), e("c", "Apex", "Max", "Lou"), e("d", "Rocket", "Kim", "Pengi")]);
+    expect(openSeatsFrom(list, "me")).toEqual([]);
+    expect(freeAgentsFrom(list, "me")).toEqual([]);
   });
 });

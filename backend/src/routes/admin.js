@@ -9072,7 +9072,7 @@ router.get("/team-signups", async (req, res, next) => {
       settings,
       series: series.map((s) => ({ id: s.id, name: s.name, slug: s.slug })),
       items,
-      newCount: items.filter((i) => i.status === "NEW").length,
+      newCount: items.filter((i) => i.status === "NEW" && !i.coveredBy).length,
     });
   } catch (e) {
     next(e);

@@ -168,8 +168,11 @@ export default function AdminTeamSignups() {
 
   const group = groups.find((g) => g.key === list) || null;
   // Open ones first, then by team name so two entries for one team sit together.
+  // A driver who signed up alone and is now named in a pair's entry (backend
+  // markCovered) is folded away: the pair's entry is the one to deal with.
+  const covered = group ? group.items.filter((i) => i.coveredBy) : [];
   const items = group
-    ? [...group.items].sort((a, b) => (a.status === b.status ? a.teamName.localeCompare(b.teamName) : a.status === "NEW" ? -1 : 1))
+    ? group.items.filter((i) => !i.coveredBy).sort((a, b) => (a.status === b.status ? a.teamName.localeCompare(b.teamName) : a.status === "NEW" ? -1 : 1))
     : [];
   const teamCount = new Set(items.filter((i) => !isNotATeam(i.teamName)).map((i) => i.teamName.toLowerCase())).size;
   const alone = items.filter((i) => !i.driver2).length;
@@ -190,7 +193,7 @@ export default function AdminTeamSignups() {
                   {groups.map((g) => (
                     <option key={g.key} value={g.key}>
                       {g.seriesName ? `${g.seriesName} · ` : ""}
-                      {g.label} ({g.items.length})
+                      {g.label} ({g.items.filter((i) => !i.coveredBy).length})
                     </option>
                   ))}
                 </select>
@@ -211,6 +214,19 @@ export default function AdminTeamSignups() {
                   <Entry key={i.id} item={i} onChanged={reload} />
                 ))}
               </ul>
+              {covered.length > 0 && (
+                <p className="mt-3 border-t border-border pt-3 text-xs text-light">
+                  Not listed, because they are now down as a pair:{" "}
+                  {covered.map((i, n) => (
+                    <span key={i.id}>
+                      {n > 0 ? "; " : ""}
+                      <span className="font-semibold text-medium">{i.driver1}</span> (signed up alone as {i.teamName}, now {i.coveredBy.teamName} with{" "}
+                      {i.coveredBy.with})
+                    </span>
+                  ))}
+                  . If that pair takes their entry back, these come back on the list.
+                </p>
+              )}
             </>
           ) : (
             <p className="text-sm text-light">Nobody has signed up yet.</p>
