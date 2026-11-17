@@ -614,6 +614,12 @@ export default function Home() {
   // A finished season the member raced in: their Wrapped takes over the main
   // card until they close or watch it (components/WrappedTakeover.jsx).
   const wrappedState = useSeasonWrapped(season, isLoggedIn, !!(seasonOver || isPast));
+  // The weeks after a new season is switched on, before its opener: the
+  // season just gone is still what members want to look back on, so its
+  // Wrapped takes over this hero once too and keeps a button beside the
+  // Discord one.
+  const lastSeason = awaitingOpener && !isUpcomingSeason && season ? (seasons || []).find((s) => s.number === season.number - 1) || null : null;
+  const lastWrapped = useSeasonWrapped(lastSeason, isLoggedIn, !!lastSeason);
 
   // Which round the hero is ABOUT, and therefore whose photo it may wear (a
   // round without an uploaded one falls through to the season's). Only the
@@ -1063,6 +1069,7 @@ export default function Home() {
         />
 
         {(seasonOver || isPast) && wrappedState.showTakeover && <WrappedTakeover wrapped={wrappedState.wrapped} onClose={wrappedState.dismiss} />}
+        {showComingSoonHero && lastSeason && lastWrapped.showTakeover && <WrappedTakeover wrapped={lastWrapped.wrapped} onClose={lastWrapped.dismiss} />}
 
         <div className="hero-hud relative flex min-h-[460px] flex-col gap-8 p-7 sm:p-12 lg:flex-row lg:gap-10">
           {seasonOver || isPast ? (
@@ -1166,11 +1173,16 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-                {social.data?.discord && (
+                {(social.data?.discord || (lastSeason && lastWrapped.wrapped)) && (
                   <div className="hero-anim flex flex-wrap items-center gap-3" style={{ animationDelay: "0.3s" }}>
-                    <a href={social.data.discord} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-2 rounded-xl bg-[#5865F2] px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-[#5865F2]/30 transition hover:brightness-110">
-                      Join the Discord <span aria-hidden="true">→</span>
-                    </a>
+                    {social.data?.discord && (
+                      <a href={social.data.discord} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-2 rounded-xl bg-[#5865F2] px-5 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-[#5865F2]/30 transition hover:brightness-110">
+                        Join the Discord <span aria-hidden="true">→</span>
+                      </a>
+                    )}
+                    {lastSeason && lastWrapped.wrapped && (
+                      <WrappedButton wrapped={lastWrapped.wrapped} label={`${lastWrapped.wrapped.season?.label || lastSeason.name} Wrapped`} small />
+                    )}
                   </div>
                 )}
               </div>

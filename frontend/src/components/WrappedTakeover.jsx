@@ -156,7 +156,9 @@ export function WrappedTakeover({ wrapped, onClose }) {
 
 // The smaller button that stays on the champion card once the takeover is
 // closed.
-export function WrappedButton({ wrapped }) {
+// `label` names it where the season is not obvious ("Season 8 Wrapped" on
+// the next season's page); `small` matches the hero's Discord button there.
+export function WrappedButton({ wrapped, label = "Your Wrapped", small = false }) {
   const colour = teamColourOf(wrapped);
   const navigate = useNavigate();
   return (
@@ -168,11 +170,15 @@ export function WrappedButton({ wrapped }) {
         growInto(e.currentTarget, colour, () => navigate(wrappedPath(wrapped)));
       }}
       data-wrapped-origin=""
-      className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-3 text-sm sm:px-6 font-bold uppercase tracking-wide shadow-lg transition hover:brightness-105"
+      className={
+        small
+          ? "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl px-5 py-2.5 text-xs font-bold uppercase tracking-wide shadow-lg transition hover:brightness-105"
+          : "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-3 text-sm font-bold uppercase tracking-wide shadow-lg transition hover:brightness-105 sm:px-6"
+      }
       style={{ background: colour, color: readableInkOn(colour) }}
     >
-      <Play size={15} strokeWidth={2.5} fill="currentColor" />
-      Your Wrapped
+      <Play size={small ? 13 : 15} strokeWidth={2.5} fill="currentColor" />
+      {label}
     </Link>
   );
 }
