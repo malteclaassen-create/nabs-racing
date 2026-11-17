@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildCarryOverList, readCarryOver, commitCarryOver, parsePicks, pickedByDefault, parseTeamPlan, commitTeamPlan,
+  buildCarryOverList, readCarryOver, commitCarryOver, parsePicks, pickedByDefault, parseTeamPlan, commitTeamPlan, teamIdBase, teamCopyId, matchTeams,
 } from "./seasonCarryOver.js";
 
 // An in-memory stand-in for the handful of tables the carry over touches:
@@ -230,11 +230,11 @@ describe("commitCarryOver", () => {
     // Ghost never drove and was not ticked: not created.
     expect(byName.Ghost).toBeUndefined();
 
-    expect(byName.Malte).toMatchObject({ id: "malte_s9", teamId: "ferrari_s8_s9", tier: 1, country: "de", isActive: true });
+    expect(byName.Malte).toMatchObject({ id: "malte_s9", teamId: "ferrari_s9", tier: 1, country: "de", isActive: true });
     // The id loses the old suffix chain instead of growing another one.
-    expect(byName.Steve).toMatchObject({ id: "steve_s9", teamId: "reserve_s8_s9", tier: 0, isActive: true });
-    expect(byName.Rookie).toMatchObject({ teamId: "redbull2_s8_s9", tier: 3 });
-    expect(byName["Sub Driver"]).toMatchObject({ teamId: "reserve_s8_s9", tier: 0 });
+    expect(byName.Steve).toMatchObject({ id: "steve_s9", teamId: "reserve_s9", tier: 0, isActive: true });
+    expect(byName.Rookie).toMatchObject({ teamId: "redbull2_d2_s9", tier: 3 });
+    expect(byName["Sub Driver"]).toMatchObject({ teamId: "reserve_s9", tier: 0 });
 
     // Steam id rides along, and the Division 2 reserve stays in its pool.
     expect(prisma.state.steam.get("malte_s9")).toBe("7656119");
@@ -255,7 +255,7 @@ describe("commitCarryOver", () => {
     const prisma = season8();
     await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "rookie_s8", to: "reserve" }]) });
     const rookie = prisma.state.drivers.find((d) => d.seasonId === "s9" && d.name === "Rookie");
-    expect(rookie).toMatchObject({ tier: 0, teamId: "reserve_s8_s9" });
+    expect(rookie).toMatchObject({ tier: 0, teamId: "reserve_s9" });
     expect(prisma.state.division.has(rookie.id)).toBe(false);
   });
 
@@ -268,10 +268,10 @@ describe("commitCarryOver", () => {
     ]);
     await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks });
     const by = Object.fromEntries(prisma.state.drivers.filter((d) => d.seasonId === "s9").map((d) => [d.name, d]));
-    expect(by.Malte).toMatchObject({ teamId: "minardi_s8_s9", tier: 2 });
-    expect(by["Sub Driver"]).toMatchObject({ teamId: "ferrari_s8_s9", tier: 1 });
+    expect(by.Malte).toMatchObject({ teamId: "minardi_s9", tier: 2 });
+    expect(by["Sub Driver"]).toMatchObject({ teamId: "ferrari_s9", tier: 1 });
     // A team id that is not in the source season: their own team, not the pool.
-    expect(by.Rookie).toMatchObject({ teamId: "redbull2_s8_s9", tier: 3 });
+    expect(by.Rookie).toMatchObject({ teamId: "redbull2_d2_s9", tier: 3 });
   });
 
   it("is safe to run twice and leaves people already there alone", async () => {
@@ -348,10 +348,10 @@ describe("teams step, then people", () => {
     expect(out.teamsCreated).toBe(4);
     const s9 = prisma.state.teams.filter((t) => t.seasonId === "s9");
     expect(s9.map((t) => [t.id, t.tier]).sort()).toEqual([
-      ["ferrari_s8_s9", 1],
-      ["jordan_s9", 3],
-      ["minardi_s8_d2_s9", 3],
-      ["reserve_s8_s9", 0],
+      ["ferrari_s9", 1],
+      ["jordan_d2_s9", 3],
+      ["minardi_d2_s9", 3],
+      ["reserve_s9", 0],
     ]);
     expect(prisma.state.seasonDiv2.get("s9")).toBe(1);
     // Red Bull (Division 2 last season) did not carry on: not created.
@@ -371,10 +371,10 @@ describe("teams step, then people", () => {
     });
     const preview = await readCarryOver(prisma, { fromSeasonId: "s8", target: S9 });
     const byName = Object.fromEntries(preview.teams.map((t) => [t.name, t]));
-    expect(byName.Ferrari.targetTeamId).toBe("ferrari_s8_s9");
-    expect(byName.Minardi.targetTeamId).toBe("minardi_s8_d2_s9");
+    expect(byName.Ferrari.targetTeamId).toBe("ferrari_s9");
+    expect(byName.Minardi.targetTeamId).toBe("minardi_d2_s9");
     expect(byName["Red Bull"].targetTeamId).toBe(null);
-    expect(byName.Reserve.targetTeamId).toBe("reserve_s8_s9");
+    expect(byName.Reserve.targetTeamId).toBe("reserve_s9");
     expect(preview.targetTeams.map((t) => t.name)).toEqual(["Ferrari", "Jordan", "Minardi", "Reserve"]);
     expect(preview.division2).toBe(true);
 
@@ -385,18 +385,18 @@ describe("teams step, then people", () => {
         { driverId: "malte_s8" }, // own team, Ferrari
         { driverId: "steve_s7_s8" }, // own team, Minardi, now in Division 2
         { driverId: "rookie_s8" }, // Red Bull did not carry on: the pool, Division 2 side
-        { driverId: "sub_s8", to: "team", targetTeamId: "jordan_s9" },
+        { driverId: "sub_s8", to: "team", targetTeamId: "jordan_d2_s9" },
         { driverId: "ghost_s8", to: "reserve" },
       ]),
     });
     expect(out.teamsCreated).toBe(0);
     const by = Object.fromEntries(prisma.state.drivers.filter((d) => d.seasonId === "s9").map((d) => [d.name, d]));
-    expect(by.Malte).toMatchObject({ teamId: "ferrari_s8_s9", tier: 1 });
-    expect(by.Steve).toMatchObject({ teamId: "minardi_s8_d2_s9", tier: 3 });
-    expect(by.Rookie).toMatchObject({ teamId: "reserve_s8_s9", tier: 0 });
+    expect(by.Malte).toMatchObject({ teamId: "ferrari_s9", tier: 1 });
+    expect(by.Steve).toMatchObject({ teamId: "minardi_d2_s9", tier: 3 });
+    expect(by.Rookie).toMatchObject({ teamId: "reserve_s9", tier: 0 });
     expect(prisma.state.division.has(by.Rookie.id)).toBe(false);
-    expect(by["Sub Driver"]).toMatchObject({ teamId: "jordan_s9", tier: 3 });
-    expect(by.Ghost).toMatchObject({ teamId: "reserve_s8_s9", tier: 0 });
+    expect(by["Sub Driver"]).toMatchObject({ teamId: "jordan_d2_s9", tier: 3 });
+    expect(by.Ghost).toMatchObject({ teamId: "reserve_s9", tier: 0 });
     expect(prisma.state.division.has(by.Ghost.id)).toBe(false);
   });
 });
@@ -418,24 +418,24 @@ describe("Division 2 has the same teams as Division 1, kept apart", () => {
     });
     const s9 = prisma.state.teams.filter((t) => t.seasonId === "s9");
     expect(s9.filter((t) => t.name === "Ferrari").map((t) => [t.id, t.tier]).sort()).toEqual([
-      ["ferrari_s8_d2_s9", 3],
-      ["ferrari_s8_s9", 1],
+      ["ferrari_d2_s9", 3],
+      ["ferrari_s9", 1],
     ]);
     expect(s9.find((t) => t.name === "Minardi").tier).toBe(1);
 
     const pv = await readCarryOver(prisma, { fromSeasonId: "s8", target: S9 });
     // Last season's Ferrari maps to the Division 1 Ferrari, not the Division 2 copy.
-    expect(pv.teams.find((t) => t.name === "Ferrari").targetTeamId).toBe("ferrari_s8_s9");
-    expect(pv.teams.find((t) => t.name === "Minardi").targetTeamId).toBe("minardi_s8_s9");
+    expect(pv.teams.find((t) => t.name === "Ferrari").targetTeamId).toBe("ferrari_s9");
+    expect(pv.teams.find((t) => t.name === "Minardi").targetTeamId).toBe("minardi_s9");
 
     await commitCarryOver(prisma, {
       target: S9,
       fromSeasonId: "s8",
-      picks: parsePicks([{ driverId: "malte_s8" }, { driverId: "sub_s8", to: "team", targetTeamId: "ferrari_s8_d2_s9" }]),
+      picks: parsePicks([{ driverId: "malte_s8" }, { driverId: "sub_s8", to: "team", targetTeamId: "ferrari_d2_s9" }]),
     });
     const by = Object.fromEntries(prisma.state.drivers.filter((d) => d.seasonId === "s9").map((d) => [d.name, d]));
-    expect(by.Malte).toMatchObject({ teamId: "ferrari_s8_s9", tier: 1 });
-    expect(by["Sub Driver"]).toMatchObject({ teamId: "ferrari_s8_d2_s9", tier: 3 });
+    expect(by.Malte).toMatchObject({ teamId: "ferrari_s9", tier: 1 });
+    expect(by["Sub Driver"]).toMatchObject({ teamId: "ferrari_d2_s9", tier: 3 });
   });
 });
 
@@ -462,7 +462,7 @@ describe("team search", () => {
       plan: parseTeamPlan({ division2: true, teams: [{ sourceId: "jordan_s3", tier: 3 }] }),
     });
     const jordan = prisma.state.teams.find((t) => t.seasonId === "s9" && t.name === "Jordan");
-    expect(jordan).toMatchObject({ id: "jordan_s3_d2_s9", tier: 3, color: "#ff0", logoUrl: "/j.png" });
+    expect(jordan).toMatchObject({ id: "jordan_d2_s9", tier: 3, color: "#ff0", logoUrl: "/j.png" });
   });
 });
 
@@ -483,12 +483,12 @@ describe("drivers picked from the driver database", () => {
       fromSeasonId: "s8",
       picks: parsePicks([
         { driverId: "malte_s8" },
-        { driverId: "oldie_s5", to: "team", targetTeamId: "ferrari_s8_s9" },
+        { driverId: "oldie_s5", to: "team", targetTeamId: "ferrari_s9" },
       ]),
     });
     expect(out.driversCreated).toBe(2);
     const oldie = prisma.state.drivers.find((d) => d.seasonId === "s9" && d.name === "Oldie");
-    expect(oldie).toMatchObject({ id: "oldie_s9", teamId: "ferrari_s8_s9", tier: 1, country: "fi" });
+    expect(oldie).toMatchObject({ id: "oldie_s9", teamId: "ferrari_s9", tier: 1, country: "fi" });
     expect(prisma.state.links.get("oldie_s9")).toBe("p-oldie");
   });
 
@@ -498,5 +498,108 @@ describe("drivers picked from the driver database", () => {
     const out = await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "here_s9" }]) });
     expect(out.driversCreated).toBe(0);
     expect(prisma.state.drivers.filter((d) => d.name === "Here")).toHaveLength(1);
+  });
+});
+
+describe("team ids do not grow from season to season", () => {
+  it("strips what earlier copies added", () => {
+    expect(teamIdBase("mclaren")).toBe("mclaren");
+    expect(teamIdBase("mclaren_s8")).toBe("mclaren");
+    expect(teamIdBase("mclaren_s8_s9")).toBe("mclaren");
+    expect(teamIdBase("mclaren_d2_s8_d2_s9")).toBe("mclaren");
+    expect(teamIdBase("mclaren_s9_2")).toBe("mclaren");
+    expect(teamIdBase("torro_rosso_s8")).toBe("torro_rosso");
+    expect(teamIdBase("reserve_s9_lq3k2a1b")).toBe("reserve");
+    expect(teamIdBase("")).toBe("team");
+  });
+
+  it("a copy is the base, the Division 2 mark and the new season", () => {
+    expect(teamCopyId("mclaren_s8", 1, 9)).toBe("mclaren_s9");
+    expect(teamCopyId("mclaren_d2_s8", 3, 9)).toBe("mclaren_d2_s9");
+    expect(teamCopyId("mclaren_s8", 3, 9)).toBe("mclaren_d2_s9");
+    expect(teamCopyId("mclaren_d2_s8", 2, 9)).toBe("mclaren_s9");
+    expect(teamCopyId("reserve_s8", 0, 9)).toBe("reserve_s9");
+  });
+
+  it("three seasons in a row keep the id short, Division 2 included", async () => {
+    const prisma = season8();
+    const S10 = { id: "s10", number: 10, seriesId: "f1" };
+    await commitTeamPlan(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      plan: parseTeamPlan({ division2: true, teams: [{ sourceId: "ferrari_s8", tier: 1 }, { sourceId: "ferrari_s8", tier: 3 }] }),
+    });
+    await commitTeamPlan(prisma, {
+      target: S10,
+      fromSeasonId: "s9",
+      plan: parseTeamPlan({ division2: true, teams: [{ sourceId: "ferrari_s9", tier: 1 }, { sourceId: "ferrari_d2_s9", tier: 3 }] }),
+    });
+    const ids = prisma.state.teams.filter((t) => t.seasonId === "s10" && t.tier !== 0).map((t) => t.id).sort();
+    expect(ids).toEqual(["ferrari_d2_s10", "ferrari_s10"]);
+  });
+});
+
+describe("a short team id that is taken is never mistaken for the copy", () => {
+  // Season numbers are counted per series: another series' Season 9 can hold
+  // `ferrari_s9` and `reserve_s9` already.
+  function withOtherSeries() {
+    const prisma = season8();
+    prisma.state.teams.push(
+      { id: "ferrari_s9", name: "Ferrari", tier: 1, color: "#f00", seasonId: "sunday_s9" },
+      { id: "reserve_s9", name: "Reserve", tier: 0, color: "#666", seasonId: "sunday_s9" },
+    );
+    return prisma;
+  }
+
+  it("the teams step gives the copy a free id, and the drivers land in it", async () => {
+    const prisma = withOtherSeries();
+    await commitTeamPlan(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      plan: parseTeamPlan({ division2: false, teams: [{ sourceId: "ferrari_s8", tier: 1 }] }),
+    });
+    const mine = prisma.state.teams.filter((t) => t.seasonId === "s9").map((t) => t.id).sort();
+    expect(mine).toEqual(["ferrari_s9_2", "reserve_s9_2"]);
+    await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "malte_s8" }, { driverId: "sub_s8" }]) });
+    const by = Object.fromEntries(prisma.state.drivers.filter((d) => d.seasonId === "s9").map((d) => [d.name, d]));
+    expect(by.Malte.teamId).toBe("ferrari_s9_2");
+    expect(by["Sub Driver"].teamId).toBe("reserve_s9_2");
+  });
+
+  it("without a teams step every team is still copied, none skipped", async () => {
+    const prisma = withOtherSeries();
+    await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "malte_s8" }]) });
+    const mine = prisma.state.teams.filter((t) => t.seasonId === "s9");
+    expect(mine.map((t) => t.name).sort()).toEqual(["Ferrari", "Minardi", "Red Bull", "Reserve"]);
+    expect(mine.find((t) => t.name === "Ferrari").id).toBe("ferrari_s9_2");
+    expect(prisma.state.drivers.find((d) => d.seasonId === "s9" && d.name === "Malte").teamId).toBe("ferrari_s9_2");
+  });
+
+  it("two old teams with the same base both come along", async () => {
+    const prisma = season8();
+    prisma.state.teams.push({ id: "ferrari_s8_2", name: "Scuderia", tier: 1, color: "#a00", seasonId: "s8" });
+    await commitCarryOver(prisma, { target: S9, fromSeasonId: "s8", picks: parsePicks([{ driverId: "malte_s8" }]) });
+    const mine = prisma.state.teams.filter((t) => t.seasonId === "s9" && t.tier === 1);
+    expect(mine.map((t) => t.name).sort()).toEqual(["Ferrari", "Scuderia"]);
+  });
+
+  it("an id hit with another name falls through to the name", () => {
+    const source = [{ id: "toro_rosso_s8_2", name: "Toro Rosso", tier: 2 }];
+    const target = [
+      { id: "toro_rosso_s9", name: "AlphaTauri", tier: 2 },
+      { id: "toro_rosso_s9_2", name: "Toro Rosso", tier: 2 },
+    ];
+    expect(matchTeams(source, target, 9).get("toro_rosso_s8_2").name).toBe("Toro Rosso");
+  });
+
+  it("a new team keeps its own name in the id", async () => {
+    const prisma = season8();
+    await commitTeamPlan(prisma, {
+      target: S9,
+      fromSeasonId: "s8",
+      plan: parseTeamPlan({ division2: true, newTeams: [{ name: "Racing S5", tier: 2 }, { name: "Team D2", tier: 3 }] }),
+    });
+    const ids = prisma.state.teams.filter((t) => t.seasonId === "s9" && t.tier !== 0).map((t) => t.id).sort();
+    expect(ids).toEqual(["racing_s5_s9", "team_d2_d2_s9"]);
   });
 });

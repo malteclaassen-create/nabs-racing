@@ -36,6 +36,7 @@ import AdminSeasonAwards from "../components/AdminSeasonAwards.jsx";
 import TabNotice from "../components/TabNotice.jsx";
 import { FilterChip, SearchField } from "../components/AdminFilters.jsx";
 import { HelpNote } from "../components/ui.jsx";
+import { teamLabel, tierLabel } from "../utils/teamLabel.js";
 // The tab strip and the searchable list of what each tab does live together in
 // one place, so a new tab and its search entries are added side by side.
 import { resolveTab } from "../data/adminIndex.js";
@@ -3743,7 +3744,7 @@ function Drivers() {
   const [expanded, setExpanded] = useState(null);
 
   const accounts = new Map(((membersData && membersData.members) || []).map((m) => [String(m.discordId), m]));
-  const allDrivers = (teams || []).flatMap((t) => t.drivers.map((d) => ({ ...d, teamName: t.name })));
+  const allDrivers = (teams || []).flatMap((t) => t.drivers.map((d) => ({ ...d, teamName: t.name, teamLabel: teamLabel(t) })));
 
   async function create(e) {
     e.preventDefault();
@@ -3985,11 +3986,23 @@ function Drivers() {
           appears in the results file) as closely as possible. (You can always pick the right driver by hand during import if the auto-match misses.)
         </p>
         <div className="grid grid-cols-2 gap-3">
-          <select aria-label="Team" className="input" value={form.teamId} onChange={(e) => setForm({ ...form, teamId: e.target.value })} required>
+          {/* Picking the team sets the tier to the team's (a Division 2 team
+              gets Division 2, the Reserve pool Reserve), so the two cannot
+              disagree by accident; the tier stays changeable afterwards. */}
+          <select
+            aria-label="Team"
+            className="input"
+            value={form.teamId}
+            onChange={(e) => {
+              const team = (teams || []).find((t) => t.id === e.target.value);
+              setForm({ ...form, teamId: e.target.value, ...(team ? { tier: team.tier } : {}) });
+            }}
+            required
+          >
             <option value="">Team…</option>
             {(teams || []).map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name}
+                {teamLabel(t)}
               </option>
             ))}
           </select>
@@ -4273,7 +4286,7 @@ function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, on
             title="Opens the transfer dialog: pick the round the change takes effect from. Rounds already driven keep their team unless you deliberately backdate the move."
             onChange={(e) => onTransfer(e.target.value)}>
             {teamGroups.map((o) => (
-              <option key={o.id} value={o.id}>{o.name}</option>
+              <option key={o.id} value={o.id}>{teamLabel(o)}</option>
             ))}
             {!teamGroups.some((o) => o.tier === 0) && <option value="reserve">Reserve</option>}
           </select>
@@ -4398,7 +4411,7 @@ function SafetyCarDrivers({ drivers, busy, onSet }) {
             <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
               <SafetyCarBadge compact />
               <span className="min-w-0 flex-1 truncate font-semibold text-dark">{d.name}</span>
-              <span className="text-xs text-light">{d.teamName}</span>
+              <span className="text-xs text-light">{d.teamLabel}</span>
               <button
                 className="transition text-xs font-semibold text-link hover:underline"
                 disabled={busy}
@@ -4422,7 +4435,7 @@ function SafetyCarDrivers({ drivers, busy, onSet }) {
           <option value="">Add a driver…</option>
           {rest.map((d) => (
             <option key={d.id} value={d.id}>
-              {d.name} · {d.teamName}
+              {d.name} · {d.teamLabel}
             </option>
           ))}
         </select>
@@ -7148,7 +7161,9 @@ function TeamImport({ seasonId, onImported, onError }) {
       await api.importTeam(t.id, seasonId);
       onImported?.(t);
       // Refresh the list so the team we just took now shows as already here.
-      setRows((prev) => (prev || []).map((r) => (r.name === t.name ? { ...r, alreadyHere: true } : r)));
+      // Taken per division: bringing over Division 1 McLaren leaves Division 2 McLaren open.
+      const div = (x) => (x.tier === 3 ? 2 : 1);
+      setRows((prev) => (prev || []).map((r) => (r.name === t.name && div(r) === div(t) ? { ...r, alreadyHere: true } : r)));
     } catch (e) {
       onError?.(e.message);
     } finally {
@@ -7184,7 +7199,7 @@ function TeamImport({ seasonId, onImported, onError }) {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-dark">{t.name}</span>
                 <span className="block font-mono text-[11px] uppercase tracking-wider text-light">
-                  {t.seasonName || `Season ${t.seasonNumber}`} · {t.tier === 0 ? "Reserve" : `Tier ${t.tier}`}
+                  {t.seasonName || `Season ${t.seasonNumber}`} · {tierLabel(t.tier)}
                 </span>
               </span>
               {t.alreadyHere ? (

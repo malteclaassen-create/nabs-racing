@@ -138,20 +138,59 @@ async function readSteamIds(prisma, ids) {
   return out;
 }
 
+// A team's id without what earlier copies added: the season (`_s8`), the
+// Division 2 mark (`_d2`), and what makes a taken id unique: a counter
+// (`_s8_2`) or the 8-character time stamp ensureReservePool puts on a pool
+// (`reserve_s8_lq3k2a1b`). Copying used to put the new season on top of the
+// old id, so McLaren's Division 2 team read `mclaren_d2_s8_d2_s9` by its
+// second season and grew every season after.
+export function teamIdBase(id) {
+  return String(id || "").replace(/(_(?:d2|s\d+(?:_\d+|_[a-z0-9]{8})?))+$/i, "") || "team";
+}
+
+// The id of a team's copy in season `number`: its base, `_d2` for a Division 2
+// team, the season. `mclaren_s8` -> `mclaren_s9`, `mclaren_d2_s8` ->
+// `mclaren_d2_s9`; a Division 1 team copied into Division 2 gets the mark.
+//
+// Short ids can be taken: season numbers are counted per series, so another
+// series' Season 9 may hold `ferrari_s9` already. A taken id never means "this
+// team was copied already" (that is a same name and tier in the target
+// season); the copy goes through uniqueTeamId instead.
+export function teamCopyId(id, tier, number) {
+  return `${teamIdBase(id)}${seasonIdSuffix(tier, number)}`;
+}
+
+// What every team id of season `number` ends in: `_d2` for Division 2, then
+// the season.
+function seasonIdSuffix(tier, number) {
+  return `${tier === DIV2_TIER ? "_d2" : ""}_s${number}`;
+}
+
+// `want`, or `want_2`, `want_3`, ... when a team of any season has it.
+export async function uniqueTeamId(prisma, want) {
+  let id = want;
+  for (let i = 2; await prisma.team.findUnique({ where: { id } }); i++) id = `${want}_${i}`;
+  return id;
+}
+
 // Which team of the new season each team of the old one became: the copy by
-// id (`<id>_s<N>`), else the same name in the same tier, else the same name in
+// id (`teamCopyId`, or the stacked `<id>_s<N>` older copies made) when the
+// name matches too (two old teams can share a base, and a short id can belong
+// to another team), else the same name in the same tier, else the same name in
 // any tier (the teams step may have moved it, say into Division 2). The pool
 // maps to the pool. Map source team id -> target team row.
-export function matchTeams(sourceTeams, targetTeams, suffix) {
+export function matchTeams(sourceTeams, targetTeams, number) {
   const out = new Map();
   const byId = new Map(targetTeams.map((t) => [t.id, t]));
   const pool = targetTeams.find((t) => t.tier === 0) || null;
+  const sameName = (s, t) => (t && norm(t.name) === norm(s.name) ? t : null);
   for (const s of sourceTeams) {
     let hit = null;
     if (s.tier === 0) hit = pool;
     else
       hit =
-        byId.get(`${s.id}${suffix}`) ||
+        sameName(s, byId.get(teamCopyId(s.id, s.tier, number))) ||
+        sameName(s, byId.get(`${s.id}_s${number}`)) ||
         targetTeams.find((t) => t.tier === s.tier && norm(t.name) === norm(s.name)) ||
         targetTeams.find((t) => t.tier !== 0 && norm(t.name) === norm(s.name)) ||
         null;
@@ -180,7 +219,7 @@ export async function readCarryOver(prisma, { fromSeasonId, target }) {
   ]);
   const list = buildCarryOverList({ teams, drivers, starts, present, persons });
   const pastTeams = await readPastTeams(prisma, target);
-  const matched = matchTeams(teams, targetTeams, `_s${target?.number ?? ""}`);
+  const matched = matchTeams(teams, targetTeams, target?.number ?? "");
   for (const t of list) t.targetTeamId = matched.get(t.id)?.id || null;
   const shown = targetTeams
     .map((t) => ({ id: t.id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl || null }))
@@ -212,10 +251,10 @@ export async function readPastTeams(prisma, target) {
   return [...best.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// A team id for a new team: its name in id form plus the season, `_2`, `_3`
-// on the end when taken. Kept to letters, digits and _ (the id becomes the
-// logo's file name).
-async function freshTeamId(prisma, name, suffix) {
+// A team id for a new team: its name in id form, shaped like a copy (`_d2`
+// for Division 2, the season), made unique. Kept to letters, digits and _
+// (the id becomes the logo's file name).
+async function freshTeamId(prisma, name, tier, number) {
   const base =
     String(name || "")
       .toLowerCase()
@@ -223,9 +262,9 @@ async function freshTeamId(prisma, name, suffix) {
       .replace(/[̀-ͯ]/g, "")
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "") || "team";
-  let id = `${base}${suffix}`;
-  for (let i = 2; await prisma.team.findUnique({ where: { id } }); i++) id = `${base}${suffix}_${i}`;
-  return id;
+  // Not teamCopyId: the name is not an old id, and a name like "Racing S5"
+  // must keep its "_s5".
+  return uniqueTeamId(prisma, `${base}${seasonIdSuffix(tier, number)}`);
 }
 
 const TEAM_TIERS = new Set([1, 2, DIV2_TIER]);
@@ -261,7 +300,6 @@ export function parseTeamPlan(body) {
 // already (same name and tier) is left as it is. Also switches Division 2 on
 // or off for the season. Returns { teamsCreated }.
 export async function commitTeamPlan(prisma, { target, fromSeasonId, plan }) {
-  const suffix = `_s${target.number}`;
   const [sourceTeams, targetTeams] = await Promise.all([
     fromSeasonId ? prisma.team.findMany({ where: { seasonId: fromSeasonId } }) : [],
     prisma.team.findMany({ where: { seasonId: target.id } }),
@@ -283,19 +321,19 @@ export async function commitTeamPlan(prisma, { target, fromSeasonId, plan }) {
     if (!s || s.tier === 0 || have(s.name, k.tier)) continue;
     // Division 2 has teams of the same name as Division 1: its copy gets an
     // id of its own, so both can come from the same old team.
-    const want = k.tier === DIV2_TIER ? `${s.id}_d2${suffix}` : `${s.id}${suffix}`;
-    const id = (await prisma.team.findUnique({ where: { id: want } })) ? await freshTeamId(prisma, s.name, suffix) : want;
+    const id = await uniqueTeamId(prisma, teamCopyId(s.id, k.tier, target.number));
     await add({ id, name: s.name, tier: k.tier, color: s.color, logoUrl: s.logoUrl });
   }
   for (const n of plan.newTeams) {
     if (have(n.name, n.tier)) continue;
-    await add({ id: await freshTeamId(prisma, n.name, suffix), name: n.name, tier: n.tier, color: n.color });
+    await add({ id: await freshTeamId(prisma, n.name, n.tier, target.number), name: n.name, tier: n.tier, color: n.color });
   }
   // The pool: last season's, copied, so it keeps its name and colour.
   if (!targetTeams.some((t) => t.tier === 0)) {
     const oldPool = sourceTeams.find((t) => t.tier === 0);
-    if (oldPool && !(await prisma.team.findUnique({ where: { id: `${oldPool.id}${suffix}` } }))) {
-      await add({ id: `${oldPool.id}${suffix}`, name: oldPool.name, tier: 0, color: oldPool.color, logoUrl: oldPool.logoUrl });
+    if (oldPool) {
+      const id = await uniqueTeamId(prisma, teamCopyId(oldPool.id, 0, target.number));
+      await add({ id, name: oldPool.name, tier: 0, color: oldPool.color, logoUrl: oldPool.logoUrl });
     } else {
       await ensureReservePool(prisma, target.id);
     }
@@ -344,11 +382,11 @@ export async function commitCarryOver(prisma, { target, fromSeasonId, picks }) {
   if (!targetTeams.some((t) => t.tier !== 0)) {
     // No teams step: every team comes along as it was.
     for (const t of sourceTeams) {
-      const newId = `${t.id}${suffix}`;
-      if (targetTeams.some((x) => x.id === newId || (x.tier === t.tier && norm(x.name) === norm(t.name)))) continue;
-      // The id belongs to another season already (a deleted and recreated
-      // season of the same number): a fresh one rather than no team.
-      const id = (await prisma.team.findUnique({ where: { id: newId } })) ? `${newId}_${Date.now().toString(36)}` : newId;
+      // Copied already: the same name in the same tier. A taken id is not that
+      // (another series' season of the same number, or two old teams with the
+      // same base); the copy gets a free id instead.
+      if (targetTeams.some((x) => x.tier === t.tier && norm(x.name) === norm(t.name))) continue;
+      const id = await uniqueTeamId(prisma, teamCopyId(t.id, t.tier, target.number));
       const row = await prisma.team.create({
         data: { id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
       });
@@ -360,7 +398,7 @@ export async function commitCarryOver(prisma, { target, fromSeasonId, picks }) {
       await writeSeasonDivision2(prisma, target.id, true).catch(() => {});
     }
   }
-  const teamMap = matchTeams(sourceTeams, targetTeams, suffix); // old team id -> new team row
+  const teamMap = matchTeams(sourceTeams, targetTeams, target.number); // old team id -> new team row
   const targetById = new Map(targetTeams.map((t) => [t.id, t]));
   let pool = targetTeams.find((t) => t.tier === 0) || null;
 

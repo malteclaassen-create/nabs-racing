@@ -8,6 +8,7 @@ import TeamLogo from "./TeamLogo.jsx";
 import TeamHistoryGrid, { orderTeams, worthShowing, standingsMap } from "./TeamHistoryGrid.jsx";
 import TransferDialog from "./TransferDialog.jsx";
 import MergeDriversDialog from "./MergeDriversDialog.jsx";
+import { teamLabel } from "../utils/teamLabel.js";
 
 // ---------------------------------------------------------------------------
 // Admin "Transfers" tab: the season's transfer market in one place.
@@ -142,7 +143,7 @@ export default function AdminTransfers() {
     }
   }
 
-  const teamName = (id) => teamById.get(id)?.name || id || "—";
+  const teamName = (id) => (teamById.get(id) ? teamLabel(teamById.get(id)) : id || "—");
   const mark = (id) => {
     const t = teamById.get(id);
     return <TeamLogo id={id} name={t?.name || id} color={t?.color} logoUrl={t?.logoUrl} size={18} />;
@@ -166,7 +167,7 @@ export default function AdminTransfers() {
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.name} ({teamName(d.teamId)})
+                    {d.name} · {teamName(d.teamId)}
                   </option>
                 ))}
             </select>
@@ -213,7 +214,7 @@ export default function AdminTransfers() {
                   <li key={team.id} className="py-3">
                     <div className="mb-2 flex items-center gap-2">
                       {mark(team.id)}
-                      <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">{team.name}</span>
+                      <span className="font-display text-sm font-bold uppercase tracking-tight text-dark">{teamLabel(team)}</span>
                       <span className="pill bg-amber-500/15 text-warn">{drivers.length} seats</span>
                     </div>
                     {/* One full-width row per driver: name, one line of facts,

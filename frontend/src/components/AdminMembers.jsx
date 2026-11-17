@@ -9,6 +9,7 @@ import IdChip from "./IdChip.jsx";
 import AdminPersons from "./AdminPersons.jsx";
 import { useAsk } from "./overlay.jsx";
 import { fmtStamp, NO_VALUE } from "../utils/format.js";
+import { tierLabel } from "../utils/teamLabel.js";
 import { MEMBERS_CHANGED_EVENT } from "../data/adminEvents.js";
 
 // Admin "Members" tab: every Discord account that has ever logged in on the
@@ -893,7 +894,7 @@ export default function AdminMembers() {
                           {teams.map((t) => (
                             <option key={t.id} value={t.id}>
                               {t.name}
-                              {t.tier === 0 ? " (Reserve)" : ` (Tier ${t.tier})`}
+                              {` (${tierLabel(t.tier)})`}
                             </option>
                           ))}
                         </select>

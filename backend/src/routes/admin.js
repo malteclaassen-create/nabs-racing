@@ -111,7 +111,7 @@ import {
 } from "../lib/members.js";
 import { isIndividualSteamId } from "./steamAuth.js";
 import { ensureReservePool } from "../lib/reservePool.js";
-import { readCarryOver, commitCarryOver, parsePicks, parseTeamPlan, commitTeamPlan } from "../lib/seasonCarryOver.js";
+import { readCarryOver, commitCarryOver, parsePicks, parseTeamPlan, commitTeamPlan, teamCopyId, uniqueTeamId } from "../lib/seasonCarryOver.js";
 import { deleteDriverOps } from "../lib/driverDeletion.js";
 import {
   newcomerRows, keepNewcomer, settleNewcomer, turnAwayNewcomer, reviewNewcomers, foldNewRowInto,
@@ -6082,14 +6082,18 @@ router.post("/seasons/:id/clone-teams", async (req, res, next) => {
     const sourceTeams = await prisma.team.findMany({ where: { seasonId: fromSeasonId } });
     if (sourceTeams.length === 0) return res.status(400).json({ error: "Source season has no teams" });
 
+    // Copied already = the same name in the same tier in this season. A taken
+    // id is not that (season numbers repeat across series): it gets a free one.
+    const have = await prisma.team.findMany({ where: { seasonId: target.id } });
+    const sameTeam = (a, b) => a.tier === b.tier && a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
     let created = 0;
     for (const t of sourceTeams) {
-      const newId = `${t.id}_s${target.number}`;
-      const exists = await prisma.team.findUnique({ where: { id: newId } });
-      if (exists) continue;
-      await prisma.team.create({
-        data: { id: newId, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
+      if (have.some((x) => sameTeam(x, t))) continue;
+      const id = await uniqueTeamId(prisma, teamCopyId(t.id, t.tier, target.number));
+      const row = await prisma.team.create({
+        data: { id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
       });
+      have.push(row);
       created++;
     }
     res.json({ ok: true, created });
@@ -6119,14 +6123,23 @@ router.post("/seasons/:id/clone-roster", async (req, res, next) => {
     const suffix = `_s${target.number}`;
     let teamsCreated = 0;
     const teamIdMap = new Map(); // old id -> new id
+    // Copied already = the same name in the same tier in this season, and its
+    // drivers go there. A taken id is not that (season numbers repeat across
+    // series, so `ferrari_s9` may be another series' team): a free one instead.
+    const have = await prisma.team.findMany({ where: { seasonId: target.id } });
+    const sameTeam = (a, b) => a.tier === b.tier && a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
     for (const t of sourceTeams) {
-      const newId = `${t.id}${suffix}`;
-      teamIdMap.set(t.id, newId);
-      const exists = await prisma.team.findUnique({ where: { id: newId } });
-      if (exists) continue;
-      await prisma.team.create({
-        data: { id: newId, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
+      const there = have.find((x) => sameTeam(x, t));
+      if (there) {
+        teamIdMap.set(t.id, there.id);
+        continue;
+      }
+      const id = await uniqueTeamId(prisma, teamCopyId(t.id, t.tier, target.number));
+      const row = await prisma.team.create({
+        data: { id, name: t.name, tier: t.tier, color: t.color, logoUrl: t.logoUrl, seasonId: target.id },
       });
+      have.push(row);
+      teamIdMap.set(t.id, id);
       teamsCreated++;
     }
 
@@ -6527,7 +6540,9 @@ router.get("/teams/library", async (req, res, next) => {
     });
     const seasonById = new Map(seasons.map((s) => [s.id, s]));
     const existing = await prisma.team.findMany({ where: { seasonId: targetSeasonId } });
-    const takenNames = new Set(existing.map((t) => t.name.trim().toLowerCase()));
+    // A name is taken per division: Division 2 has its own McLaren.
+    const nameKey = (t) => `${t.tier === DIV2_TIER ? 2 : 1}:${t.name.trim().toLowerCase()}`;
+    const takenNames = new Set(existing.map(nameKey));
 
     const teams = await prisma.team.findMany({
       where: { seasonId: { in: seasons.map((s) => s.id).filter((id) => id !== targetSeasonId) } },
@@ -6543,7 +6558,7 @@ router.get("/teams/library", async (req, res, next) => {
         seasonId: t.seasonId,
         seasonNumber: seasonById.get(t.seasonId)?.number ?? null,
         seasonName: seasonById.get(t.seasonId)?.name ?? null,
-        alreadyHere: takenNames.has(t.name.trim().toLowerCase()),
+        alreadyHere: takenNames.has(nameKey(t)),
       }))
       .sort(
         (a, b) =>
@@ -6605,18 +6620,22 @@ router.post("/teams/import", async (req, res, next) => {
     if (source.seasonId === targetSeasonId) {
       return res.status(400).json({ error: "That team is already in this season" });
     }
-    const clash = await prisma.team.findFirst({
-      where: { seasonId: targetSeasonId, name: source.name },
-    });
-    if (clash) return res.status(409).json({ error: `${source.name} is already in this season` });
-
-    // Strip any previous season suffix before adding this one, so a team
-    // travelling S6 -> S7 -> S8 does not end up as "mclaren_s7_s8".
-    const base = source.id.replace(/_s\d+$/i, "");
-    let newId = `${base}_s${target.number}`;
-    for (let n = 2; await prisma.team.findUnique({ where: { id: newId } }); n++) {
-      newId = `${base}_s${target.number}_${n}`;
+    // Division 1 and Division 2 each have their own McLaren, so a name is only
+    // taken within the same division.
+    const sameDivision = (tier) => (tier === DIV2_TIER) === (source.tier === DIV2_TIER);
+    const clash = (await prisma.team.findMany({ where: { seasonId: targetSeasonId, name: source.name } })).find((t) =>
+      sameDivision(t.tier)
+    );
+    if (clash) {
+      return res.status(409).json({
+        error: `${source.name} is already in this season${source.tier === DIV2_TIER ? " (Division 2)" : ""}`,
+      });
     }
+
+    // Strip what earlier copies added (season, Division 2 mark) before adding
+    // this season, so a team travelling S6 -> S7 -> S8 does not end up as
+    // "mclaren_s7_s8".
+    const newId = await uniqueTeamId(prisma, teamCopyId(source.id, source.tier, target.number));
     const team = await prisma.team.create({
       data: {
         id: newId,
