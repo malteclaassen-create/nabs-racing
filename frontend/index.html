@@ -59,7 +59,7 @@
           // The design (Settings -> Design), same reason. The list mirrors
           // DESIGNS in src/hooks/useDesign.js; "classic" needs no attribute.
           var d = localStorage.getItem("nabs_design");
-          if (d && /^(carbon|midnight|ocean|paddock)$/.test(d)) document.documentElement.setAttribute("data-design", d);
+          if (d && /^(carbon|midnight|oled|ocean|paddock)$/.test(d)) document.documentElement.setAttribute("data-design", d);
         } catch (e) {}
       })();
       // Coming back from the Reload button of "A new version of the site is

@@ -106,7 +106,7 @@ function DesignPicker({ value, theme, onChange }) {
   return (
     <div role="radiogroup" aria-label="Design" className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {DESIGNS.map((d) => {
-        const [page, card, inset] = theme === "dark" ? d.dark : d.light;
+        const [page, card, inset, line] = theme === "dark" ? d.dark : d.light;
         const on = d.value === value;
         return (
           <button
@@ -123,7 +123,10 @@ function DesignPicker({ value, theme, onChange }) {
             {/* A tiny page: the background, a card on it, and an inset row
                 with the series colour in it, as the real pages are built. */}
             <span className="block overflow-hidden rounded-lg border border-black/10" style={{ background: page }}>
-              <span className="m-2 block rounded-md p-1.5 shadow-sm" style={{ background: card }}>
+              <span
+                className="m-2 block rounded-md p-1.5 shadow-sm"
+                style={{ background: card, border: line ? `1px solid ${line}` : undefined }}
+              >
                 <span className="block h-1.5 w-2/3 rounded-full bg-brand" />
                 <span className="mt-1.5 block h-2.5 rounded" style={{ background: inset }} />
               </span>
