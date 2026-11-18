@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
@@ -9,6 +9,7 @@ import { ChevronRight } from "lucide-react";
 import { ArrowDownUp, Users } from "../components/icons/filled.jsx";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, SectionHeading, TableSkeleton, Skeleton, DriverAvatar } from "../components/ui.jsx";
 import { useTilt } from "../hooks/motion.js";
+import { useMyDivision } from "../hooks/useMyDivision.js";
 import ConstructorTable from "../components/ConstructorTable.jsx";
 import TeamLogo from "../components/TeamLogo.jsx";
 import SlidingTabs from "../components/SlidingTabs.jsx";
@@ -227,9 +228,24 @@ export default function Constructors() {
   // Division 2's teams (tier 3): the second field, racing at the same time on
   // the second server, scored in a table of its own. Only for a season that
   // runs it (admin Seasons tab).
-  const { current: divSeason } = useSeason();
+  const { current: divSeason, active: divActive } = useSeason();
   const runsDiv2 = !!divSeason?.division2;
   const div2 = useApi(useCallback(() => (runsDiv2 ? api.div2Standings() : Promise.resolve(null)), [runsDiv2]));
+  // A Division 2 driver is taken down to the Division 2 block, which sits
+  // under both of Division 1's tiers: the same courtesy as the standings and
+  // the Live page opening on their division. Once per visit, in the season
+  // being raced, and not over a link to a block (#tier-1) or a page the
+  // reader has already started scrolling. A jump, not a glide: the block is
+  // several screens down, and a glide that long is a wait.
+  const mine = useMyDivision(runsDiv2 && !!divActive && divSeason?.id === divActive.id);
+  const div2Jumped = useRef(false);
+  const div2OnPage = !t1.loading && !t2.loading && !teams.loading && !!div2.data;
+  useEffect(() => {
+    if (div2Jumped.current || mine.division !== 2 || !div2OnPage) return;
+    div2Jumped.current = true;
+    if (window.location.hash || window.scrollY > 40) return;
+    document.getElementById("division-2")?.scrollIntoView({ behavior: "auto", block: "start" });
+  }, [mine.division, div2OnPage]);
   // The late-season "drop worst" preview, as on the driver standings: how many
   // worst results so far to take off, or null for the real table. It drops
   // by the season's own constructor rule: whole team rounds under the
