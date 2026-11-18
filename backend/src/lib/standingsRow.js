@@ -11,9 +11,15 @@
 // page and then cannot find themselves in the table it came from.
 //
 // A start counts even when it ended in a DNF and scored nothing — they turned
-// up and drove — which is why this asks perRace rather than the total. Points
-// with no per-race rows at all is an archived season stored as official totals
-// only; there the total is the only evidence of a season raced, and it counts.
+// up and drove — which is why this asks perRace rather than the total. A DNS
+// is not a start: a reserve who was entered and never left the pits has not
+// raced. Points with no per-race rows at all is an archived season stored as
+// official totals only; there the total is the only evidence of a season
+// raced, and it counts.
+//
+// The table is per division (a season with Division 2 has two), and so is this
+// answer: a reserve who took over a Division 2 seat has a row in that table
+// and none in Division 1's, and the other way round.
 //
 // The frontend keeps the same rule in utils/standingsRow.js, for the tables it
 // filters in the browser. If either changes, change both.
@@ -21,7 +27,7 @@
 // Did this driver race in the season this row belongs to?
 export function hasRaced(row) {
   if (!row) return false;
-  return Object.keys(row.perRace || {}).length > 0 || (row.total || 0) > 0;
+  return startsOf(roundsOf(row)).length > 0 || (row.total || 0) > 0;
 }
 
 // A reserve who signed up and never drove: on the roster, in the standings

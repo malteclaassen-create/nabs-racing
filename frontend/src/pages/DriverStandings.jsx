@@ -17,6 +17,7 @@ import SlidingTabs from "../components/SlidingTabs.jsx";
 import { List as ListIcon, Grid3x3, IdCard, Search, SearchX, X } from "lucide-react";
 import { countryFor } from "../data/driverCountries.js";
 import { isIdleReserve } from "../utils/standingsRow.js";
+import { useMyDivision } from "../hooks/useMyDivision.js";
 
 function LeaderCard({ row, leaderTotal, rank, index = 0, showTier = true, champion = false }) {
   const gap = leaderTotal - row.total;
@@ -247,8 +248,9 @@ export default function DriverStandings() {
   // Division 2 (a season's second field, racing at the same time on the
   // second server) has a table of its own; the switch only shows for a season
   // that runs it.
-  const { current: seasonForDivision } = useSeason();
-  const [divisionPick, setDivisionPick] = usePersistentState("nabs.standings.division", 1);
+  const { current: seasonForDivision, active: activeForDivision } = useSeason();
+  // null = no table picked by hand yet, so the member's own division decides.
+  const [divisionPick, setDivisionPick] = usePersistentState("nabs.standings.division", null);
   // The Division 2 standings post links here with `division=2`, and opens on
   // that table.
   // Once, on arrival: switching back to Division 1 afterwards must stick.
@@ -258,7 +260,15 @@ export default function DriverStandings() {
     divisionFromLink.current = true;
     if (new URLSearchParams(window.location.search).get("division") === "2") setDivisionPick(2);
   });
-  const division = seasonForDivision?.division2 && divisionPick === 2 ? 2 : 1;
+  // A Division 2 driver lands on the Division 2 table, the way the Live page
+  // opens on their race. Only for the season being raced (an archive season's
+  // table is not theirs to guess), and only until they pick a table by hand;
+  // that pick is remembered for the visit.
+  const runsDivision2 = !!seasonForDivision?.division2;
+  const mine = useMyDivision(
+    runsDivision2 && divisionPick == null && !!activeForDivision && seasonForDivision?.id === activeForDivision.id
+  );
+  const division = runsDivision2 && (divisionPick ?? mine.division) === 2 ? 2 : 1;
   const { data: realData, loading, error, reload } = useApi(
     useCallback(() => api.driverStandings(undefined, null, null, division), [division])
   );
@@ -287,14 +297,11 @@ export default function DriverStandings() {
   // (utils/pageTitle.js), so the two never disagree.
   const seasonName = seasonLabelOf(season);
   const seasonHeading = seasonName ? `${seasonName} Driver Standings` : "Driver Standings";
-  // Default OFF on purpose: the full field, reserves included, is what the
-  // standings are meant to show. Defaulting this to ON was tried and taken back
-  // out — the crowded table is the intended one. A chip under the toolbar
-  // still says how many rows the switch is holding back.
+  // Default OFF on purpose: the full field, every seat holder with or without
+  // points, is what the standings are meant to show. Defaulting this to ON was
+  // tried and taken back out. A chip under the toolbar still says how many
+  // rows the switch is holding back.
   const [onlyScoring, setOnlyScoring] = usePersistentState("nabs.standings.onlyScoring", false);
-  // Reserves who never got in a car this season (see isIdleReserve below) are
-  // off the table by default. This flips them back on.
-  const [showIdleReserves, setShowIdleReserves] = usePersistentState("nabs.standings.idleReserves", false);
   const [tier, setTier] = usePersistentState("nabs.standings.tier", "all");
   // "list" = the ranked cards/rows; "grid" = the per-round points matrix (same
   // table the Constructors page uses); "cards" = the whole field as their
@@ -327,7 +334,9 @@ export default function DriverStandings() {
     return () => { alive = false; };
   }, [view, cardsEnabled, cardData]);
 
-  if (loading)
+  // Also while the member's own division is still being asked: Division 1's
+  // table must not flash up first for somebody who races in Division 2.
+  if (loading || !mine.ready)
     return (
       <div>
         <PageHeaderSkeleton />
@@ -352,7 +361,13 @@ export default function DriverStandings() {
   // The table on show: the preview once it has arrived, otherwise the real one.
   const projecting = dropPick != null && projected?.n === dropPick && projected?.division === division;
   const data = projecting ? projected.data : realData;
-  const all = data.standings;
+  // A reserve is on the table once they have raced this season, in the
+  // division they raced in, and not before (the league's call: the reserve
+  // pool is the whole sign-up list, and a table full of people who have not
+  // driven is no championship). There is no switch to bring the rest back.
+  // The rule lives in utils/standingsRow.js; the driver and team profiles
+  // withhold a P-number from exactly these rows, and the two have to agree.
+  const all = data.standings.filter((r) => !isIdleReserve(r));
   // Archived single-class seasons (S1–S5) have only one tier: hide the tier
   // filter + per-row tier badges. Totals-only seasons (no races) swap the
   // "Rounds" stat for a "Final standings" label.
@@ -365,27 +380,14 @@ export default function DriverStandings() {
   // A tier that no longer exists can't stay selected.
   const activeTier = multiTier && tierFilters.some((t) => t.id === tier) ? tier : "all";
 
-  // Filter by tier, drop the reserves who haven't raced, then optionally hide
-  // point-less drivers, then re-rank the resulting view 1..n so a tier
-  // sub-table reads as its own standings. A function, because the tier
-  // switch shows how many drivers each tier would list under the same rules.
+  // Filter by tier, then optionally hide point-less drivers, then re-rank the
+  // resulting view 1..n so a tier sub-table reads as its own standings. A
+  // function, because the tier switch shows how many drivers each tier would
+  // list under the same rules.
   const viewOf = (tierId) => {
     let rows = tierId === "all" ? all : all.filter((r) => String(r.tier) === tierId);
-    const pool = rows.length;
-    // Who the standings are actually for: everyone holding a seat in a Tier 1 or
-    // Tier 2 team, plus the reserves who turned up — scored a point, or started
-    // a round (a start counts even if it ended in a DNF and no points, which is
-    // why this asks perRace rather than the total). A season's reserve pool is
-    // the whole sign-up list, so the rest of it is people who haven't driven
-    // this season at all: dozens of identical zero rows that are not part of any
-    // championship. A chip under the toolbar brings them back in one
-    // click, so nobody vanishes without the page saying so. The rule itself
-    // lives in utils/standingsRow.js — the driver and team profiles withhold a
-    // P-number from exactly these rows, and the two have to agree.
-    const idleReserves = rows.filter(isIdleReserve).length;
-    if (!showIdleReserves) rows = rows.filter((r) => !isIdleReserve(r));
-    // The opt-in "only drivers with points" switch on top of that, which also takes
-    // out the seated drivers who haven't scored. It only bites once there is a
+    // The opt-in "only drivers with points" switch, which takes out the seated
+    // drivers who haven't scored. It only bites once there is a
     // championship to show: before a season's first round nobody has scored, and
     // an empty table is no answer. `hiddenCount` feeds the chip under the
     // toolbar, so nothing disappears without saying so.
@@ -393,14 +395,14 @@ export default function DriverStandings() {
     const hideScoreless = onlyScoring && anyScorer;
     const hiddenCount = hideScoreless ? rows.filter((r) => r.total <= 0).length : 0;
     if (hideScoreless) rows = rows.filter((r) => r.total > 0);
-    return { rows, pool, idleReserves, hiddenCount };
+    return { rows, hiddenCount };
   };
   const tierCounts = new Map(tierFilters.map((t) => [t.id, viewOf(t.id).rows.length]));
   const current = viewOf(activeTier);
-  const { idleReserves, hiddenCount } = current;
+  const { hiddenCount } = current;
   let rows = current.rows.map((d, i) => ({ ...d, position: i + 1 }));
   // The server ranks the previous round against the WHOLE pool (155 rows with
-  // every idle reserve), so a debut read "▲83" in a table of 69. Re-rank it
+  // every reserve who never drove), so a debut read "▲83" in a table of 69. Re-rank it
   // inside this view, and nobody who hadn't started before the last round
   // gets an arrow at all: there was no place for them to move from.
   const scoredRounds = data.raceNumbers.filter((n) => all.some((r) => r.perRace[n] != null));
@@ -530,7 +532,7 @@ export default function DriverStandings() {
   // What the table says when the filters leave nobody: the filters in force as
   // chips, what emptied it, and the one-tap ways back. The "with points" box
   // can never be the cause (it stands down while nobody has scored), so it is
-  // the search, the reserves without a start, or a table nobody is on yet.
+  // the search or a table nobody is on yet.
   const tierLabel = TIER_FILTERS.find((t) => t.id === activeTier)?.label;
   const noun = (n) => {
     if (activeTier === "0") return n === 1 ? "reserve" : "reserves";
@@ -559,17 +561,6 @@ export default function DriverStandings() {
           </>
         ),
         actions: [{ label: "Clear search", onClick: () => setQuery("") }, ...allTiers],
-      };
-    if (idleReserves > 0 && !showIdleReserves)
-      return {
-        chips,
-        onClearAll: clearAll,
-        title: `0 of ${current.pool} ${noun(current.pool)} match`,
-        hint:
-          idleReserves === 1
-            ? "The one reserve here hasn't started a round yet, so the table leaves them out."
-            : `None of the ${idleReserves} has started a round yet, so the table leaves them out.`,
-        actions: [{ label: "Show reserves without a start", onClick: () => setShowIdleReserves(true) }, ...allTiers],
       };
     return { chips, onClearAll: clearAll, title: `No ${noun(0)} yet`, hint: "Nobody is on this table yet.", actions: allTiers };
   };
@@ -727,13 +718,11 @@ export default function DriverStandings() {
           </div>
         </div>
 
-        {/* Under the toolbar: the "with points" switch, then a chip for each
-            group of drivers the table is holding back, put back in one tap.
-            Without these the reserve pool would simply be missing with no
-            explanation, which is worse than the crowded table.
+        {/* Under the toolbar: the "with points" switch, then a chip for the
+            drivers that switch is holding back, put back in one tap.
             The row keeps a chip's height even when no chip is up, and on a
-            phone (where a chip takes its own line) the height glides: switching
-            tiers adds or drops the reserves chip, and the table used to jump. */}
+            phone (where a chip takes its own line) the height glides, so the
+            table does not jump when the chip comes and goes. */}
         <SmoothHeight className="mt-3">
         <div className="flex min-h-[28px] flex-wrap items-center gap-x-4 gap-y-2 px-1">
           <button
@@ -752,27 +741,10 @@ export default function DriverStandings() {
             </span>
             Only drivers with points
           </button>
-          {(hiddenCount > 0 || idleReserves > 0) && <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />}
+          {hiddenCount > 0 && <span className="hidden h-4 w-px bg-border sm:block" aria-hidden />}
           {hiddenCount > 0 && (
             <HiddenChip count={hiddenCount} text="without points hidden" action="Show" onClick={() => setOnlyScoring(false)} />
           )}
-          {idleReserves > 0 &&
-            (showIdleReserves ? (
-              <HiddenChip
-                quiet
-                count={idleReserves}
-                text={idleReserves === 1 ? "reserve without a start shown" : "reserves without a start shown"}
-                action="Hide"
-                onClick={() => setShowIdleReserves(false)}
-              />
-            ) : (
-              <HiddenChip
-                count={idleReserves}
-                text={idleReserves === 1 ? "reserve without a start hidden" : "reserves without a start hidden"}
-                action="Show"
-                onClick={() => setShowIdleReserves(true)}
-              />
-            ))}
           {dropChoices.length > 1 && (
             <div className="flex items-center gap-2 sm:ml-auto">
               <span className="text-sm font-medium text-medium">Drop worst</span>

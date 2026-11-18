@@ -5,6 +5,7 @@ import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { api, peekCached } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
+import { useMyDivision } from "../hooks/useMyDivision.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent, SmoothHeight } from "../components/ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
@@ -559,7 +560,7 @@ export default function Races() {
   const [searchParams, setSearchParams] = useSearchParams();
   const wantRaceId = searchParams.get("race");
   const wantSeason = searchParams.get("season");
-  const { season, setSeason, current } = useSeason();
+  const { season, setSeason, current, active: activeSeason } = useSeason();
   // The season belongs in the heading, not only in the switcher above it.
   // Eight seasons of this page otherwise share one H1, so neither a reader
   // landing from a search nor the search engine itself can tell them apart —
@@ -704,6 +705,20 @@ export default function Races() {
       alive = false;
     };
   }, [session, div2RaceId]);
+  // A Division 2 driver opens a round on THEIR race, the way the Live page
+  // and the standings open on their division. Once per visit, only in the
+  // season being raced, and never over a tab they (or a link) picked.
+  const sessionPicked = useRef(searchParams.get("session") != null);
+  const pickSession = (s) => {
+    sessionPicked.current = true;
+    setSession(s);
+  };
+  const mine = useMyDivision(!!div2RaceId && !sessionPicked.current && !!activeSeason && current?.id === activeSeason.id);
+  useEffect(() => {
+    if (sessionPicked.current || !div2RaceId || mine.division !== 2) return;
+    sessionPicked.current = true;
+    setSession("div2");
+  }, [div2RaceId, mine.division]);
   // The choice is sticky across rounds (see above) — a round without a sprint
   // shows its race table instead of an empty Sprint view.
   const shownSession =
@@ -1294,7 +1309,7 @@ export default function Races() {
                                   ...(div2RaceId ? [{ key: "div2", label: "Div 2" }] : []),
                                 ]}
                                 value={shownSession}
-                                onChange={setSession}
+                                onChange={pickSession}
                               />
                             )}
                             {/* Table ⇄ lap chart. For the feature race and for

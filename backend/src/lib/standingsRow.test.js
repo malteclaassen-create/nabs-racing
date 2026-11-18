@@ -20,6 +20,15 @@ describe("hasRaced", () => {
     expect(hasRaced(row())).toBe(false);
     expect(hasRaced(null)).toBe(false);
   });
+
+  it("a DNS is not a race: entered, never left the pits", () => {
+    expect(hasRaced(row({ perRace: { 3: { points: 0, status: "DNS", position: null } } }))).toBe(false);
+  });
+
+  it("counts the sprint of a weekend whose feature was a DNS", () => {
+    const cell = { points: 0, status: "DNS", position: null, sprint: { points: 0, status: "FINISHED", position: 14 } };
+    expect(hasRaced(row({ perRace: { 3: cell } }))).toBe(true);
+  });
 });
 
 describe("isIdleReserve", () => {
@@ -29,6 +38,10 @@ describe("isIdleReserve", () => {
 
   it("lets go of a reserve the moment they start a round, points or not", () => {
     expect(isIdleReserve(row({ tier: 0, perRace: { 5: { points: 0, status: "DNF" } } }))).toBe(false);
+  });
+
+  it("keeps a reserve off the table while a DNS is all they have", () => {
+    expect(isIdleReserve(row({ tier: 0, perRace: { 5: { points: 0, status: "DNS" } } }))).toBe(true);
   });
 
   it("never touches a seat holder, however empty the row", () => {
