@@ -121,6 +121,7 @@
    in light mode too, so one value each. */
 html[data-design="carbon"]:not([data-profile-theme]:not([data-profile-theme="default"])) { --c-ink: 20 20 23; }
 html[data-design="midnight"]:not([data-profile-theme]:not([data-profile-theme="default"])) { --c-ink: 7 10 18; }
+html[data-design="oled"]:not([data-profile-theme]:not([data-profile-theme="default"])) { --c-ink: 0 0 0; }
 html[data-design="ocean"]:not([data-profile-theme]:not([data-profile-theme="default"])) { --c-ink: 8 27 48; }
 html[data-design="paddock"]:not([data-profile-theme]:not([data-profile-theme="default"])) { --c-ink: 30 26 21; }
 html[data-design="carbon"]:not(.dark):not([data-profile-theme]:not([data-profile-theme="default"])) {
@@ -146,6 +147,22 @@ html.dark[data-design="midnight"]:not([data-profile-theme]:not([data-profile-the
   --c-card: #0e1320;
   --c-surface2: #05080f;
   --c-border: #1d2638;
+}
+/* OLED: page and cards the same pure colour, so only the line around a card
+   tells it apart. The line is a step stronger than the other designs' for that
+   reason, and the inset sits just above black rather than below the card.
+   Text only gains contrast on a darker card, so the figures above still hold. */
+html[data-design="oled"]:not(.dark):not([data-profile-theme]:not([data-profile-theme="default"])) {
+  --c-bg: #ffffff;
+  --c-card: #ffffff;
+  --c-surface2: #f4f4f5;
+  --c-border: #e4e4e7;
+}
+html.dark[data-design="oled"]:not([data-profile-theme]:not([data-profile-theme="default"])) {
+  --c-bg: #000000;
+  --c-card: #000000;
+  --c-surface2: #0e0e10;
+  --c-border: #2b2b30;
 }
 html[data-design="ocean"]:not(.dark):not([data-profile-theme]:not([data-profile-theme="default"])) {
   --c-bg: #dde8f3;

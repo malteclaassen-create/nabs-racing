@@ -20,7 +20,8 @@ import { useEffect, useState } from "react";
 
 const KEY = "nabs_design";
 
-// The swatches are what the picker draws: [page, card, inset] for each theme.
+// The swatches are what the picker draws: [page, card, inset] for each theme,
+// plus the card's outline where a design needs one to be seen.
 // They are copies of the values in index.css, for the preview only.
 export const DESIGNS = [
   {
@@ -40,9 +41,18 @@ export const DESIGNS = [
   {
     value: "midnight",
     label: "Midnight",
-    hint: "Pure black background, good for OLED screens.",
+    hint: "Black background with dark blue cards.",
     light: ["#dfe5ef", "#ffffff", "#eef2f8"],
     dark: ["#000000", "#0e1320", "#05080f"],
+  },
+  {
+    value: "oled",
+    label: "OLED",
+    hint: "Pure black in dark mode, cards and all, with a thin line around each card. Pure white in light mode.",
+    // A fourth value: the line around the card, since page and card are the
+    // same colour here and the preview would otherwise show an empty tile.
+    light: ["#ffffff", "#ffffff", "#f4f4f5", "#e4e4e7"],
+    dark: ["#000000", "#000000", "#0e0e10", "#2b2b30"],
   },
   {
     value: "ocean",
