@@ -202,7 +202,10 @@ export function WrappedButton({ wrapped, label = "Your Wrapped", small = false, 
       }
       style={{ background: colour, color: readableInkOn(colour) }}
     >
-      <Play size={small ? 13 : 15} strokeWidth={2.5} fill="currentColor" />
+      {/* On a phone the big button is half the card wide and the words
+          fill it: the icon was squeezed down to a stray dot there, so it
+          sits out until there is room for it. */}
+      <Play size={small ? 13 : 15} strokeWidth={2.5} fill="currentColor" className={small ? "shrink-0" : "hidden shrink-0 sm:block"} />
       {label}
     </Link>
   );
