@@ -148,9 +148,14 @@ export function wrappedLink(seriesSlug, driverId) {
   return `${seriesSlug ? `/s/${seriesSlug}` : ""}/drivers/${encodeURIComponent(driverId)}/review`;
 }
 
-// The ones who can be reminded, out of `driverIds`: not opened yet, a Discord
-// account to send to, and a Wrapped that is really there (raced enough rounds
-// for one). Returns what went out and, by name, who was left out and why.
+// The ones who can be reminded, out of `driverIds`: not opened yet and a
+// Discord account to send to. Whether there is a Wrapped at all is a matter
+// of the season (enough rounds run, services/seasonReviewService.js), and
+// everyone on this list raced in it, so the Wrapped is built once for the
+// first of them to check that and to get the season's name and series. It
+// used to be built for every single driver, which on a full grid kept the
+// admin's button on "Sending..." for minutes.
+// Returns who it went to and, by name, who was left out and why.
 export async function sendWrappedReminders(prisma, { seasonId, driverIds }) {
   if (!seasonId) return { error: "No season given." };
   if (!(await isSeasonComplete(prisma, seasonId)) || !(await wrappedOpen(prisma, seasonId))) {
@@ -161,21 +166,37 @@ export async function sendWrappedReminders(prisma, { seasonId, driverIds }) {
 
   const { rows } = await wrappedRows(prisma, seasonId);
   const day = new Date().toISOString().slice(0, 10);
-  const sent = [];
+  const todo = [];
   const skipped = [];
   for (const row of rows) {
     if (!wanted.has(row.driverId)) continue;
-    if (row.view) { skipped.push({ name: row.name, why: "already watched it" }); continue; }
-    if (!row.discordId) { skipped.push({ name: row.name, why: "no Discord account linked" }); continue; }
-    if (row.remindedAt && row.remindedAt.slice(0, 10) === day) { skipped.push({ name: row.name, why: "already reminded today" }); continue; }
-    const review = await getSeasonReview(prisma, row.driverId).catch(() => null);
-    if (!review || review.tooEarly || review.empty) { skipped.push({ name: row.name, why: "has no Wrapped" }); continue; }
-    const label = review.season?.label || review.season?.name || "season";
+    if (row.view) skipped.push({ name: row.name, why: "already watched it" });
+    else if (!row.discordId) skipped.push({ name: row.name, why: "no Discord account linked" });
+    else if (row.remindedAt && row.remindedAt.slice(0, 10) === day) skipped.push({ name: row.name, why: "already reminded today" });
+    else todo.push(row);
+  }
+  if (!todo.length) return { sent: [], skipped };
+
+  // One Wrapped for the season's name, its series and whether it is long
+  // enough for one. A driver whose own is empty is passed over for the next.
+  let review = null;
+  for (const row of todo.slice(0, 5)) {
+    review = await getSeasonReview(prisma, row.driverId).catch(() => null);
+    if (review && !review.empty) break;
+  }
+  if (!review || review.tooEarly || review.empty) {
+    return { sent: [], skipped: [...skipped, ...todo.map((r) => ({ name: r.name, why: "has no Wrapped" }))] };
+  }
+  const label = review.season?.label || review.season?.name || "season";
+  const slug = review.series?.slug || null;
+
+  const sent = [];
+  for (const row of todo) {
     await dbCreateNotification(prisma, {
       type: "ANNOUNCE",
       title: `Your ${label} Wrapped is waiting`,
       body: "Your season in a few slides. You haven't watched it yet.",
-      link: wrappedLink(review.series?.slug || null, row.driverId),
+      link: wrappedLink(slug, row.driverId),
       recipientId: row.discordId,
       dedupeKey: remindKey(seasonId, row.discordId, day),
     });
