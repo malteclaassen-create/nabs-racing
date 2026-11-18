@@ -30,6 +30,7 @@
 // of them goes through here.
 // ---------------------------------------------------------------------------
 import { writeRaceType } from "./raceTypes.js";
+import { raceKickoff, LEAGUE_TZ } from "./raceKickoff.js";
 
 export const DIV2_TIER = 3;
 
@@ -111,6 +112,71 @@ export async function seasonHasDivision2(prisma, seasonId) {
   try {
     const rows = await prisma.$queryRawUnsafe(`SELECT "division2" FROM "Season" WHERE "id" = ?`, seasonId);
     return !!Number(rows[0]?.division2);
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Is Division 2 racing beside Division 1 right now?
+//
+// The second server is Division 2's only for the race itself. The rest of the
+// week it is a practice server like any other, and a Live page that calls it
+// "Division 2" on a Tuesday is naming a race that is not on. So the page
+// offers the two boards by division only when both of these hold:
+//
+//   1. it is race day: a championship round of the season is on today
+//      (German time, like every other "today" of the league), and
+//   2. both servers have the same circuit loaded, which is what the second
+//      field racing the same round looks like from here.
+//
+// Outside of that the page goes back to what the series' own assignment says
+// (lib/liveServers.js), and nobody is sent to the second server by default.
+// ---------------------------------------------------------------------------
+
+// A race started in the evening is still "tonight's race" after midnight, for
+// whoever is still on the page when the second field finishes late.
+const RACE_NIGHT_MS = 8 * 3_600_000;
+
+const leagueDay = (t) => new Date(t).toLocaleDateString("en-CA", { timeZone: LEAGUE_TZ });
+
+// `races` are the season's championship rounds (anything with a `date`).
+export function isRaceDay(races, now = new Date()) {
+  const at = new Date(now).getTime();
+  return (races || []).some((r) => {
+    const kickoff = raceKickoff(r?.date);
+    if (!kickoff) return false;
+    const start = kickoff.getTime();
+    return leagueDay(start) === leagueDay(at) || (at >= start && at - start < RACE_NIGHT_MS);
+  });
+}
+
+// The circuit only, by its AC folder (services/liveTiming.js getTrackIds). The
+// layout is left out on purpose: a typo'd or renamed layout on one server must
+// not take the switch away in the middle of a race night.
+const trackFolder = (ids) => String(ids?.track || "").trim().toLowerCase();
+
+export function sameCircuit(a, b) {
+  const one = trackFolder(a);
+  return !!one && one === trackFolder(b);
+}
+
+// `mainTrack` and `otherTrack` are what the two servers have loaded.
+export async function division2OnAir(prisma, seasonId, { mainTrack, otherTrack, now = new Date() } = {}) {
+  if (!seasonId || !sameCircuit(mainTrack, otherTrack)) return false;
+  try {
+    const at = new Date(now).getTime();
+    // Division 2's own row of a round is a hidden special event (see the top
+    // of this file), so this reads the rounds themselves and nothing else.
+    const races = await prisma.race.findMany({
+      where: {
+        seasonId,
+        isSpecialEvent: false,
+        date: { gte: new Date(at - 2 * 86_400_000), lte: new Date(at + 2 * 86_400_000) },
+      },
+      select: { date: true },
+    });
+    return isRaceDay(races, now);
   } catch {
     return false;
   }
