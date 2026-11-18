@@ -123,6 +123,7 @@ const RULES = [
   [/^\/backups/, "site", (m, p) => (m === "DELETE" || /prune/.test(p) ? "Backups deleted" : "Backup created")],
   [/^\/discord/, "site", "Discord settings changed"],
   [/^\/announcements/, "site", "Announcement sent"],
+  [/^\/wrapped-views\/remind/, "site", "Wrapped reminder sent"],
   [/^\/ratings\/weights/, "site", "Rating weights changed"],
   [/^\/social/, "site", "Social links changed"],
   [/^\/download/, "site", "Downloads changed"],

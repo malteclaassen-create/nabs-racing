@@ -978,6 +978,8 @@ export const api = {
     }
   },
   adminTraffic: () => request("/admin/traffic", { auth: true }),
+  remindWrapped: (seasonId, driverIds) =>
+    request("/admin/wrapped-views/remind", { method: "POST", body: { seasonId, driverIds }, auth: true }),
   adminWrappedViews: (seasonId) => request(`/admin/wrapped-views${seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : ""}`, { auth: true }),
 
   // social links (public read + admin manage)
