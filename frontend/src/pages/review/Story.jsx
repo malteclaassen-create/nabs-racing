@@ -31,6 +31,21 @@ const TRANSITIONS = ["wipe", "circle", "push", "slash", "rise", "zoom"];
 const TRANSITION_MS = 720;
 const transitionInto = (n, back) => (back ? "back" : TRANSITIONS[(n - 1 + TRANSITIONS.length) % TRANSITIONS.length]);
 
+// Takes a phone's pinch or double-tap zoom back to 100%. Safari has no call
+// for that, but it snaps back when the page says it may not be zoomed, so
+// the viewport says that for a moment and is then put back as it was
+// (pinch zoom stays allowed on the page itself).
+function resetPageZoom() {
+  const vv = window.visualViewport;
+  if (!vv || vv.scale <= 1.01) return;
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (!meta) return;
+  const was = meta.getAttribute("content") || "width=device-width, initial-scale=1.0";
+  if (/maximum-scale=1(\.0)?\b/.test(was)) return;
+  meta.setAttribute("content", "width=device-width, initial-scale=1.0, maximum-scale=1.0");
+  setTimeout(() => meta.setAttribute("content", was), 300);
+}
+
 export default function Story({ review, slides, onClose, onProgress }) {
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -50,6 +65,27 @@ export default function Story({ review, slides, onClose, onProgress }) {
   const wide = useWideStory();
   useScrollLock(true);
   useFocusTrap(true, frameRef);
+  // iPhone Safari zooms the page on two quick taps, and the story is all
+  // quick taps. `touch-action: manipulation` on the frame is not enough
+  // there: the slide under the finger changes between the taps, and Safari
+  // then zooms anyway. The zoom outlived the story and left the Home page
+  // blown up and cut off at the sides once it closed. So a tap on the frame
+  // (not on a button, link or field, those keep their own clicks) cancels
+  // the browser's double-tap, and whatever zoom there is still goes when
+  // the story closes.
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return undefined;
+    const noDoubleTapZoom = (e) => {
+      if (e.target.closest?.("button,a,input,select,textarea,label,[data-st-keep]")) return;
+      if (e.cancelable) e.preventDefault();
+    };
+    frame.addEventListener("touchend", noDoubleTapZoom, { passive: false });
+    return () => {
+      frame.removeEventListener("touchend", noDoubleTapZoom);
+      resetPageZoom();
+    };
+  }, []);
   // Every picture the story will show is fetched as it opens, so a photo
   // is already there when its slide comes in rather than loading late.
   useEffect(() => {
