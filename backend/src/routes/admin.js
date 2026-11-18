@@ -45,7 +45,7 @@ import { overdueRounds } from "../lib/overdueRounds.js";
 import { writeSeasonHero, writeSeasonCar, writeSeasonPreviewLoop } from "../lib/seasonHero.js";
 import { DRIVER_ROLES, writeDriverRole } from "../lib/driverRoles.js";
 import { getTrafficStats } from "../lib/traffic.js";
-import { getWrappedViews } from "../lib/wrappedViews.js";
+import { getWrappedViews, sendWrappedReminders } from "../lib/wrappedViews.js";
 import { isSeasonComplete } from "../lib/seasonComplete.js";
 import { readSignupSettings, writeSignupSettings, dbListSignups, dbSetSignupStatus, dbDeleteSignup } from "../lib/teamSignups.js";
 import { leagueSince, setLeagueSince } from "../lib/leagueStats.js";
@@ -1893,6 +1893,22 @@ router.delete("/market/:offerId", async (req, res, next) => {
 router.get("/wrapped-views", async (req, res, next) => {
   try {
     res.json(await getWrappedViews(prisma, req.query.seasonId ? String(req.query.seasonId) : null));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/admin/wrapped-views/remind { seasonId, driverIds } -> { sent, skipped }
+// A bell reminder to the picked drivers who have a Wrapped and have not
+// opened it yet (lib/wrappedViews.js sendWrappedReminders).
+router.post("/wrapped-views/remind", async (req, res, next) => {
+  try {
+    const r = await sendWrappedReminders(prisma, {
+      seasonId: req.body?.seasonId ? String(req.body.seasonId) : null,
+      driverIds: req.body?.driverIds,
+    });
+    if (r.error) return res.status(400).json({ error: r.error });
+    res.json({ ok: true, ...r });
   } catch (e) {
     next(e);
   }

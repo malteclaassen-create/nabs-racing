@@ -1,7 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { CardHead, ErrorBox, TeamDot } from "./ui.jsx";
+import { CardHead, CheckField, ErrorBox, Notice, TeamDot } from "./ui.jsx";
 
 // Admin System > Wrapped: who has watched their own season Wrapped, when, how
 // often and how far they got. Written by backend/src/lib/wrappedViews.js when
@@ -52,6 +52,96 @@ function Row({ row }) {
         </div>
       )}
     </li>
+  );
+}
+
+// A bell reminder to the ones who have not opened their Wrapped yet. Everyone
+// who can get one starts ticked; untick whoever should be left out. Sent on a
+// second click, so a stray tap does not ping the grid.
+function Remind({ seasonId, rows, onSent }) {
+  const open = useMemo(() => rows.filter((r) => !r.view && r.linked), [rows]);
+  const [picked, setPicked] = useState(() => new Set(open.map((r) => r.driverId)));
+  const [arming, setArming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState(null);
+
+  // A new season, or a refresh that changed who is left: start from everyone again.
+  const key = open.map((r) => r.driverId).join(",");
+  useEffect(() => {
+    setPicked(new Set(open.map((r) => r.driverId)));
+    setArming(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seasonId, key]);
+
+  if (!open.length) return null;
+  const toggle = (id) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const count = open.filter((r) => picked.has(r.driverId)).length;
+
+  async function send() {
+    if (!arming) return setArming(true);
+    setBusy(true);
+    setErr(null);
+    setResult(null);
+    try {
+      const r = await api.remindWrapped(seasonId, open.filter((x) => picked.has(x.driverId)).map((x) => x.driverId));
+      setResult(r);
+      onSent?.();
+    } catch (e) {
+      setErr(e.message || "That didn't go through.");
+    } finally {
+      setBusy(false);
+      setArming(false);
+    }
+  }
+
+  return (
+    <div className="card p-5">
+      <CardHead eyebrow="Reminder" title="Remind the ones who haven't watched yet" />
+      <p className="mt-2 text-sm text-light">
+        A note in their bell that links straight to their Wrapped. Untick anyone who should not get it. Someone without a Wrapped (too few rounds) is skipped.
+      </p>
+      <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+        {open.map((r) => (
+          <li key={r.driverId}>
+            <CheckField
+              checked={picked.has(r.driverId)}
+              onChange={() => {
+                toggle(r.driverId);
+                setArming(false);
+              }}
+              label={r.name}
+              hint={r.remindedAt ? `Reminded ${fmtTime(r.remindedAt)}` : undefined}
+            />
+          </li>
+        ))}
+      </ul>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button className={arming ? "btn-primary" : "btn-secondary"} disabled={busy || count === 0} onClick={send}>
+          {busy ? "Sending…" : arming ? `Yes, send to ${count}` : `Send reminder to ${count}`}
+        </button>
+        {arming && !busy && (
+          <button className="text-sm text-light hover:text-dark" onClick={() => setArming(false)}>
+            Cancel
+          </button>
+        )}
+      </div>
+      {err && <div className="mt-3"><Notice kind="error">{err}</Notice></div>}
+      {result && (
+        <div className="mt-3">
+          <Notice kind={result.sent.length ? "success" : "warn"}>
+            {result.sent.length ? `Sent to ${result.sent.length}: ${result.sent.join(", ")}.` : "Nobody was sent a reminder."}
+            {result.skipped.length > 0 && ` Skipped: ${result.skipped.map((s) => `${s.name} (${s.why})`).join(", ")}.`}
+          </Notice>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -106,6 +196,8 @@ export default function AdminWrappedViews() {
         )}
         {data && !data.complete && <p className="mt-3 text-xs text-light">This season is still running, so its Wrapped is not open to drivers yet.</p>}
       </div>
+
+      {data?.complete && data?.open && <Remind seasonId={data.seasonId} rows={rows} onSent={reload} />}
 
       {error && <ErrorBox message={error} onRetry={reload} />}
       {loading && !data && <div className="card p-5 text-sm text-light">Loading…</div>}
