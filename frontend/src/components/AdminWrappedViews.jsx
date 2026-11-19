@@ -55,12 +55,18 @@ function Row({ row }) {
   );
 }
 
-// A bell reminder to the ones who have not opened their Wrapped yet. Everyone
-// who can get one starts ticked; untick whoever should be left out. Sent on a
-// second click, so a stray tap does not ping the grid.
+// A bell reminder to the ones who have not opened their Wrapped yet. Before
+// the first round of reminders everyone starts ticked; untick whoever should
+// be left out. Once one has gone out the list starts with nobody ticked, so
+// reopening the page and pressing the button cannot reach the person who was
+// left out on purpose. Sent on a second click, so a stray tap does not ping
+// the grid.
 function Remind({ seasonId, rows, onSent }) {
   const open = useMemo(() => rows.filter((r) => !r.view && r.linked), [rows]);
-  const [picked, setPicked] = useState(() => new Set(open.map((r) => r.driverId)));
+  const notReminded = useMemo(() => open.filter((r) => !r.remindedAt).map((r) => r.driverId), [open]);
+  const firstRound = notReminded.length === open.length;
+  const startWith = () => new Set(firstRound ? notReminded : []);
+  const [picked, setPicked] = useState(startWith);
   const [arming, setArming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -69,7 +75,7 @@ function Remind({ seasonId, rows, onSent }) {
   // A new season, or a refresh that changed who is left: start from everyone again.
   const key = open.map((r) => r.driverId).join(",");
   useEffect(() => {
-    setPicked(new Set(open.map((r) => r.driverId)));
+    setPicked(startWith());
     setArming(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seasonId, key]);
@@ -105,8 +111,35 @@ function Remind({ seasonId, rows, onSent }) {
     <div className="card p-5">
       <CardHead eyebrow="Reminder" title="Remind the ones who haven't watched yet" />
       <p className="mt-2 text-sm text-light">
-        A note in their bell that links straight to their Wrapped. Untick anyone who should not get it. Someone without a Wrapped (too few rounds) is skipped.
+        A note in their bell that links straight to their Wrapped. Someone without a Wrapped (too few rounds) is skipped, and nobody gets two on the same day.
+        {firstRound
+          ? " Untick anyone who should not get it."
+          : " Reminders have gone out already, so nobody is ticked. Tick who should get one (again)."}
       </p>
+      <div className="mt-3 flex flex-wrap gap-3 text-sm">
+        {notReminded.length > 0 && (
+          <button
+            className="font-semibold text-link hover:underline"
+            onClick={() => {
+              setPicked(new Set(notReminded));
+              setArming(false);
+            }}
+          >
+            Tick the {notReminded.length} not reminded yet
+          </button>
+        )}
+        {count > 0 && (
+          <button
+            className="font-semibold text-link hover:underline"
+            onClick={() => {
+              setPicked(new Set());
+              setArming(false);
+            }}
+          >
+            Untick all
+          </button>
+        )}
+      </div>
       <ul className="mt-4 grid gap-2 sm:grid-cols-2">
         {open.map((r) => (
           <li key={r.driverId}>
