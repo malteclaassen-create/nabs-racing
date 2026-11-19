@@ -48,7 +48,7 @@ import { ownSteamIds } from "./lib/liveOwnCar.js";
 import { liveCentreLine } from "./lib/trackMaps.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
-import { seasonHasDivision2, readDivision2Drivers, filledDivision2Seats } from "./lib/divisions.js";
+import { seasonHasDivision2, readDivision2Drivers, filledDivision2Seats, division2OnAir } from "./lib/divisions.js";
 import { getLinkedDriverIds } from "./lib/persons.js";
 import { resolveSeasonId as resolveSeasonForLive } from "./services/seasonService.js";
 import { boardLiveryColors, boardSkins, getLivery } from "./lib/liveryPreview.js";
@@ -292,12 +292,21 @@ app.get("/api/live/servers", async (req, res) => {
     // A series on no server has no board to switch between.
     if (off) return res.json({ defaultKey: null, noServer: true, servers: [] });
     // Division 2 (lib/divisions.js) races on the other server at the same
-    // time. A season running it always offers both boards, named by division,
-    // whatever `only` says: the second one is not somebody else's race then.
+    // time. `division2Key` says which server that is for the whole season (the
+    // admin import finds Division 2's result there, days after the race too).
     const seasonId = await resolveSeasonForLive(prisma, undefined, { series: req.query.series }).catch(() => null);
     const div2 = seasonId ? await seasonHasDivision2(prisma, seasonId) : false;
     const div2Key = div2 ? LIVE_SERVERS.find((srv) => srv.key !== defaultKey)?.key || null : null;
-    const shown = div2
+    // The PAGE offers the two boards by division only while that race is on:
+    // race day, and the same circuit on both servers (division2OnAir). Then
+    // both are shown whatever `only` says, because the second one is not
+    // somebody else's race. The rest of the week the second server is a
+    // practice server again and the series' own assignment decides, as it did
+    // before Division 2 existed.
+    const onAir = div2Key
+      ? await division2OnAir(prisma, seasonId, { mainTrack: getTrackIds(defaultKey), otherTrack: getTrackIds(div2Key) })
+      : false;
+    const shown = onAir
       ? [LIVE_SERVERS.find((srv) => srv.key === defaultKey), LIVE_SERVERS.find((srv) => srv.key === div2Key)].filter(Boolean)
       : only
         ? LIVE_SERVERS.filter((srv) => srv.key === defaultKey)
@@ -305,12 +314,13 @@ app.get("/api/live/servers", async (req, res) => {
     res.json({
       defaultKey,
       division2Key: div2Key,
+      divisionsOnAir: onAir,
       servers: shown.map((srv) => {
         const board = getBoard(srv.key);
         return {
           key: srv.key,
-          name: div2 ? (srv.key === div2Key ? "Division 2" : "Division 1") : srv.name,
-          division: div2 ? (srv.key === div2Key ? 2 : 1) : null,
+          name: onAir ? (srv.key === div2Key ? "Division 2" : "Division 1") : srv.name,
+          division: onAir ? (srv.key === div2Key ? 2 : 1) : null,
           isDefault: srv.key === defaultKey,
           // Same test the nav bar's dot uses: connected, not stale, and a
           // session actually loaded. A quiet server still reports in, so this
@@ -394,8 +404,10 @@ app.get("/api/live/track-line", async (req, res) => {
 //
 // `division` is the field they race in this season when it runs Division 2
 // (lib/divisions.js): 2 sends a Division 2 driver to their own race's board
-// when they open the page, instead of Division 1's. null when the season has
-// one field or they race in none.
+// when they open the page, instead of Division 1's (the Live page does that
+// only while that race is on, see /api/live/servers; the standings and results
+// pages follow it all season). null when the season has one field or they
+// race in none.
 app.get("/api/live/me", optionalUser, async (req, res) => {
   res.setHeader("Cache-Control", "private, no-store");
   let guids = [];

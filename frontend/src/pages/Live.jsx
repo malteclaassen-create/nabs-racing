@@ -3646,9 +3646,15 @@ export default function Live() {
   // Division 1's, and they used to have to find the switch first. Once per
   // visit, and only while the viewer has not picked a board themselves
   // (serverKey stays null until they do), so a switch by hand always wins.
+  //
+  // Only while Division 2 is actually racing (`divisionsOnAir`: race day, the
+  // same circuit on both servers). The rest of the week the second server is a
+  // practice server like any other and everybody opens on the series' own. A
+  // page left open into race day still gets there: nothing is asked until the
+  // race is on, so the first poll that says so is the one that sends them.
   const myDivisionAsked = useRef(false);
+  const d2Key = liveServers?.divisionsOnAir ? liveServers.division2Key : null;
   useEffect(() => {
-    const d2Key = liveServers?.division2Key;
     if (!d2Key || serverKey || myDivisionAsked.current || !getUserToken()) return;
     myDivisionAsked.current = true;
     api
@@ -3657,7 +3663,21 @@ export default function Live() {
         if (me?.division === 2) setServer(d2Key);
       })
       .catch(() => {});
-  }, [liveServers?.division2Key, serverKey, setServer]);
+  }, [d2Key, serverKey, setServer]);
+  // And back again when that race is over and the switch goes with it (a
+  // series that shows one board only): somebody still on Division 2's board
+  // would otherwise sit on the second server with no button to leave it.
+  // Where the switch stays, as the plain two servers, they can do that by hand.
+  const lastD2Key = useRef(null);
+  useEffect(() => {
+    if (d2Key) {
+      lastD2Key.current = d2Key;
+      return;
+    }
+    const was = lastD2Key.current;
+    lastD2Key.current = null;
+    if (was && !liveServers && serverKey === was) setServer(null);
+  }, [d2Key, liveServers, serverKey, setServer]);
   const { shown: board, gap } = useHeldBoard(feed);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
   const rosterMatch = useMemo(() => makeDriverMatcher(teams), [teams]);
