@@ -36,6 +36,7 @@ import TrainingBar from "../components/TrainingBar.jsx";
 import { usePracticeWeek } from "../hooks/usePracticeWeek.js";
 import { streamEmbed } from "../utils/streamEmbed.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import { Segmented } from "../components/TelemetryUI.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
 import { useScrollLock } from "../components/overlay.jsx";
 import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
@@ -3928,24 +3929,39 @@ export default function Live() {
   // depend on the chosen columns: the DRS/PIT badges and the gap under the best
   // lap only ride along with the driver's name while they have no column of
   // their own, otherwise the same fact would be on the row twice.
+  // One division's times alone, on a board that marks them (practice in a
+  // season with two fields, see makeDriverMatcher). The picked division is
+  // ranked as a table of its own: positions from 1, gaps off its own fastest
+  // lap. Not remembered: the next visit opens on everybody again. Reserves are
+  // in neither division, so they only show under All.
+  const [divPick, setDivPick] = useState("all");
+  const hasDivisions = useMemo(() => entries.some((e) => match(e)?.division), [entries, match]);
+  const divFilter = hasDivisions ? divPick : "all";
+  const tableEntries = useMemo(() => {
+    if (divFilter === "all") return entries;
+    const want = Number(divFilter);
+    const own = entries.filter((e) => match(e)?.division === want).sort((a, b) => a.position - b.position);
+    const best = own.reduce((m, e) => (e.bestLapMs && (!m || e.bestLapMs < m) ? e.bestLapMs : m), null);
+    return own.map((e, i) => ({ ...e, position: i + 1, gapToBestMs: e.bestLapMs && best ? e.bestLapMs - best : null }));
+  }, [entries, match, divFilter]);
   const tableCtx = useMemo(
     () => ({
       match,
       auto,
       isRace: session?.type === "Race",
-      intervals: intervalMap(entries),
+      intervals: intervalMap(tableEntries),
       // The quickest lap on the board, so the Best column can put the
       // fastest-lap purple on the lap that actually earned it (see the "best"
       // column). Taken from the entries rather than session.bestLapMs: the two
       // arrive from different places and only the entries can be matched
       // against a row.
-      fastestLapMs: entries.reduce((m, e) => (e.bestLapMs && (!m || e.bestLapMs < m) ? e.bestLapMs : m), null),
+      fastestLapMs: tableEntries.reduce((m, e) => (e.bestLapMs && (!m || e.bestLapMs < m) ? e.bestLapMs : m), null),
       badges: auto ? "mobile" : tablePrefs.enabled.has("flags") ? "none" : "always",
       inlineGap: auto ? "mobile" : tablePrefs.enabled.has("gap") ? "never" : "always",
     }),
-    [match, auto, session?.type, entries, tablePrefs.enabled]
+    [match, auto, session?.type, tableEntries, tablePrefs.enabled]
   );
-  const ordered = useMemo(() => sortEntries(entries, tablePrefs.sort), [entries, tablePrefs.sort]);
+  const ordered = useMemo(() => sortEntries(tableEntries, tablePrefs.sort), [tableEntries, tablePrefs.sort]);
 
   // Mobile: keep the classification to a single screenful, expandable on tap.
   const narrow = useIsNarrow();
@@ -3991,9 +4007,23 @@ export default function Live() {
             </div>
           }
         />
-        {entries.length === 0 ? (
+        {hasDivisions && (
+          <div className="flex sm:justify-end">
+            <Segmented
+              label="Which division's times"
+              items={[
+                { key: "all", label: "All" },
+                { key: "1", label: "Div 1" },
+                { key: "2", label: "Div 2" },
+              ]}
+              value={divFilter}
+              onChange={setDivPick}
+            />
+          </div>
+        )}
+        {tableEntries.length === 0 ? (
           <div className="card py-16 text-center text-light">
-            Session is live, no times set yet.
+            {divFilter === "all" ? "Session is live, no times set yet." : `Nobody from Division ${divFilter} is on the board yet.`}
           </div>
         ) : (
           <div className="card overflow-hidden">
@@ -4050,7 +4080,7 @@ export default function Live() {
                 onClick={() => setShowAllTimes(true)}
                 className="flex w-full items-center justify-center gap-1.5 border-t border-border py-3 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 sm:hidden"
               >
-                Show all {entries.length} drivers
+                Show all {tableEntries.length} drivers
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
