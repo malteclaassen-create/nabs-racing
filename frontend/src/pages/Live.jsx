@@ -857,11 +857,26 @@ function LiveryThumb({ match, className = "" }) {
   );
 }
 
+// Which field a driver races in, on the boards of a season with two of them
+// (match.division, see makeDriverMatcher): a light tint behind the name and
+// the word beside it. Red is Division 1, blue Division 2, the league's pink
+// the reserves. Kept light on purpose: the row already carries a team colour,
+// sector colours and the fastest-lap purple, and this must not shout over them.
+const DIVISION_MARKS = {
+  1: { label: "Div 1", title: "Division 1", tint: "bg-red-500/10", pill: "bg-red-500/15 text-red-500" },
+  2: { label: "Div 2", title: "Division 2", tint: "bg-blue-500/10", pill: "bg-blue-500/15 text-blue-500" },
+  reserve: { label: "Reserve", title: "Reserve driver", tint: "bg-brand/10", pill: "bg-brand/20 text-accent" },
+};
+const divisionMark = (match) => DIVISION_MARKS[match?.division] || null;
+
 function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways = false }) {
   const name = match?.nabsName || e.name;
   const color = match?.teamColor || "var(--c-border)";
+  const div = divisionMark(match);
   return (
-    <div className="flex items-center gap-2 sm:gap-3">
+    // The tint is a box of its own inside the cell, pulled out into the cell's
+    // padding so the row keeps its height and the name stays where it was.
+    <div className={`flex items-center gap-2 sm:gap-3 ${div ? `-my-1.5 -ml-1 rounded-md py-1.5 pl-1 pr-2 ${div.tint}` : ""}`}>
       <span className="relative flex h-8 w-1.5 shrink-0 items-center">
         <span className="h-full w-full rounded-full" style={{ backgroundColor: color }} />
         {showLiveDot && e.onTrack && (
@@ -923,8 +938,18 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
         </span>
         <span className="block truncate text-xs text-light">
           {match?.teamName || carLabel(e.carName) || NO_VALUE}
+          {/* A phone has no room between the name and the times, so the
+              division rides on the team's line there. A reserve's line says
+              Reserve already. */}
+          {div && match.division !== "reserve" && <span className="sm:hidden"> · {div.label}</span>}
         </span>
       </span>
+      {/* From sm up it sits in the gap between the name and the first time. */}
+      {div && (
+        <span className={`pill ml-auto hidden shrink-0 sm:inline-flex ${div.pill}`} title={div.title}>
+          {div.label}
+        </span>
+      )}
     </div>
   );
 }
@@ -967,6 +992,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
     const t = e.tyre ? tyreCompound(e.tyre) : null;
     const name = match?.nabsName || e.name;
     const color = match?.teamColor || "var(--c-border)";
+    const div = divisionMark(match);
     // What the third line says about the lap in progress. In the pits or on
     // an out lap there is no lap to time, so the state itself is the line —
     // as a pill, not a lone word floating in the space the clock would take.
@@ -1027,7 +1053,10 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
                   the gap in a race, the delta to their own best otherwise —
                   with the compound beside it. */}
               <div className="mt-0.5 flex items-center justify-between gap-3">
-                <span className="truncate text-xs text-light">{match?.teamName || carLabel(e.carName) || NO_VALUE}</span>
+                <span className="truncate text-xs text-light">
+                  {match?.teamName || carLabel(e.carName) || NO_VALUE}
+                  {div && match.division !== "reserve" && ` · ${div.label}`}
+                </span>
                 <span className="flex shrink-0 items-center gap-1.5 text-xs">
                   {behind}
                   {t ? (

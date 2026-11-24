@@ -3,6 +3,7 @@
 import { countryFor } from "./driverCountries.js";
 import { defaultLiveriesFor } from "./defaultLiveries.js";
 import { NO_VALUE } from "../utils/format.js";
+import { DIV2_TIER } from "../utils/teamLabel.js";
 
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -65,6 +66,11 @@ const FUZZY_LEAD = 0.15;
 // roster says so — while the Steam id is the identity the result import has
 // always trusted.
 export function makeDriverMatcher(teams) {
+  // Which field a driver belongs to, for the mark on the board: 1, 2 or
+  // "reserve". Only in a season that runs Division 2 (it has tier 3 teams);
+  // with one field there is nothing to tell apart and the mark stays off.
+  const twoFields = (teams || []).some((t) => t.tier === DIV2_TIER);
+  const divisionOfTier = (tier) => (!twoFields ? null : tier === DIV2_TIER ? 2 : tier === 0 ? "reserve" : 1);
   const byId = new Map();
   const index = new Map();
   const all = [];
@@ -76,6 +82,7 @@ export function makeDriverMatcher(teams) {
         teamName: team.name,
         teamColor: team.color,
         tier: team.tier,
+        division: divisionOfTier(team.tier),
         // The row's OWN country first, the baseline name list only as a
         // fallback — the same order every other view uses. Called with just the
         // id, this consulted a hand-written list of names from the early
@@ -169,6 +176,8 @@ export function withLiveries(match, colors, imageOf) {
       teamName: liveryLabel(e.carSkin, e.carName),
       // No colour means the server had no picture of this skin either.
       teamColor: color || m?.teamColor,
+      // An event has no divisions, whatever the roster row says.
+      division: null,
       liveryImage: color ? imageOf(e.carModel, e.carSkin) : null,
     };
     made.set(key, dressed);
