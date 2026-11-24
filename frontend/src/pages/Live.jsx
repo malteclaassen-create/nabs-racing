@@ -36,6 +36,7 @@ import TrainingBar from "../components/TrainingBar.jsx";
 import { usePracticeWeek } from "../hooks/usePracticeWeek.js";
 import { streamEmbed } from "../utils/streamEmbed.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
+import { Segmented } from "../components/TelemetryUI.jsx";
 import { LiveSortMenu, LiveColumnsMenu } from "../components/LiveTableMenu.jsx";
 import { useScrollLock } from "../components/overlay.jsx";
 import { useLiveTablePrefs } from "../hooks/useLiveTablePrefs.js";
@@ -857,9 +858,30 @@ function LiveryThumb({ match, className = "" }) {
   );
 }
 
+// Which field a driver races in, on a practice board of a season with two of
+// them (match.division, see makeDriverMatcher): the row fades in from the left
+// in the division's colour and the word sits beside the name. Red is Division
+// 1, blue Division 2, the league's pink the reserves. Kept faint on purpose:
+// the row already carries a team colour, sector colours and the fastest-lap
+// purple, and this must not shout over them.
+const DIVISION_MARKS = {
+  1: { label: "Div 1", title: "Division 1", rgb: "239 68 68", pill: "bg-red-500/10 text-red-500" },
+  2: { label: "Div 2", title: "Division 2", rgb: "59 130 246", pill: "bg-blue-500/10 text-blue-500" },
+  reserve: { label: "Reserve", title: "Reserve driver", rgb: "var(--c-brand)", pill: "bg-brand/15 text-accent" },
+};
+const divisionMark = (match) => DIVISION_MARKS[match?.division] || null;
+// A background IMAGE, so the row's own background colour (the leader's tint,
+// the hover, the followed car) still shows under it.
+function divisionRowStyle(match) {
+  const div = divisionMark(match);
+  if (!div) return null;
+  return { backgroundImage: `linear-gradient(90deg, rgb(${div.rgb} / 0.13), rgb(${div.rgb} / 0.03) 30%, transparent 50%)` };
+}
+
 function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways = false }) {
   const name = match?.nabsName || e.name;
   const color = match?.teamColor || "var(--c-border)";
+  const div = divisionMark(match);
   return (
     <div className="flex items-center gap-2 sm:gap-3">
       <span className="relative flex h-8 w-1.5 shrink-0 items-center">
@@ -923,8 +945,18 @@ function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways 
         </span>
         <span className="block truncate text-xs text-light">
           {match?.teamName || carLabel(e.carName) || NO_VALUE}
+          {/* A phone has no room between the name and the times, so the
+              division rides on the team's line there. A reserve's line says
+              Reserve already. */}
+          {div && match.division !== "reserve" && <span className="sm:hidden"> · {div.label}</span>}
         </span>
       </span>
+      {/* From sm up it sits in the gap between the name and the first time. */}
+      {div && (
+        <span className={`pill ml-auto hidden shrink-0 sm:inline-flex ${div.pill}`} title={div.title}>
+          {div.label}
+        </span>
+      )}
     </div>
   );
 }
@@ -967,6 +999,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
     const t = e.tyre ? tyreCompound(e.tyre) : null;
     const name = match?.nabsName || e.name;
     const color = match?.teamColor || "var(--c-border)";
+    const div = divisionMark(match);
     // What the third line says about the lap in progress. In the pits or on
     // an out lap there is no lap to time, so the state itself is the line —
     // as a pill, not a lone word floating in the space the clock would take.
@@ -997,7 +1030,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
     return (
       <tr
         data-flip-id={e.guid}
-        style={{ "--i": Math.min(index, 16) }}
+        style={{ "--i": Math.min(index, 16), ...divisionRowStyle(match) }}
         {...pickRow.props}
         className={`border-b border-border last:border-0 transition ${e.onTrack ? "" : "opacity-55"} ${pickRow.cls}`}
       >
@@ -1027,7 +1060,10 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
                   the gap in a race, the delta to their own best otherwise —
                   with the compound beside it. */}
               <div className="mt-0.5 flex items-center justify-between gap-3">
-                <span className="truncate text-xs text-light">{match?.teamName || carLabel(e.carName) || NO_VALUE}</span>
+                <span className="truncate text-xs text-light">
+                  {match?.teamName || carLabel(e.carName) || NO_VALUE}
+                  {div && match.division !== "reserve" && ` · ${div.label}`}
+                </span>
                 <span className="flex shrink-0 items-center gap-1.5 text-xs">
                   {behind}
                   {t ? (
@@ -1053,7 +1089,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
   return (
     <tr
       data-flip-id={e.guid}
-      style={{ "--i": Math.min(index, 16) }}
+      style={{ "--i": Math.min(index, 16), ...divisionRowStyle(match) }}
       // A leaver (race sessions keep them listed so the finishing order holds)
       // dims but stays in their slot.
       {...pickRow.props}
@@ -1601,7 +1637,7 @@ function TimingRow({ e, cols, ctx, index = 0 }) {
       // switches to top speed — the row glides to its new slot instead of the
       // table snapping (useFlipList, keyed on this id).
       data-flip-id={e.guid}
-      style={{ "--i": Math.min(index, 16) }}
+      style={{ "--i": Math.min(index, 16), ...divisionRowStyle(ctx.match(e)) }}
       {...pickRow.props}
       className={`group border-b border-border last:border-0 transition hover:bg-surface2 ${
         isP1 ? "bg-brand/5" : ""
@@ -3680,7 +3716,10 @@ export default function Live() {
   }, [d2Key, liveServers, serverKey, setServer]);
   const { shown: board, gap } = useHeldBoard(feed);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
-  const rosterMatch = useMemo(() => makeDriverMatcher(teams), [teams]);
+  // The division marks are for practice only: there both fields share one
+  // server and one board. Qualifying and the race run on a server per division.
+  const inPractice = board?.session?.type === "Practice";
+  const rosterMatch = useMemo(() => makeDriverMatcher(teams, { divisions: inPractice }), [teams, inPractice]);
   // Admin-configured external buttons (server-manager live timing + CM join).
   const { data: extLinks } = useApi(useCallback(() => api.liveLinks(), []));
   // League social links — the Patreon button on the buttons row uses them.
@@ -3890,24 +3929,39 @@ export default function Live() {
   // depend on the chosen columns: the DRS/PIT badges and the gap under the best
   // lap only ride along with the driver's name while they have no column of
   // their own, otherwise the same fact would be on the row twice.
+  // One division's times alone, on a board that marks them (practice in a
+  // season with two fields, see makeDriverMatcher). The picked division is
+  // ranked as a table of its own: positions from 1, gaps off its own fastest
+  // lap. Not remembered: the next visit opens on everybody again. Reserves are
+  // in neither division, so they only show under All.
+  const [divPick, setDivPick] = useState("all");
+  const hasDivisions = useMemo(() => entries.some((e) => match(e)?.division), [entries, match]);
+  const divFilter = hasDivisions ? divPick : "all";
+  const tableEntries = useMemo(() => {
+    if (divFilter === "all") return entries;
+    const want = Number(divFilter);
+    const own = entries.filter((e) => match(e)?.division === want).sort((a, b) => a.position - b.position);
+    const best = own.reduce((m, e) => (e.bestLapMs && (!m || e.bestLapMs < m) ? e.bestLapMs : m), null);
+    return own.map((e, i) => ({ ...e, position: i + 1, gapToBestMs: e.bestLapMs && best ? e.bestLapMs - best : null }));
+  }, [entries, match, divFilter]);
   const tableCtx = useMemo(
     () => ({
       match,
       auto,
       isRace: session?.type === "Race",
-      intervals: intervalMap(entries),
+      intervals: intervalMap(tableEntries),
       // The quickest lap on the board, so the Best column can put the
       // fastest-lap purple on the lap that actually earned it (see the "best"
       // column). Taken from the entries rather than session.bestLapMs: the two
       // arrive from different places and only the entries can be matched
       // against a row.
-      fastestLapMs: entries.reduce((m, e) => (e.bestLapMs && (!m || e.bestLapMs < m) ? e.bestLapMs : m), null),
+      fastestLapMs: tableEntries.reduce((m, e) => (e.bestLapMs && (!m || e.bestLapMs < m) ? e.bestLapMs : m), null),
       badges: auto ? "mobile" : tablePrefs.enabled.has("flags") ? "none" : "always",
       inlineGap: auto ? "mobile" : tablePrefs.enabled.has("gap") ? "never" : "always",
     }),
-    [match, auto, session?.type, entries, tablePrefs.enabled]
+    [match, auto, session?.type, tableEntries, tablePrefs.enabled]
   );
-  const ordered = useMemo(() => sortEntries(entries, tablePrefs.sort), [entries, tablePrefs.sort]);
+  const ordered = useMemo(() => sortEntries(tableEntries, tablePrefs.sort), [tableEntries, tablePrefs.sort]);
 
   // Mobile: keep the classification to a single screenful, expandable on tap.
   const narrow = useIsNarrow();
@@ -3953,9 +4007,23 @@ export default function Live() {
             </div>
           }
         />
-        {entries.length === 0 ? (
+        {hasDivisions && (
+          <div className="flex sm:justify-end">
+            <Segmented
+              label="Which division's times"
+              items={[
+                { key: "all", label: "All" },
+                { key: "1", label: "Div 1" },
+                { key: "2", label: "Div 2" },
+              ]}
+              value={divFilter}
+              onChange={setDivPick}
+            />
+          </div>
+        )}
+        {tableEntries.length === 0 ? (
           <div className="card py-16 text-center text-light">
-            Session is live, no times set yet.
+            {divFilter === "all" ? "Session is live, no times set yet." : `Nobody from Division ${divFilter} is on the board yet.`}
           </div>
         ) : (
           <div className="card overflow-hidden">
@@ -4012,7 +4080,7 @@ export default function Live() {
                 onClick={() => setShowAllTimes(true)}
                 className="flex w-full items-center justify-center gap-1.5 border-t border-border py-3 font-mono text-[11px] font-bold uppercase tracking-wider text-light transition hover:bg-surface2 sm:hidden"
               >
-                Show all {entries.length} drivers
+                Show all {tableEntries.length} drivers
                 <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M6 9l6 6 6-6" />
                 </svg>
