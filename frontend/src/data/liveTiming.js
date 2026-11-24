@@ -65,11 +65,12 @@ const FUZZY_LEAD = 0.15;
 // guess at who somebody is — "Menry Cespedes" is Manro45GT, and nothing in the
 // roster says so — while the Steam id is the identity the result import has
 // always trusted.
-export function makeDriverMatcher(teams) {
+export function makeDriverMatcher(teams, { divisions = true } = {}) {
   // Which field a driver belongs to, for the mark on the board: 1, 2 or
   // "reserve". Only in a season that runs Division 2 (it has tier 3 teams);
   // with one field there is nothing to tell apart and the mark stays off.
-  const twoFields = (teams || []).some((t) => t.tier === DIV2_TIER);
+  // `divisions: false` switches it off (the page does outside practice).
+  const twoFields = divisions && (teams || []).some((t) => t.tier === DIV2_TIER);
   const divisionOfTier = (tier) => (!twoFields ? null : tier === DIV2_TIER ? 2 : tier === 0 ? "reserve" : 1);
   const byId = new Map();
   const index = new Map();

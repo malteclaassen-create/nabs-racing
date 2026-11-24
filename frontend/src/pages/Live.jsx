@@ -857,26 +857,32 @@ function LiveryThumb({ match, className = "" }) {
   );
 }
 
-// Which field a driver races in, on the boards of a season with two of them
-// (match.division, see makeDriverMatcher): a light tint behind the name and
-// the word beside it. Red is Division 1, blue Division 2, the league's pink
-// the reserves. Kept light on purpose: the row already carries a team colour,
-// sector colours and the fastest-lap purple, and this must not shout over them.
+// Which field a driver races in, on a practice board of a season with two of
+// them (match.division, see makeDriverMatcher): the row fades in from the left
+// in the division's colour and the word sits beside the name. Red is Division
+// 1, blue Division 2, the league's pink the reserves. Kept faint on purpose:
+// the row already carries a team colour, sector colours and the fastest-lap
+// purple, and this must not shout over them.
 const DIVISION_MARKS = {
-  1: { label: "Div 1", title: "Division 1", tint: "bg-red-500/10", pill: "bg-red-500/15 text-red-500" },
-  2: { label: "Div 2", title: "Division 2", tint: "bg-blue-500/10", pill: "bg-blue-500/15 text-blue-500" },
-  reserve: { label: "Reserve", title: "Reserve driver", tint: "bg-brand/10", pill: "bg-brand/20 text-accent" },
+  1: { label: "Div 1", title: "Division 1", rgb: "239 68 68", pill: "bg-red-500/10 text-red-500" },
+  2: { label: "Div 2", title: "Division 2", rgb: "59 130 246", pill: "bg-blue-500/10 text-blue-500" },
+  reserve: { label: "Reserve", title: "Reserve driver", rgb: "var(--c-brand)", pill: "bg-brand/15 text-accent" },
 };
 const divisionMark = (match) => DIVISION_MARKS[match?.division] || null;
+// A background IMAGE, so the row's own background colour (the leader's tint,
+// the hover, the followed car) still shows under it.
+function divisionRowStyle(match) {
+  const div = divisionMark(match);
+  if (!div) return null;
+  return { backgroundImage: `linear-gradient(90deg, rgb(${div.rgb} / 0.13), rgb(${div.rgb} / 0.03) 30%, transparent 50%)` };
+}
 
 function DriverCell({ e, match, showLiveDot, mobileBadges = false, badgesAlways = false }) {
   const name = match?.nabsName || e.name;
   const color = match?.teamColor || "var(--c-border)";
   const div = divisionMark(match);
   return (
-    // The tint is a box of its own inside the cell, pulled out into the cell's
-    // padding so the row keeps its height and the name stays where it was.
-    <div className={`flex items-center gap-2 sm:gap-3 ${div ? `-my-1.5 -ml-1 rounded-md py-1.5 pl-1 pr-2 ${div.tint}` : ""}`}>
+    <div className="flex items-center gap-2 sm:gap-3">
       <span className="relative flex h-8 w-1.5 shrink-0 items-center">
         <span className="h-full w-full rounded-full" style={{ backgroundColor: color }} />
         {showLiveDot && e.onTrack && (
@@ -1023,7 +1029,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
     return (
       <tr
         data-flip-id={e.guid}
-        style={{ "--i": Math.min(index, 16) }}
+        style={{ "--i": Math.min(index, 16), ...divisionRowStyle(match) }}
         {...pickRow.props}
         className={`border-b border-border last:border-0 transition ${e.onTrack ? "" : "opacity-55"} ${pickRow.cls}`}
       >
@@ -1082,7 +1088,7 @@ function OnTrackRow({ e, match, index = 0, isRace = false, raceStartedAt = null,
   return (
     <tr
       data-flip-id={e.guid}
-      style={{ "--i": Math.min(index, 16) }}
+      style={{ "--i": Math.min(index, 16), ...divisionRowStyle(match) }}
       // A leaver (race sessions keep them listed so the finishing order holds)
       // dims but stays in their slot.
       {...pickRow.props}
@@ -1630,7 +1636,7 @@ function TimingRow({ e, cols, ctx, index = 0 }) {
       // switches to top speed — the row glides to its new slot instead of the
       // table snapping (useFlipList, keyed on this id).
       data-flip-id={e.guid}
-      style={{ "--i": Math.min(index, 16) }}
+      style={{ "--i": Math.min(index, 16), ...divisionRowStyle(ctx.match(e)) }}
       {...pickRow.props}
       className={`group border-b border-border last:border-0 transition hover:bg-surface2 ${
         isP1 ? "bg-brand/5" : ""
@@ -3709,7 +3715,10 @@ export default function Live() {
   }, [d2Key, liveServers, serverKey, setServer]);
   const { shown: board, gap } = useHeldBoard(feed);
   const { data: teams } = useApi(useCallback(() => api.teams(), []));
-  const rosterMatch = useMemo(() => makeDriverMatcher(teams), [teams]);
+  // The division marks are for practice only: there both fields share one
+  // server and one board. Qualifying and the race run on a server per division.
+  const inPractice = board?.session?.type === "Practice";
+  const rosterMatch = useMemo(() => makeDriverMatcher(teams, { divisions: inPractice }), [teams, inPractice]);
   // Admin-configured external buttons (server-manager live timing + CM join).
   const { data: extLinks } = useApi(useCallback(() => api.liveLinks(), []));
   // League social links — the Patreon button on the buttons row uses them.
