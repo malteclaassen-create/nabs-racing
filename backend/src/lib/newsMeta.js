@@ -59,7 +59,7 @@ export function plainText(body) {
       flush();
       continue;
     }
-    if (/^#{1,6}\s/.test(t) || /^!\[[^\]]*\]\([^)]*\)$/.test(t) || /^\[jump:[^\]]+\]$/i.test(t)) {
+    if (/^#{1,6}\s/.test(t) || /^!\[[^\]]*\]\([^)]*\)$/.test(t) || /^\[jump(:[^\]]+| buttons)\]$/i.test(t)) {
       flush();
       continue;
     }

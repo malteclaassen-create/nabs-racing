@@ -5,7 +5,8 @@ import { parseNewsText, newsSections } from "./newsText.mjs";
 // An article's text, drawn from the blocks newsText.mjs parses. Paths on this
 // site open in the app, web addresses in a new tab. A row of buttons
 // on top jumps to the sections: the writer's own [jump: …] places, else the
-// ## headings when there are two or more.
+// ## headings when there are two or more. A [jump buttons] line moves the row
+// from the top to that place.
 
 function jumpTo(id) {
   const el = document.getElementById(id);
@@ -48,9 +49,9 @@ export default function NewsBody({ text }) {
   const uid = useId();
   const anchor = (i) => `${uid}-s${i}`;
   const targets = new Set(sections.map((s) => s.index));
-  return (
-    <div className="space-y-5 text-[16px] leading-relaxed text-medium [&>*]:scroll-mt-28">
-      {sections.length > 0 && (
+  // The row sits on top unless the writer put it somewhere with [jump buttons].
+  const placed = blocks.some((b) => b.type === "menu");
+  const menu = sections.length > 0 && (
         <nav aria-label="Jump to a section" className="flex flex-wrap gap-2">
           {sections.map((s) => (
             <button
@@ -63,12 +64,17 @@ export default function NewsBody({ text }) {
             </button>
           ))}
         </nav>
-      )}
+  );
+  return (
+    <div className="space-y-5 text-[16px] leading-relaxed text-medium [&>*]:scroll-mt-28">
+      {!placed && menu}
       {blocks.map((b, i) => {
         const id = targets.has(i) ? anchor(i) : undefined;
         switch (b.type) {
           case "jump":
             return null;
+          case "menu":
+            return menu ? <div key={i}>{menu}</div> : null;
           case "h2":
             return (
               <h2 key={i} id={id} className="pt-2 font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">

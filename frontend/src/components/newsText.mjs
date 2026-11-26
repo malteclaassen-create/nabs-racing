@@ -7,6 +7,8 @@
 //   [jump: Button name]   on its own line: a button of the writer's own at
 //     the top that jumps to this place. With any of these in the text, the
 //     row holds these alone and the headings get no buttons.
+//   [jump buttons]   on its own line: the row of buttons goes here instead of
+//     at the top (it can be put in more than once).
 //   **bold**, *italic*, [a link](https://… or /a/page/here)
 //   - a list / 1. a numbered list
 //   > a quote
@@ -59,10 +61,12 @@ export function parseInline(text) {
 }
 
 const JUMP_LINE = /^\[jump:\s*([^\]]+?)\s*\]$/i;
+const MENU_LINE = /^\[jump buttons\]$/i;
 const IMAGE_LINE = /^!\[([^\]]*)\]\(([^)\s]+)\)$/;
 
-// Blocks: { type: "h2" | "h3" | "p" | "quote" | "ul" | "ol" | "img" | "jump", … }.
+// Blocks: { type: "h2" | "h3" | "p" | "quote" | "ul" | "ol" | "img" | "jump" | "menu", … }.
 // A jump block draws nothing itself: it names a button and marks the place.
+// A menu block is where the row of buttons goes.
 // Paragraph and quote lines keep their line breaks as `lines`.
 export function parseNewsText(src) {
   const lines = String(src || "").replace(/\r\n?/g, "\n").split("\n");
@@ -82,6 +86,9 @@ export function parseNewsText(src) {
     if ((m = t.match(/^(#{2,3})\s+(.*)$/))) {
       close();
       blocks.push({ type: m[1].length === 2 ? "h2" : "h3", inline: parseInline(m[2]) });
+    } else if (MENU_LINE.test(t)) {
+      close();
+      blocks.push({ type: "menu" });
     } else if ((m = t.match(JUMP_LINE))) {
       close();
       blocks.push({ type: "jump", title: m[1] });
@@ -126,7 +133,7 @@ export function newsSections(blocks) {
   blocks.forEach((b, i) => {
     if (b.type !== "jump") return;
     let index = i + 1;
-    while (blocks[index]?.type === "jump") index++;
+    while (blocks[index]?.type === "jump" || blocks[index]?.type === "menu") index++;
     if (index < blocks.length) own.push({ index, title: b.title });
   });
   if (blocks.some((b) => b.type === "jump")) return own;

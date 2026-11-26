@@ -342,6 +342,7 @@ function DeskList() {
 const FORMAT_HELP = [
   ["## Heading", "a section heading. With two or more, readers get a button for each on top of the article that jumps there"],
   ["[jump: Button name]", "on its own line: your own button on top of the article that jumps to this place. If you use these, the headings get no buttons"],
+  ["[jump buttons]", "on its own line: the row of buttons goes here instead of at the very top, for example under your intro"],
   ["**bold**  *italic*", "emphasis"],
   ["[words](https://…)", "a link"],
   ["- item", "a list (1. for numbered)"],

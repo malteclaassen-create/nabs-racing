@@ -75,3 +75,9 @@ test("the writer's own [jump: …] buttons take the headings' place", () => {
   ]);
   assert.equal(parseNewsText("see [jump: x] here")[0].type, "p");
 });
+
+test("[jump buttons] marks where the row goes", () => {
+  const blocks = parseNewsText("intro\n\n[Jump buttons]\n\n[jump: A]\n[jump buttons]\ntext");
+  assert.deepEqual(blocks.map((b) => b.type), ["p", "menu", "jump", "menu", "p"]);
+  assert.deepEqual(newsSections(blocks), [{ index: 4, title: "A" }]);
+});
