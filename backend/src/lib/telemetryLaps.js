@@ -349,10 +349,10 @@ export function seasonLapFiles(series, season, legacy = false) {
       for (const entry of readdirSync(trackDir, { withFileTypes: true })) {
         if (entry.isDirectory()) {
           for (const f of readdirSync(join(trackDir, entry.name))) {
-            if (f.endsWith(".json")) out.push({ path: join(trackDir, entry.name, f), rel: join(label, track, entry.name, f) });
+            if (f.endsWith(".json")) out.push({ path: join(trackDir, entry.name, f), rel: join(label, track, entry.name, f), trackKey: track });
           }
         } else if (entry.name.endsWith(".json")) {
-          out.push({ path: join(trackDir, entry.name), rel: join(label, track, entry.name) });
+          out.push({ path: join(trackDir, entry.name), rel: join(label, track, entry.name), trackKey: track });
         }
       }
     }

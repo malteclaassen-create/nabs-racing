@@ -1055,16 +1055,16 @@ export const api = {
       body: { keep: !!keep, clearCarried: !!clearCarried },
       auth: true,
     }),
-  // The car changed mid-season: the old car's telemetry laps and training
-  // times on the live board, picked by car (and optionally "recorded before"),
-  // in the viewed series' running season. The GET lists the season car by
-  // car; `live` also hides those cars' laps in the practice session the race
-  // server is in right now; `dryRun` only counts.
+  // The car's data changed while the server sat on a track: that circuit's
+  // telemetry laps and training times on the live board, picked by car and
+  // optionally "recorded before", in the viewed series' running season. The
+  // GET lists the season circuit by circuit and car by car, plus the track
+  // the server is on now; `dryRun` only counts.
   lapWipePreview: () => request(`/admin/lap-wipe${seriesQ()}`, { auth: true }),
-  wipeLapTimes: ({ cars, before = null, live = false, dryRun = false }) =>
+  wipeLapTimes: ({ circuit, cars, before = null, dryRun = false }) =>
     request(`/admin/lap-wipe${seriesQ()}`, {
       method: "POST",
-      body: { cars, before, live: !!live, dryRun: !!dryRun },
+      body: { circuit, cars, before, dryRun: !!dryRun },
       auth: true,
     }),
   // Session result files from the server manager, one or several at once.
