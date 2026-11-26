@@ -12,12 +12,11 @@ import { NO_VALUE } from "../utils/format.js";
 // still out has a small hollow marker riding the end of their line; a car in
 // the pit lane gets a little PIT block that disappears once they're rolling.
 
-// Compound letters that need dark ink: the pale/light compounds (medium white,
-// hard ice blue) plus the bright hypersoft pink and soft yellow (black HS on
-// pink, black S on yellow, like the reference graphic). Everything else — the
-// deep supersoft red, wet blue, intermediate green — takes white.
+// Compound letters that need dark ink: the pale/light compounds (medium
+// yellow, hard white) plus the bright hypersoft pink. Everything else, the red
+// soft, the purples, wet blue and intermediate green, takes white.
 function inkOn(t) {
-  return t.light || t.label === "HS" || t.label === "S" ? "#111827" : "#fff";
+  return t.light || t.label === "HS" ? "#111827" : "#fff";
 }
 
 // The filled tyre disc: compound-coloured circle, letter inside, thin dark rim

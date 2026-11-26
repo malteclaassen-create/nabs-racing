@@ -312,7 +312,7 @@ export function countryCodeFromName(name) {
 const COMPOUND_PALETTE = ["#38bdf8", "#fb923c", "#c084fc", "#2dd4bf", "#f472b6", "#a3a3a3"];
 
 // A light chip needs dark text + a thin rim to stay legible; everything else
-// takes white text. Medium is white in the league scheme, so it sits here too.
+// takes white text. Medium is yellow and hard is white, both pale enough.
 const LIGHT_COMPOUNDS = new Set(["hard", "superhard", "medium"]);
 
 // Short codes (as the current-tyre field ships them, e.g. "S", "SS", "I") take
@@ -335,6 +335,8 @@ const SHORT_CODES = {
   wet: "wet",
 };
 
+const C_NUMBERS = { 1: "superhard", 2: "hard", 3: "medium", 4: "soft", 5: "supersoft", 6: "ultrasoft" };
+
 function compoundKey(name) {
   const n = String(name || "").toLowerCase().replace(/[^a-z]/g, "");
   if (!n) return null;
@@ -348,14 +350,18 @@ function compoundKey(name) {
   if (n.includes("soft")) return "soft";
   if (n.includes("medium")) return "medium";
   if (n.includes("hard")) return "hard";
+  // Pirelli C numbers, as newer car data files name their tyres ("C4"). The
+  // league car keeps them in a fixed order (its old S/M/H were C4/C3/C2), so
+  // they map the same way: higher number, softer tyre.
+  const c = String(name).match(/\bc\s*([1-6])\b/i);
+  if (c) return C_NUMBERS[Number(c[1])];
   return null;
 }
 
-// NABS league colour scheme (matched to the on-stream race-standings graphic):
-// hypersoft pink, supersoft red, soft yellow, medium white, hard ice blue —
-// i.e. one step "softer-coloured" than modern F1 (soft is yellow here, not red).
-// Ultrasoft/superhard stay defined (purple / light grey) in case a future mod
-// runs them, but the league doesn't use them. `light` compounds (see
+// NABS league colour scheme, the modern F1 one (asked for by the league,
+// 2026-11-27): soft red, medium yellow, hard white. The softer ones the league
+// doesn't run stay defined in case a mod uses them: supersoft purple, ultrasoft
+// violet, hypersoft pink, superhard light grey. `light` compounds (see
 // LIGHT_COMPOUNDS) are pale, so they take dark text + a thin rim.
 //
 // >>> To recolour a compound, change its `color` here (any CSS/hex value). If a
@@ -363,11 +369,11 @@ function compoundKey(name) {
 // >>> letter flips to dark. That's the only place tyre colours are defined.
 const COMPOUND_META = {
   hypersoft: { color: "#f472b6", label: "HS", name: "Hypersoft" },
-  ultrasoft: { color: "#a855f7", label: "US", name: "Ultrasoft" },
-  supersoft: { color: "#e11d2e", label: "SS", name: "Supersoft" },
-  soft: { color: "#f4c410", label: "S", name: "Soft" },
-  medium: { color: "#eceff3", label: "M", name: "Medium" },
-  hard: { color: "#93d5ef", label: "H", name: "Hard" },
+  ultrasoft: { color: "#7c3aed", label: "US", name: "Ultrasoft" },
+  supersoft: { color: "#a855f7", label: "SS", name: "Supersoft" },
+  soft: { color: "#e11d2e", label: "S", name: "Soft" },
+  medium: { color: "#f4c410", label: "M", name: "Medium" },
+  hard: { color: "#eceff3", label: "H", name: "Hard" },
   superhard: { color: "#cbd5e1", label: "SH", name: "Superhard" },
   intermediate: { color: "#22c55e", label: "I", name: "Intermediate" },
   wet: { color: "#3b82f6", label: "W", name: "Wet" },
