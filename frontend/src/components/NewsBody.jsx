@@ -1,8 +1,17 @@
 import { Link } from "react-router-dom";
-import { parseNewsText } from "./newsText.mjs";
+import { useId } from "react";
+import { parseNewsText, newsSections } from "./newsText.mjs";
 
 // An article's text, drawn from the blocks newsText.mjs parses. Paths on this
-// site open in the app, web addresses in a new tab.
+// site open in the app, web addresses in a new tab. With two or more ##
+// headings, a row of buttons on top jumps to each of them.
+
+function jumpTo(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  el.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+}
 
 function Inline({ runs }) {
   return runs.map((r, i) => {
@@ -34,13 +43,30 @@ function Lines({ lines }) {
 
 export default function NewsBody({ text }) {
   const blocks = parseNewsText(text);
+  const sections = newsSections(blocks);
+  const uid = useId();
+  const anchor = (i) => `${uid}-s${i}`;
   return (
     <div className="space-y-5 text-[16px] leading-relaxed text-medium">
+      {sections.length > 0 && (
+        <nav aria-label="Jump to a section" className="flex flex-wrap gap-2">
+          {sections.map((s) => (
+            <button
+              key={s.index}
+              type="button"
+              onClick={() => jumpTo(anchor(s.index))}
+              className="rounded-lg border border-border bg-surface2/60 px-3 py-1.5 text-sm font-semibold text-dark transition hover:border-brand/50"
+            >
+              {s.title}
+            </button>
+          ))}
+        </nav>
+      )}
       {blocks.map((b, i) => {
         switch (b.type) {
           case "h2":
             return (
-              <h2 key={i} className="pt-2 font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
+              <h2 key={i} id={anchor(i)} className="scroll-mt-28 pt-2 font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
                 <Inline runs={b.inline} />
               </h2>
             );

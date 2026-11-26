@@ -340,7 +340,7 @@ function DeskList() {
 }
 
 const FORMAT_HELP = [
-  ["## Heading", "a section heading"],
+  ["## Heading", "a section heading. With two or more, readers get a button for each on top of the article that jumps there"],
   ["**bold**  *italic*", "emphasis"],
   ["[words](https://…)", "a link"],
   ["- item", "a list (1. for numbered)"],

@@ -2,6 +2,8 @@
 // The news articles' text format: a small, safe slice of Markdown.
 //
 //   ## Heading / ### Smaller heading
+//     (an article with two or more ## headings gets a row of buttons at its
+//      top, one per heading, that jump to that section: newsSections)
 //   **bold**, *italic*, [a link](https://… or /a/page/here)
 //   - a list / 1. a numbered list
 //   > a quote
@@ -104,4 +106,17 @@ export function parseNewsText(src) {
     }
   }
   return blocks;
+}
+
+// The sections a reader can jump to: every ## heading, as { index, title },
+// where index is the heading's place in `blocks`. Empty unless there are at
+// least two, since one button to the only section is no help.
+export function newsSections(blocks) {
+  const out = [];
+  blocks.forEach((b, index) => {
+    if (b.type !== "h2") return;
+    const title = b.inline.map((r) => r.v).join("").trim();
+    if (title) out.push({ index, title });
+  });
+  return out.length >= 2 ? out : [];
 }
