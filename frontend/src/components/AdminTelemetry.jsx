@@ -172,11 +172,18 @@ function IngestActivity({ configured }) {
 // so it counts first and asks.
 const dayFmt = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
 const timeFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const clockFmt = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+// First and last lap with the time of day, because the time is what the
+// "recorded before" field below is set from: "20 Nov 19:42 to 26 Nov 21:10",
+// or "26 Nov 19:42 to 21:10" within one day.
 function span(a, b) {
   if (!a) return "";
-  const x = dayFmt.format(new Date(a));
-  const y = b ? dayFmt.format(new Date(b)) : x;
-  return x === y ? x : `${x} to ${y}`;
+  const da = new Date(a);
+  const db = b ? new Date(b) : da;
+  const first = `${dayFmt.format(da)} ${clockFmt.format(da)}`;
+  if (da.getTime() === db.getTime()) return first;
+  const sameDay = dayFmt.format(da) === dayFmt.format(db) && da.getFullYear() === db.getFullYear();
+  return `${first} to ${sameDay ? "" : `${dayFmt.format(db)} `}${clockFmt.format(db)}`;
 }
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // An ISO stamp as the value a datetime-local field wants: local time, minutes.
