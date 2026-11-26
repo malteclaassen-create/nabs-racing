@@ -197,7 +197,7 @@ import {
   clearTrack, listTracks, circuitBests, uploadedFiles, addUploadedLaps, baseTrackOf, removeLap, restoreLap,
 } from "../lib/liveBestLaps.js";
 import { listBlocks, blockLap, unblockLap } from "../lib/liveLapBlocks.js";
-import { wipePreview, wipeSeasonTimes } from "../lib/lapWipe.js";
+import { lapFilter, wipePreview, wipeSeasonTimes } from "../lib/lapWipe.js";
 import { listPending, pendingFor, take as takePendingReset } from "../lib/liveResetKeep.js";
 import { refreshBoardScopes } from "../services/liveTiming.js";
 import { parsePracticeJson } from "../lib/practiceJson.js";
@@ -9049,46 +9049,44 @@ router.delete("/telemetry-laps/:trackKey/:steamId/:lapId?", async (req, res, nex
 });
 
 // ---------------------------------------------------------------------------
-// START THE TIMES AGAIN (lib/lapWipe.js)
+// THE OLD CAR'S TIMES OUT (lib/lapWipe.js)
 // ---------------------------------------------------------------------------
-// The car changed mid-season, so every telemetry lap and every training time
-// on the live board was driven in the old one. One button for both, per
-// series, in its running season.
+// The car changed mid-season. Telemetry laps and carried training times of
+// the old car go, picked by car (and optionally "recorded before"), so laps
+// already driven in the new car stay.
 
 // The laps the race server is holding in the session it is in right now, as
-// the board shows them: only in practice, the one session the board lets an
-// admin take laps off (a qualifying or a race is a classification). Read
-// AFTER the carried times are gone, so a live lap a carried one was hiding is
-// in the list too.
+// the board shows them, with the car of each: only in practice, the one
+// session the board lets an admin take laps off (a qualifying or a race is a
+// classification). Read again AFTER the carried times are gone, so a live
+// lap a carried one was hiding is in the list too.
 function liveSessionLaps(board) {
   if (board?.session?.type !== "Practice" || !board?.session?.trackKey) return [];
   const out = [];
   for (const e of board.entries || []) {
     if (e.imported || !e.bestLapMs || e.isSafetyCar) continue;
     const steamId = realGuidForPublicId(e.guid);
-    if (steamId) out.push({ steamId, name: e.name || "", lapTimeMs: e.bestLapMs });
+    if (steamId) out.push({ steamId, name: e.name || "", lapTimeMs: e.bestLapMs, car: e.carModel || "" });
   }
   return out;
 }
 
-// GET /api/admin/lap-wipe?series=  -> what pressing the button would take
+// GET /api/admin/lap-wipe?series=  -> the season's times, car by car
 router.get("/lap-wipe", async (req, res, next) => {
   try {
     const scope = await trainingScope(req.query.series);
     if (!scope) return res.status(404).json({ error: "Series not found, or it has no season" });
     const board = getLiveBoard(scope.serverKey);
+    const live = liveSessionLaps(board);
     res.json({
       series: scope.seriesRow.slug,
       seriesName: scope.seriesRow.name,
       season: scope.seasonNumber,
-      ...wipePreview(scope.seriesRow.slug, scope.seasonNumber),
-      // The session on the race server, so the card can offer to hide its
-      // times as well and say how many. Counted with the carried laps still
-      // on the board, so it can be a few short of what the wipe finds.
+      ...wipePreview(scope.seriesRow.slug, scope.seasonNumber, live),
       live: {
         practice: board?.session?.type === "Practice",
         trackName: board?.session?.trackName || "",
-        laps: liveSessionLaps(board).length,
+        laps: live.length,
       },
     });
   } catch (e) {
@@ -9096,24 +9094,35 @@ router.get("/lap-wipe", async (req, res, next) => {
   }
 });
 
-// POST /api/admin/lap-wipe?series=  { live? }
-// Takes the season's telemetry laps, the board's carried training times and
-// any waiting reset question. With `live`, the laps of the practice session
-// the race server is in now are blocked as well, the same block a single
-// "Remove" on the training card writes: each driver is back on the board the
-// moment they set a new time.
+// POST /api/admin/lap-wipe?series=  { cars: [..], before?, live?, dryRun? }
+// Takes the telemetry laps and carried training times of the picked cars
+// (only those recorded before `before`, when given). With `live`, the laps of
+// those cars in the practice session the race server is in now are blocked as
+// well, the same block a single "Remove" on the training card writes; a live
+// lap has no time on it, so this is offered only without a cutoff. `dryRun`
+// counts and changes nothing.
 router.post("/lap-wipe", async (req, res, next) => {
   try {
     const scope = await trainingScope(req.query.series || req.body?.series);
     if (!scope) return res.status(404).json({ error: "Series not found, or it has no season" });
     const { seriesRow, seasonNumber } = scope;
-    const done = wipeSeasonTimes(seriesRow.slug, seasonNumber);
+    const cars = Array.isArray(req.body?.cars) ? req.body.cars.map((c) => String(c ?? "")).slice(0, 50) : [];
+    if (!cars.length) return res.status(400).json({ error: "Pick the car whose times should go" });
+    const before = req.body?.before ? String(req.body.before) : null;
+    if (before && !Number.isFinite(Date.parse(before))) return res.status(400).json({ error: "That date is not a date" });
+    const dryRun = !!req.body?.dryRun;
+    const withLive = !!req.body?.live && !before;
+    const filter = lapFilter({ cars, before });
 
+    const done = wipeSeasonTimes(seriesRow.slug, seasonNumber, filter, { dryRun });
+
+    // After the carried laps are gone, so a live lap one of them hid is seen.
+    const board = getLiveBoard(scope.serverKey);
+    const liveLaps = withLive ? liveSessionLaps(board).filter((l) => cars.includes(l.car)) : [];
     let liveBlocked = 0;
-    if (req.body?.live) {
-      const board = getLiveBoard(scope.serverKey);
+    if (!dryRun) {
       const circuit = baseTrackOf(String(board?.session?.trackKey || ""));
-      for (const lap of liveSessionLaps(board)) {
+      for (const lap of liveLaps) {
         try {
           blockLap(seriesRow.slug, seasonNumber, circuit, { ...lap, trackKey: null, lap: null, reason: "Car changed" });
           liveBlocked += 1;
@@ -9121,15 +9130,21 @@ router.post("/lap-wipe", async (req, res, next) => {
           /* one lap that will not block is no reason to stop the rest */
         }
       }
+      await refreshBoardScopes();
+      console.log(
+        `[lap-wipe] ${seriesRow.slug} season ${seasonNumber}, cars ${cars.join(", ") || "(none)"}` +
+          `${before ? ` before ${before}` : ""}: ${done.telemetryLaps} telemetry laps, ${done.boardLaps} carried times, ` +
+          `${liveBlocked} live laps blocked; kept in ${done.archivedTo || "-"}`
+      );
     }
-    await refreshBoardScopes();
-    console.log(
-      `[lap-wipe] ${seriesRow.slug} season ${seasonNumber}: ${done.telemetryLaps} telemetry laps, ` +
-        `${done.boardLaps} carried times on ${done.boardTracks} tracks, ${done.pending} waiting, ` +
-        `${liveBlocked} live laps blocked; kept in ${done.archivedTo}`
-    );
-    const { archivedTo, ...counts } = done;
-    res.json({ ok: true, season: seasonNumber, ...counts, liveBlocked });
+    res.json({
+      ok: true,
+      dryRun,
+      season: seasonNumber,
+      telemetryLaps: done.telemetryLaps,
+      boardLaps: done.boardLaps,
+      liveLaps: dryRun ? liveLaps.length : liveBlocked,
+    });
   } catch (e) {
     next(e);
   }

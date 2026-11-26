@@ -48,7 +48,7 @@
 // go (the last). It also makes a re-posted identical time overwrite itself
 // rather than accumulate.
 // ---------------------------------------------------------------------------
-import { dirname, join } from "path";
+import { join } from "path";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, rmSync, renameSync, statSync } from "fs";
 import { DATA_ROOT } from "./dataDirs.js";
 
@@ -333,37 +333,31 @@ export function deleteLap(series, season, trackKey, steamId, lapId = null) {
   return gone;
 }
 
-// Every lap one series has in one season, out of the store in one go. For
-// the day the league changes car in the middle of a season: every lap so far
-// was driven in the old one, and putting the new car against it says nothing.
-//
-// Moved, not deleted: into `toDir` (lib/lapWipe.js picks a folder outside the
-// store), so a wipe pressed on the wrong series can still be undone by hand.
-// `legacy` takes the pre-season track folders with it, which are read as part
-// of the season running now (see lapFilesOf) and would otherwise survive.
-// Hands back how many laps went.
-export function archiveSeason(series, season, toDir, legacy = false) {
-  const { laps } = storedSummary(series, season, legacy);
-  const moves = [];
-  const from = seasonDir(series, season);
-  if (existsSync(from)) moves.push([from, join(toDir, seasonKeyOf(season))]);
-  if (legacy && existsSync(seriesDir(series))) {
-    for (const name of readdirSync(seriesDir(series))) {
-      if (!isTrackKey(name) || SEASON_DIR_RE.test(name)) continue;
-      moves.push([join(seriesDir(series), name), join(toDir, "pre-season", name)]);
+// Every lap FILE one series has in one season: where it is, and a short
+// path that says the same thing relative to the store, for the wipe's archive
+// (lib/lapWipe.js). Names only; the caller opens what it needs. `legacy`
+// includes the pre-season track folders, read as part of the season running
+// now (see lapFilesOf).
+export function seasonLapFiles(series, season, legacy = false) {
+  const out = [];
+  const roots = [[seasonDir(series, season), seasonKeyOf(season)], ...(legacy ? [[seriesDir(series), "pre-season"]] : [])];
+  for (const [root, label] of roots) {
+    if (!existsSync(root)) continue;
+    for (const track of readdirSync(root)) {
+      if (!isTrackKey(track) || SEASON_DIR_RE.test(track)) continue;
+      const trackDir = join(root, track);
+      for (const entry of readdirSync(trackDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          for (const f of readdirSync(join(trackDir, entry.name))) {
+            if (f.endsWith(".json")) out.push({ path: join(trackDir, entry.name, f), rel: join(label, track, entry.name, f) });
+          }
+        } else if (entry.name.endsWith(".json")) {
+          out.push({ path: join(trackDir, entry.name), rel: join(label, track, entry.name) });
+        }
+      }
     }
   }
-  for (const [a, b] of moves) {
-    try {
-      mkdirSync(dirname(b), { recursive: true });
-      renameSync(a, b);
-    } catch {
-      // A folder that cannot be moved (locked on Windows) still has to go:
-      // the point of the wipe is that nothing of the old car is read again.
-      rmSync(a, { recursive: true, force: true });
-    }
-  }
-  return laps;
+  return out;
 }
 
 // Throw away the seasons nobody is racing any more — in ONE series.

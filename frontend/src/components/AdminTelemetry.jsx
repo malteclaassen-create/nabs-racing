@@ -162,14 +162,27 @@ function IngestActivity({ configured }) {
   );
 }
 
-// The car changed mid-season, so every lap so far was driven in the old one.
-// One button takes the telemetry laps and the practice times the live board
-// carries (backend: lib/lapWipe.js). The backend moves them into an archive
-// folder rather than deleting them, but nothing on the site can bring them
-// back, so the card asks first and names the numbers.
-function StartTimesAgain({ seriesName }) {
+// The car changed mid-season. The old car's telemetry laps and the practice
+// times the live board carries go; laps already driven in the new car stay.
+// Every lap knows the car it was driven in, so the season is listed car by
+// car and the admin ticks the old one (backend: lib/lapWipe.js). For a new
+// car that kept the old one's folder name, a "recorded before" moment does
+// the telling apart. The backend moves what it takes into an archive folder,
+// but nothing on the site can bring it back, so it counts first and asks.
+const dayFmt = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+function span(a, b) {
+  if (!a) return "";
+  const x = dayFmt.format(new Date(a));
+  const y = b ? dayFmt.format(new Date(b)) : x;
+  return x === y ? x : `${x} to ${y}`;
+}
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+function OldCarTimes({ seriesName }) {
   const ask = useAsk();
   const { data, reload, error } = useApi(useCallback(() => api.lapWipePreview(), []));
+  const [picked, setPicked] = useState([]);
+  const [before, setBefore] = useState("");
   const [live, setLive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
@@ -180,26 +193,37 @@ function StartTimesAgain({ seriesName }) {
   }
 
   const name = seriesName || data.seriesName || "this series";
-  const liveOffer = data.live?.practice && data.live.laps > 0;
-  const nothing = !data.telemetryLaps && !data.boardLaps && !data.pending && !(liveOffer && live);
+  const cars = data.cars || [];
+  const beforeIso = before ? new Date(before).toISOString() : null;
+  const liveOfPicked = cars.filter((c) => picked.includes(c.car)).reduce((n, c) => n + c.liveLaps, 0);
+  const liveOffer = data.live?.practice && liveOfPicked > 0 && !before;
+  const toggle = (car) => setPicked((p) => (p.includes(car) ? p.filter((c) => c !== car) : [...p, car]));
 
   async function wipe() {
-    const parts = [
-      `${data.telemetryLaps} telemetry ${data.telemetryLaps === 1 ? "lap" : "laps"}`,
-      `${data.boardLaps} practice ${data.boardLaps === 1 ? "time" : "times"} on the live board`,
-    ];
-    if (liveOffer && live) parts.push(`the ${data.live.laps} times of the session the server is running now`);
-    const ok = await ask({
-      title: `Remove all times of ${name}, season ${data.season}?`,
-      body: `This takes ${parts.join(", ")}. Drivers start from zero with the new car. Race results, standings and token points are not touched. The site cannot undo this.`,
-      danger: true,
-      confirmLabel: "Remove all times",
-    });
-    if (!ok) return;
-    setBusy(true);
     setFailed("");
+    setDone(null);
+    setBusy(true);
     try {
-      setDone(await api.wipeLapTimes({ live: liveOffer && live }));
+      const opts = { cars: picked, before: beforeIso, live: liveOffer && live };
+      const count = await api.wipeLapTimes({ ...opts, dryRun: true });
+      if (!count.telemetryLaps && !count.boardLaps && !count.liveLaps) {
+        setFailed("Nothing matches that. No times were removed.");
+        return;
+      }
+      const parts = [
+        plural(count.telemetryLaps, "telemetry lap", "telemetry laps"),
+        plural(count.boardLaps, "practice time on the live board", "practice times on the live board"),
+      ];
+      if (opts.live) parts.push(plural(count.liveLaps, "time in the session on the server now", "times in the session on the server now"));
+      const ok = await ask({
+        title: `Remove the times of ${picked.map((c) => c || "unknown car").join(", ")}?`,
+        body: `This takes ${parts.join(", ")} from ${name}, season ${data.season}${before ? `, recorded before ${new Date(before).toLocaleString()}` : ""}. Every other car's laps stay. Race results, standings and token points are not touched. The site cannot undo this.`,
+        danger: true,
+        confirmLabel: "Remove these times",
+      });
+      if (!ok) return;
+      setDone(await api.wipeLapTimes(opts));
+      setPicked([]);
       setLive(false);
       reload();
     } catch (e) {
@@ -211,41 +235,75 @@ function StartTimesAgain({ seriesName }) {
 
   return (
     <div className="card p-5">
-      <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">New car? Start the times again</h3>
+      <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">New car? Take the old car&rsquo;s times out</h3>
       <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">
-        Removes every telemetry lap and every practice time on the live board of {name}, season {data.season}. Use it
-        when the car changes in the middle of a season. Race results stay as they are.
+        Every lap of {name}, season {data.season}, by the car it was driven in. Tick the old car: its telemetry laps and its
+        practice times on the live board go, laps already driven in the new car stay. Race results stay as they are.
       </p>
-      <p className="mt-3 text-sm text-dark">
-        Stored now: <b className="tabular-nums">{data.telemetryLaps}</b> telemetry {data.telemetryLaps === 1 ? "lap" : "laps"} ·{" "}
-        <b className="tabular-nums">{data.boardLaps}</b> practice {data.boardLaps === 1 ? "time" : "times"} on{" "}
-        {data.boardTracks} {data.boardTracks === 1 ? "track" : "tracks"}
-        {data.pending > 0 && <> · {data.pending} waiting after a server reset</>}
-      </p>
+
+      {cars.length === 0 ? (
+        <p className="mt-3 text-sm text-light">No times stored this season.</p>
+      ) : (
+        <div className="mt-4 divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {cars.map((c) => (
+            <label key={c.car} className="flex cursor-pointer items-start gap-3 px-3 py-2.5 text-sm transition hover:bg-surface2/60">
+              <input type="checkbox" className="mt-1" checked={picked.includes(c.car)} onChange={() => toggle(c.car)} />
+              <span className="min-w-0 flex-1">
+                <span className="block break-all font-mono text-[13px] font-semibold text-dark">{c.car || "unknown car"}</span>
+                <span className="block text-xs text-light">
+                  {[
+                    plural(c.telemetryLaps, "telemetry lap", "telemetry laps"),
+                    plural(c.boardLaps, "practice time", "practice times"),
+                    c.liveLaps ? `${c.liveLaps} on the server now` : null,
+                    c.firstAt ? span(c.firstAt, c.lastAt) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {cars.length > 0 && (
+        <div className="mt-4 max-w-xl space-y-1">
+          <label className="block font-mono text-[11px] font-bold uppercase tracking-wider text-light" htmlFor="wipe-before">
+            Only laps recorded before (optional)
+          </label>
+          <input id="wipe-before" type="datetime-local" className="input" value={before} onChange={(e) => setBefore(e.target.value)} />
+          <p className="text-xs text-light">
+            Only needed when the new car has the same name as the old one. Set it to when the new car went on the server.
+          </p>
+        </div>
+      )}
+
       {liveOffer && (
         <label className="mt-3 flex max-w-xl items-start gap-2 text-sm text-light">
           <input type="checkbox" className="mt-1" checked={live} onChange={(e) => setLive(e.target.checked)} />
           <span>
-            Also hide the {data.live.laps} {data.live.laps === 1 ? "time" : "times"} of the session the server is running
-            now{data.live.trackName ? ` (${data.live.trackName})` : ""}. Only tick this if the server still runs the old
-            car. Each driver comes back on the board with their next lap.
+            Also hide the {plural(liveOfPicked, "time", "times")} of this car in the session the server is running now
+            {data.live.trackName ? ` (${data.live.trackName})` : ""}. Each driver comes back on the board with their next lap.
           </span>
         </label>
       )}
-      <button
-        type="button"
-        className="btn-secondary mt-4 border-bad/40 text-bad hover:bg-bad/10"
-        disabled={busy || nothing}
-        onClick={wipe}
-      >
-        {busy ? "Removing…" : "Remove all times"}
-      </button>
+
+      {cars.length > 0 && (
+        <button
+          type="button"
+          className="btn-secondary mt-4 border-bad/40 text-bad hover:bg-bad/10"
+          disabled={busy || picked.length === 0}
+          onClick={wipe}
+        >
+          {busy ? "Working…" : picked.length ? `Remove the times of ${plural(picked.length, "car", "cars")}` : "Tick a car first"}
+        </button>
+      )}
       {failed && <p role="alert" className="mt-3 text-sm text-bad">{failed}</p>}
       {done && (
         <p role="status" className="mt-3 text-sm text-ok">
-          Done. {done.telemetryLaps} telemetry {done.telemetryLaps === 1 ? "lap" : "laps"} and {done.boardLaps} practice{" "}
-          {done.boardLaps === 1 ? "time" : "times"} removed
-          {done.liveBlocked > 0 ? `, ${done.liveBlocked} live ${done.liveBlocked === 1 ? "time" : "times"} hidden` : ""}.
+          Done. {plural(done.telemetryLaps, "telemetry lap", "telemetry laps")} and{" "}
+          {plural(done.boardLaps, "practice time", "practice times")} removed
+          {done.liveLaps > 0 ? `, ${plural(done.liveLaps, "live time", "live times")} hidden` : ""}.
         </p>
       )}
     </div>
@@ -533,7 +591,7 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
         <p className="mt-3 text-xs text-faint">Recording carries on either way. One switch for the whole site: it opens the comparison for every series at once.</p>
       </div>
 
-      <StartTimesAgain seriesName={series?.name} />
+      <OldCarTimes seriesName={series?.name} />
 
 
     </div>
