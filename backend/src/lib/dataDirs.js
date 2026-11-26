@@ -75,3 +75,10 @@ export const LIVE_LAP_BLOCKS_DIR = join(DATA_ROOT, "live-lap-blocks");
 // server's own best of a driver is one an admin removed. On disk so a deploy
 // in the middle of a week-long session does not forget them.
 export const LIVE_CLEAN_LAPS_DIR = join(DATA_ROOT, "live-clean-laps");
+
+// Lap times taken out in one go when the league changes car mid-season
+// (lib/lapWipe.js): the season's telemetry laps and the training times the
+// live board carries. Moved here rather than deleted, one folder per wipe, so
+// a wipe pressed on the wrong series can still be put back by hand. Nothing
+// on the site reads this folder.
+export const WIPED_LAPS_DIR = join(DATA_ROOT, "wiped-laps");

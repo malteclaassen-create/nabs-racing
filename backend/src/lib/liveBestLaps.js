@@ -45,8 +45,8 @@
 // per track key: the laps kept from uploaded files, and a line per file so
 // the admin card can say what it has been given.
 // ---------------------------------------------------------------------------
-import { join } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync } from "fs";
+import { dirname, join } from "path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, renameSync, rmSync } from "fs";
 import { LIVE_BEST_LAPS_DIR } from "./dataDirs.js";
 import { isTrackKey, seriesKeyOf, seasonKeyOf } from "./telemetryLaps.js";
 import { blockedKeys, blockKey } from "./liveLapBlocks.js";
@@ -409,6 +409,29 @@ export function clearTrack(series, season, trackKey) {
   }
   forget(series, season, trackKey);
   return removed;
+}
+
+// Every track of one series' season off the board at once, for the day the
+// league changes car mid-season (lib/lapWipe.js). Moved into `toDir` rather
+// than deleted, so a wipe on the wrong series can be undone by hand. Hands
+// back how many tracks and laps went.
+export function archiveSeasonRecords(series, season, toDir) {
+  if (!String(series || "") || !(Number(season) > 0)) return { tracks: 0, laps: 0 };
+  const keys = trackKeysOf(series, season);
+  const laps = keys.reduce((n, k) => n + (readTrack(series, season, k)?.laps.length || 0), 0);
+  const dir = trackDir(series, season);
+  if (existsSync(dir)) {
+    try {
+      mkdirSync(dirname(toDir), { recursive: true });
+      renameSync(dir, toDir);
+    } catch {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  const prefix = `${seasonCacheKey(series, season)}/`;
+  for (const k of [...trackCache.keys()]) if (k.startsWith(prefix)) trackCache.delete(k);
+  keysCache.delete(seasonCacheKey(series, season));
+  return { tracks: keys.length, laps };
 }
 
 // Take ONE driver's lap out of the record it is filed under. The caller

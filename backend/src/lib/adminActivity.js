@@ -73,6 +73,7 @@ const RULES = [
   [/^\/races\/[^/]+\/driver-of-the-day/, "results", "Driver of the day set"],
   [/^\/races\/[^/]+\/honours/, "results", "Race honours changed"],
   [/^\/seasons\/[^/]+\/manual-points/, "results", "Manual points changed"],
+  [/^\/lap-wipe/, "results", "All lap times wiped (car changed)"],
   [/^\/live-best-laps/, "results", "Practice best laps changed"],
   [/^\/telemetry-laps/, "results", "Telemetry lap deleted"],
 

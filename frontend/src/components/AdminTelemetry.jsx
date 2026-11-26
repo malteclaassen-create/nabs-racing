@@ -162,6 +162,95 @@ function IngestActivity({ configured }) {
   );
 }
 
+// The car changed mid-season, so every lap so far was driven in the old one.
+// One button takes the telemetry laps and the practice times the live board
+// carries (backend: lib/lapWipe.js). The backend moves them into an archive
+// folder rather than deleting them, but nothing on the site can bring them
+// back, so the card asks first and names the numbers.
+function StartTimesAgain({ seriesName }) {
+  const ask = useAsk();
+  const { data, reload, error } = useApi(useCallback(() => api.lapWipePreview(), []));
+  const [live, setLive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+  const [failed, setFailed] = useState("");
+
+  if (!data) {
+    return error ? null : <div className="card p-5 text-sm text-light" role="status">Loading stored times…</div>;
+  }
+
+  const name = seriesName || data.seriesName || "this series";
+  const liveOffer = data.live?.practice && data.live.laps > 0;
+  const nothing = !data.telemetryLaps && !data.boardLaps && !data.pending && !(liveOffer && live);
+
+  async function wipe() {
+    const parts = [
+      `${data.telemetryLaps} telemetry ${data.telemetryLaps === 1 ? "lap" : "laps"}`,
+      `${data.boardLaps} practice ${data.boardLaps === 1 ? "time" : "times"} on the live board`,
+    ];
+    if (liveOffer && live) parts.push(`the ${data.live.laps} times of the session the server is running now`);
+    const ok = await ask({
+      title: `Remove all times of ${name}, season ${data.season}?`,
+      body: `This takes ${parts.join(", ")}. Drivers start from zero with the new car. Race results, standings and token points are not touched. The site cannot undo this.`,
+      danger: true,
+      confirmLabel: "Remove all times",
+    });
+    if (!ok) return;
+    setBusy(true);
+    setFailed("");
+    try {
+      setDone(await api.wipeLapTimes({ live: liveOffer && live }));
+      setLive(false);
+      reload();
+    } catch (e) {
+      setFailed(e?.message || "That did not work. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card p-5">
+      <h3 className="font-display text-base font-extrabold uppercase tracking-tight text-dark">New car? Start the times again</h3>
+      <p className="mt-1 max-w-xl text-sm leading-relaxed text-light">
+        Removes every telemetry lap and every practice time on the live board of {name}, season {data.season}. Use it
+        when the car changes in the middle of a season. Race results stay as they are.
+      </p>
+      <p className="mt-3 text-sm text-dark">
+        Stored now: <b className="tabular-nums">{data.telemetryLaps}</b> telemetry {data.telemetryLaps === 1 ? "lap" : "laps"} ·{" "}
+        <b className="tabular-nums">{data.boardLaps}</b> practice {data.boardLaps === 1 ? "time" : "times"} on{" "}
+        {data.boardTracks} {data.boardTracks === 1 ? "track" : "tracks"}
+        {data.pending > 0 && <> · {data.pending} waiting after a server reset</>}
+      </p>
+      {liveOffer && (
+        <label className="mt-3 flex max-w-xl items-start gap-2 text-sm text-light">
+          <input type="checkbox" className="mt-1" checked={live} onChange={(e) => setLive(e.target.checked)} />
+          <span>
+            Also hide the {data.live.laps} {data.live.laps === 1 ? "time" : "times"} of the session the server is running
+            now{data.live.trackName ? ` (${data.live.trackName})` : ""}. Only tick this if the server still runs the old
+            car. Each driver comes back on the board with their next lap.
+          </span>
+        </label>
+      )}
+      <button
+        type="button"
+        className="btn-secondary mt-4 border-bad/40 text-bad hover:bg-bad/10"
+        disabled={busy || nothing}
+        onClick={wipe}
+      >
+        {busy ? "Removing…" : "Remove all times"}
+      </button>
+      {failed && <p role="alert" className="mt-3 text-sm text-bad">{failed}</p>}
+      {done && (
+        <p role="status" className="mt-3 text-sm text-ok">
+          Done. {done.telemetryLaps} telemetry {done.telemetryLaps === 1 ? "lap" : "laps"} and {done.boardLaps} practice{" "}
+          {done.boardLaps === 1 ? "time" : "times"} removed
+          {done.liveBlocked > 0 ? `, ${done.liveBlocked} live ${done.liveBlocked === 1 ? "time" : "times"} hidden` : ""}.
+        </p>
+      )}
+    </div>
+  );
+}
 
 // Comparison first. Setup and detailed diagnostics remain available below it;
 // they no longer push the recorded laps below the fold on every visit.
@@ -443,6 +532,8 @@ SCRIPT = "${window.location.origin}/api/telemetry-laps/app.lua?key=${telIngest.k
         </button>
         <p className="mt-3 text-xs text-faint">Recording carries on either way. One switch for the whole site: it opens the comparison for every series at once.</p>
       </div>
+
+      <StartTimesAgain seriesName={series?.name} />
 
 
     </div>

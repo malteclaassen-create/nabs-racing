@@ -49,6 +49,7 @@ backend/live-pits/
 # dev machine is whatever the relay happened to see, and it has no business
 # overwriting the real thing on the server.
 backend/live-best-laps/
+backend/wiped-laps/
 backend/live-reset-keep/
 
 # Reference installs for the Windows Content Check (lib/contentReference.js):

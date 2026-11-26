@@ -1055,6 +1055,13 @@ export const api = {
       body: { keep: !!keep, clearCarried: !!clearCarried },
       auth: true,
     }),
+  // The car changed mid-season: every telemetry lap and every training time on
+  // the live board of the viewed series' running season, in one go. The GET
+  // says how much that is; `live` also hides the laps of the practice session
+  // the race server is in right now.
+  lapWipePreview: () => request(`/admin/lap-wipe${seriesQ()}`, { auth: true }),
+  wipeLapTimes: ({ live = false } = {}) =>
+    request(`/admin/lap-wipe${seriesQ()}`, { method: "POST", body: { live: !!live }, auth: true }),
   // Session result files from the server manager, one or several at once.
   // Each lands on the track the FILE names, so the series is all that rides
   // along: it decides which race server's board they go to.
