@@ -44,7 +44,7 @@ export function clip(text, max = DESCRIPTION_MAX) {
 }
 
 // The article text (its small Markdown, components/newsText.mjs) as plain
-// sentences: headings, pictures and quote/list markers out, the words of bold,
+// sentences: headings, pictures, [jump: …] lines and quote/list markers out, the words of bold,
 // italic and links kept. The first paragraphs are all a preview ever needs.
 export function plainText(body) {
   const paras = [];
@@ -59,7 +59,7 @@ export function plainText(body) {
       flush();
       continue;
     }
-    if (/^#{1,6}\s/.test(t) || /^!\[[^\]]*\]\([^)]*\)$/.test(t)) {
+    if (/^#{1,6}\s/.test(t) || /^!\[[^\]]*\]\([^)]*\)$/.test(t) || /^\[jump(:[^\]]+| buttons)\]$/i.test(t)) {
       flush();
       continue;
     }

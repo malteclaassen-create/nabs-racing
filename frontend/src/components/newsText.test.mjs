@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseInline, parseNewsText, safeHref, safeImageSrc } from "./newsText.mjs";
+import { newsSections, parseInline, parseNewsText, safeHref, safeImageSrc } from "./newsText.mjs";
 
 test("inline bold, italic and links", () => {
   assert.deepEqual(parseInline("A **big** *win* at [Spa](/s/nabs/races)"), [
@@ -54,4 +54,30 @@ test("blocks: headings, paragraphs, lists, quotes, pictures", () => {
   assert.equal(blocks[2].items.length, 2);
   assert.equal(blocks[4].lines.length, 2);
   assert.equal(blocks[5].alt, "Spa");
+});
+
+test("newsSections lists the ## headings to jump to, from two up", () => {
+  const blocks = parseNewsText("intro\n\n## Tier 1 **Interviews**\n\ntext\n\n### Porsche\n\n## Div 2 Interviews\n\nmore");
+  assert.deepEqual(newsSections(blocks), [
+    { index: 1, title: "Tier 1 Interviews" },
+    { index: 4, title: "Div 2 Interviews" },
+  ]);
+  assert.deepEqual(newsSections(parseNewsText("## Only one\n\ntext")), []);
+  assert.deepEqual(newsSections(parseNewsText("just text")), []);
+});
+
+test("the writer's own [jump: …] buttons take the headings' place", () => {
+  const blocks = parseNewsText("intro\n\n## Preview\n\n[jump: Tier 1 interviews]\n**PORSCHE**\n\n## Standings\n\n[Jump:Div 2 ]\n\ntext\n\n[jump: Nothing after]");
+  assert.deepEqual(blocks.map((b) => b.type), ["p", "h2", "jump", "p", "h2", "jump", "p", "jump"]);
+  assert.deepEqual(newsSections(blocks), [
+    { index: 3, title: "Tier 1 interviews" },
+    { index: 6, title: "Div 2" },
+  ]);
+  assert.equal(parseNewsText("see [jump: x] here")[0].type, "p");
+});
+
+test("[jump buttons] marks where the row goes", () => {
+  const blocks = parseNewsText("intro\n\n[Jump buttons]\n\n[jump: A]\n[jump buttons]\ntext");
+  assert.deepEqual(blocks.map((b) => b.type), ["p", "menu", "jump", "menu", "p"]);
+  assert.deepEqual(newsSections(blocks), [{ index: 4, title: "A" }]);
 });

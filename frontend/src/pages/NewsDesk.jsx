@@ -340,7 +340,9 @@ function DeskList() {
 }
 
 const FORMAT_HELP = [
-  ["## Heading", "a section heading"],
+  ["## Heading", "a section heading. With two or more, readers get a button for each on top of the article that jumps there"],
+  ["[jump: Button name]", "on its own line: your own button on top of the article that jumps to this place. If you use these, the headings get no buttons"],
+  ["[jump buttons]", "on its own line: the row of buttons goes here instead of at the very top, for example under your intro"],
   ["**bold**  *italic*", "emphasis"],
   ["[words](https://…)", "a link"],
   ["- item", "a list (1. for numbered)"],
@@ -546,6 +548,23 @@ function Editor({ id }) {
     }
   }
 
+  // Puts a [jump: …] line into the text where the cursor is, with the button's
+  // name marked so the writer can type over it.
+  function insertJump() {
+    const el = bodyRef.current;
+    const body = form.body;
+    const at = el ? el.selectionStart : body.length;
+    const before = body.slice(0, at).replace(/\s*$/, "");
+    const after = body.slice(at).replace(/^\s*/, "");
+    const name = "Button name";
+    const head = `${before}${before ? "\n\n" : ""}[jump: `;
+    setForm((f) => ({ ...f, body: `${head}${name}]\n\n${after}` }));
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(head.length, head.length + name.length);
+    });
+  }
+
   if (err && !form) return <ErrorBox message={err} />;
   if (!form) return <Spinner />;
   const live = saved?.status === "PUBLISHED";
@@ -660,10 +679,15 @@ function Editor({ id }) {
             btnClassName="px-3 py-1.5 text-[13px]"
           />
           {tab === "write" && (
-            <label className="btn-secondary cursor-pointer text-xs">
-              Insert picture
-              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => insertPicture(e.target.files?.[0])} />
-            </label>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn-secondary text-xs" onClick={insertJump}>
+                Insert jump button
+              </button>
+              <label className="btn-secondary cursor-pointer text-xs">
+                Insert picture
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => insertPicture(e.target.files?.[0])} />
+              </label>
+            </div>
           )}
         </div>
         {tab === "write" ? (
