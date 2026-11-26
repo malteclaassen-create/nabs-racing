@@ -65,3 +65,13 @@ test("newsSections lists the ## headings to jump to, from two up", () => {
   assert.deepEqual(newsSections(parseNewsText("## Only one\n\ntext")), []);
   assert.deepEqual(newsSections(parseNewsText("just text")), []);
 });
+
+test("the writer's own [jump: …] buttons take the headings' place", () => {
+  const blocks = parseNewsText("intro\n\n## Preview\n\n[jump: Tier 1 interviews]\n**PORSCHE**\n\n## Standings\n\n[Jump:Div 2 ]\n\ntext\n\n[jump: Nothing after]");
+  assert.deepEqual(blocks.map((b) => b.type), ["p", "h2", "jump", "p", "h2", "jump", "p", "jump"]);
+  assert.deepEqual(newsSections(blocks), [
+    { index: 3, title: "Tier 1 interviews" },
+    { index: 6, title: "Div 2" },
+  ]);
+  assert.equal(parseNewsText("see [jump: x] here")[0].type, "p");
+});

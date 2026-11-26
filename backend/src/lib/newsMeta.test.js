@@ -55,6 +55,9 @@ describe("description", () => {
     const body = "## Heading\n\n![a picture](/api/uploads/x.jpg)\n\nThe **fastest** lap went to *Max*, see [the results](/s/f1/races).\n\n> A quote\n- a point";
     expect(plainText(body)).toBe("The fastest lap went to Max, see the results. A quote a point.");
   });
+  it("leaves the jump button lines out", () => {
+    expect(plainText("Intro.\n\n[jump: Tier 1 interviews]\nThe interviews.")).toBe("Intro. The interviews.");
+  });
   it("ends a heading-like bold line with a full stop", () => {
     expect(plainText("**WINNER: 13BOT**\n\nNot just winning the race.")).toBe("WINNER: 13BOT. Not just winning the race.");
   });

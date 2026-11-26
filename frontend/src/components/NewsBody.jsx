@@ -3,8 +3,9 @@ import { useId } from "react";
 import { parseNewsText, newsSections } from "./newsText.mjs";
 
 // An article's text, drawn from the blocks newsText.mjs parses. Paths on this
-// site open in the app, web addresses in a new tab. With two or more ##
-// headings, a row of buttons on top jumps to each of them.
+// site open in the app, web addresses in a new tab. A row of buttons
+// on top jumps to the sections: the writer's own [jump: …] places, else the
+// ## headings when there are two or more.
 
 function jumpTo(id) {
   const el = document.getElementById(id);
@@ -46,8 +47,9 @@ export default function NewsBody({ text }) {
   const sections = newsSections(blocks);
   const uid = useId();
   const anchor = (i) => `${uid}-s${i}`;
+  const targets = new Set(sections.map((s) => s.index));
   return (
-    <div className="space-y-5 text-[16px] leading-relaxed text-medium">
+    <div className="space-y-5 text-[16px] leading-relaxed text-medium [&>*]:scroll-mt-28">
       {sections.length > 0 && (
         <nav aria-label="Jump to a section" className="flex flex-wrap gap-2">
           {sections.map((s) => (
@@ -63,16 +65,19 @@ export default function NewsBody({ text }) {
         </nav>
       )}
       {blocks.map((b, i) => {
+        const id = targets.has(i) ? anchor(i) : undefined;
         switch (b.type) {
+          case "jump":
+            return null;
           case "h2":
             return (
-              <h2 key={i} id={anchor(i)} className="scroll-mt-28 pt-2 font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
+              <h2 key={i} id={id} className="pt-2 font-display text-xl font-extrabold uppercase tracking-tight text-dark sm:text-2xl">
                 <Inline runs={b.inline} />
               </h2>
             );
           case "h3":
             return (
-              <h3 key={i} className="font-display text-lg font-bold uppercase tracking-tight text-dark">
+              <h3 key={i} id={id} className="font-display text-lg font-bold uppercase tracking-tight text-dark">
                 <Inline runs={b.inline} />
               </h3>
             );
@@ -80,7 +85,7 @@ export default function NewsBody({ text }) {
           case "ol": {
             const Tag = b.type;
             return (
-              <Tag key={i} className={`space-y-1.5 pl-6 ${b.type === "ol" ? "list-decimal" : "list-disc"}`}>
+              <Tag key={i} id={id} className={`space-y-1.5 pl-6 ${b.type === "ol" ? "list-decimal" : "list-disc"}`}>
                 {b.items.map((runs, j) => (
                   <li key={j}>
                     <Inline runs={runs} />
@@ -91,20 +96,20 @@ export default function NewsBody({ text }) {
           }
           case "quote":
             return (
-              <blockquote key={i} className="border-l-4 border-brand bg-surface2/60 px-4 py-3 italic text-dark">
+              <blockquote key={i} id={id} className="border-l-4 border-brand bg-surface2/60 px-4 py-3 italic text-dark">
                 <Lines lines={b.lines} />
               </blockquote>
             );
           case "img":
             return (
-              <figure key={i} className="overflow-hidden rounded-xl border border-border">
+              <figure key={i} id={id} className="overflow-hidden rounded-xl border border-border">
                 <img src={b.src} alt={b.alt} loading="lazy" className="w-full object-cover" />
                 {b.alt && <figcaption className="px-3 py-2 text-xs text-light">{b.alt}</figcaption>}
               </figure>
             );
           default:
             return (
-              <p key={i}>
+              <p key={i} id={id}>
                 <Lines lines={b.lines} />
               </p>
             );
