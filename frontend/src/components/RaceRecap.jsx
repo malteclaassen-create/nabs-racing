@@ -1,15 +1,17 @@
 // ---------------------------------------------------------------------------
 // The race recap's doorways. The page itself is pages/RaceRecapPage.jsx.
 //
-// RaceRecapHost sits at the root of the app and asks the server on page load
-// whether a recap is waiting, then again every couple of minutes while the
-// tab is open (for the member who is on the site when the round is saved);
-// when one is, it takes the member to the recap page with the payload in
-// hand, and arriving there counts as seen.
+// RaceRecapHost sits at the root of the app and asks the server whether a
+// recap is waiting: a beat after every page the member opens, every half
+// minute while the tab is open and in view, and when the tab comes back into
+// view. The ask is the cheap one (is one waiting, and of which round); only
+// when the answer is yes and this is a page it may be shown on does the host
+// fetch the recap itself and take the member to the recap page with it in
+// hand. Arriving there counts as seen.
 // RaceRecapButton is the "read it again" button on a race page. Both keep out
 // of the way unless the feature is on for this member.
 // ---------------------------------------------------------------------------
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client.js";
 import { useAuth } from "../hooks/useAuth.js";
@@ -35,7 +37,13 @@ export function useRaceRecapEnabled() {
   return on;
 }
 
-let asked = false; // once per page load, whichever page it was
+let asked = false; // the server has answered at least once on this tab
+let lastAsk = 0; // when the last ask went out
+let busy = false; // an ask is on its way
+// A recap the server said is waiting but that could not be shown where the
+// member was (the live page mid-week, a form being typed in). The next page
+// they open asks at once instead of waiting out the gap between two asks.
+let waiting = false;
 
 // Whether the host has had its answer, so the nav bar can hold a "+50" back
 // until the member is past the recap: the tokens are the ending, not
@@ -67,98 +75,104 @@ export default function RaceRecapHost() {
   const navigate = useNavigate();
   const pathRef = useRef(location.pathname);
   pathRef.current = location.pathname;
+  const loggedInRef = useRef(isLoggedIn);
+  loggedInRef.current = isLoggedIn;
 
+  // One ask, whatever set it off. Everything is judged against where the
+  // member is when the answer arrives, not where they were when it went out:
+  // somebody who opens the site and taps on to the standings within a second
+  // is still taken to their recap, from the standings.
+  const check = useCallback(
+    async (force = false) => {
+      if (!loggedInRef.current || busy) return;
+      // Not from the admin, where the office is busy saving the very result,
+      // and not from the recap page itself; not in a tab nobody is looking at,
+      // where arriving on the recap would count as seen without being seen.
+      if (offLimits(pathRef.current) || document.visibilityState !== "visible") return settle();
+      // The switch was off for this member the last time: no need to keep asking.
+      if (asked && enabledState === false) return settle();
+      if (asked && !force && Date.now() - lastAsk < ASK_MIN_GAP_MS) return settle();
+      busy = true;
+      lastAsk = Date.now();
+      try {
+        const r = await api.myRaceRecapPeek();
+        asked = true;
+        setEnabled(!!r?.enabled);
+        // A server from before the peek answers with the recap itself.
+        let recap = r?.recap || null;
+        const pending = r?.pending || (recap ? { raceId: recap.race?.id, date: recap.race?.date } : null);
+        waiting = false;
+        if (!pending) return;
+        const fits = () => loggedInRef.current && !offLimits(pathRef.current) && mayShow(pathRef.current, pending.date) && !typing();
+        if (!fits()) {
+          waiting = true;
+          return;
+        }
+        if (!recap) recap = (await api.myRaceRecap())?.recap || null;
+        if (!recap) return;
+        // Building it took a moment: look again at where the member is now.
+        if (!fits()) {
+          waiting = true;
+          return;
+        }
+        navigate(recapPath(recap), { state: { recap, pending: true } });
+      } catch {
+        /* offline, or the session ran out: the next ask tries again */
+      } finally {
+        busy = false;
+        settle();
+      }
+    },
+    [navigate]
+  );
+
+  // A beat after every page, so the hand-over happens on a settled page. Most
+  // of these stop at the gap between two asks; the first one of a visit and
+  // the one after a held-back recap go out.
   useEffect(() => {
     if (!isLoggedIn) {
-      asked = false; // the next login on this tab asks afresh
-      return;
+      // The next login on this tab asks afresh.
+      asked = false;
+      waiting = false;
+      return undefined;
     }
-    // Asked already, unless the answer was held back on the live page and
-    // the member has just left it: then it is due now, not two minutes on.
-    if (asked && !(heldOnLive && !onLive(location.pathname))) return settle();
-    heldOnLive = false;
-    // Not from the admin, where the office is busy saving the very result,
-    // and not from the recap page itself. The live page is fine, but only
-    // for tonight's round (see mayShow).
-    if (offLimits(location.pathname)) return settle();
-    let gone = false;
-    // A beat after the page, so the hand-over happens on a settled page.
-    const t = setTimeout(() => {
-      asked = true;
-      api
-        .myRaceRecap()
-        .then((r) => {
-          setEnabled(!!r?.enabled);
-          if (gone || !r?.recap) return;
-          if (!mayShow(pathRef.current, r.recap)) {
-            heldOnLive = true;
-            return;
-          }
-          navigate(recapPath(r.recap), { state: { recap: r.recap, pending: true } });
-        })
-        .catch(() => {})
-        .finally(settle);
-    }, 900);
-    return () => {
-      gone = true;
-      clearTimeout(t);
-    };
-  }, [isLoggedIn, location.pathname, navigate]);
+    const t = setTimeout(() => check(waiting), 900);
+    return () => clearTimeout(t);
+  }, [isLoggedIn, location.pathname, check]);
 
-  // Somebody already on the site when the office saves the round asked once,
-  // on arrival, before there was anything to show. So while the tab is open
-  // the host asks again now and then, and when the tab comes back into view,
-  // under the same rules as above. Not while they are typing, so a form is
-  // never pulled away under them.
+  // Somebody already on the site when the office saves the round asked on
+  // arrival, before there was anything to show. So an open tab keeps asking,
+  // and asks when it comes back into view.
   useEffect(() => {
     if (!isLoggedIn) return undefined;
-    let busy = false;
-    let last = Date.now();
-    const typing = () => {
-      const el = document.activeElement;
-      return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
-    };
-    const askAgain = () => {
-      if (busy || !asked || enabledState === false || document.visibilityState !== "visible") return;
-      if (Date.now() - last < RECHECK_MIN_GAP_MS || typing()) return;
-      if (offLimits(pathRef.current)) return;
-      busy = true;
-      last = Date.now();
-      api
-        .myRaceRecap()
-        .then((r) => {
-          setEnabled(!!r?.enabled);
-          if (!r?.recap || offLimits(pathRef.current) || typing()) return;
-          if (!mayShow(pathRef.current, r.recap)) {
-            heldOnLive = true;
-            return;
-          }
-          navigate(recapPath(r.recap), { state: { recap: r.recap, pending: true } });
-        })
-        .catch(() => {})
-        .finally(() => {
-          busy = false;
-        });
-    };
-    const timer = setInterval(askAgain, RECHECK_EVERY_MS);
-    document.addEventListener("visibilitychange", askAgain);
+    const tick = () => check();
+    const timer = setInterval(tick, ASK_EVERY_MS);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       clearInterval(timer);
-      document.removeEventListener("visibilitychange", askAgain);
+      document.removeEventListener("visibilitychange", tick);
     };
-  }, [isLoggedIn, navigate]);
+  }, [isLoggedIn, check]);
 
   return null;
 }
 
-// How often an open tab asks again, and the least time between two asks
-// (a tab flicking in and out of view does not ask every time).
-const RECHECK_EVERY_MS = 2 * 60_000;
-const RECHECK_MIN_GAP_MS = 60_000;
+// How often an open tab asks, and the least time between two asks whatever
+// set them off (a page change, the tab flicking in and out of view). The ask
+// is a handful of small queries, so half a minute costs nothing; it is the
+// longest a member on the site waits for the recap of a round just saved.
+const ASK_EVERY_MS = 30_000;
+const ASK_MIN_GAP_MS = 10_000;
 
 // Where the host never takes a member away: the admin (the office saving the
 // result) and the recap page itself.
 const offLimits = (p) => p.startsWith("/admin") || p.startsWith("/auth") || /\/recap\//.test(p);
+
+// Never while they are typing, so a form is not pulled away under them.
+function typing() {
+  const el = document.activeElement;
+  return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+}
 
 // The live page is left up for hours, and being sent to last week's recap in
 // the middle of this week's timing would be rude. But once tonight's round is
@@ -166,10 +180,9 @@ const offLimits = (p) => p.startsWith("/admin") || p.startsWith("/auth") || /\/r
 // take them from there.
 const TONIGHT_MS = 12 * 3_600_000;
 const onLive = (p) => /\/live(\/|$)/.test(p);
-let heldOnLive = false; // a recap is waiting, held back because the member is on the live page
-function mayShow(path, recap) {
+function mayShow(path, raceDate) {
   if (!onLive(path)) return true;
-  const ran = recap?.race?.date ? new Date(recap.race.date).getTime() : NaN;
+  const ran = raceDate ? new Date(raceDate).getTime() : NaN;
   return Number.isFinite(ran) && Date.now() - ran < TONIGHT_MS;
 }
 

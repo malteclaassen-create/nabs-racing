@@ -29,7 +29,7 @@ import { getActiveSeason, getPrivateSeasonIds } from "../services/seasonService.
 import { getDriverRatingHistory, getDriverCareerRatings } from "../services/ratingHistoryService.js";
 import { getCardRating } from "../services/cardRatingService.js";
 import { previewAccountDeletion, deleteMemberAccount } from "../services/accountDeletionService.js";
-import { recapVisibleTo, pendingRecapRace, buildRaceRecap, markRecapSeen } from "../lib/raceRecap.js";
+import { recapVisibleTo, pendingRecap, buildRaceRecap, markRecapSeen } from "../lib/raceRecap.js";
 import { UPLOADS_DIR } from "../lib/dataDirs.js";
 import { getSeasonReview, reviewVisibleTo } from "../services/seasonReviewService.js";
 import { isSeasonComplete } from "../lib/seasonComplete.js";
@@ -771,14 +771,23 @@ router.delete("/card-photo-image", async (req, res, next) => {
 // member, or recap:null when there is none (nothing new, already seen, or the
 // feature is not on for them). Any visitor may ask; a logged-out one is
 // simply told there is nothing.
+//
+// ?peek=1 -> { enabled, pending } with pending = { raceId, date } or null:
+// only WHETHER one is waiting, without building it. An open tab asks this
+// every half minute, so the member on the site when the office saves the
+// round is taken to it soon after; the recap itself is a few dozen queries
+// and is only built once, when it is about to be shown.
 router.get("/race-recap", async (req, res, next) => {
   try {
-    if (!req.user || !(await recapVisibleTo(prisma, req))) return res.json({ enabled: false, recap: null });
+    const peek = req.query.peek != null;
+    const none = (enabled) => res.json(peek ? { enabled, pending: null } : { enabled, recap: null });
+    if (!req.user || !(await recapVisibleTo(prisma, req))) return none(false);
     const driverId = await resolveDriverId(prisma, req.user);
-    if (!driverId) return res.json({ enabled: true, recap: null });
-    const raceId = await pendingRecapRace(prisma, driverId, req.user.discordId);
-    if (!raceId) return res.json({ enabled: true, recap: null });
-    const recap = await buildRaceRecap(prisma, { raceId, driverId, discordId: req.user.discordId, req });
+    if (!driverId) return none(true);
+    const pending = await pendingRecap(prisma, driverId, req.user.discordId);
+    if (!pending) return none(true);
+    if (peek) return res.json({ enabled: true, pending: { raceId: pending.id, date: pending.date } });
+    const recap = await buildRaceRecap(prisma, { raceId: pending.id, driverId, discordId: req.user.discordId, req });
     res.json({ enabled: true, recap });
   } catch (e) {
     next(e);

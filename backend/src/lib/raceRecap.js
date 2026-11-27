@@ -49,6 +49,7 @@ import { contactMapForRace } from "./contactMap.js";
 import { groupKeyFor } from "./trackKeys.js";
 import { cockpitContext } from "../services/cockpitService.js";
 import { cardCatalogueFor } from "./tokens.js";
+import { seasonHasDivision2, readDivision2Drivers, readDivisionChildren } from "./divisions.js";
 
 export const RECAP_SETTING = "race_recap";
 export const RECAP_MODES = ["off", "admins", "all"];
@@ -63,6 +64,11 @@ const FRESH_DAYS = 10;
 // Well inside FRESH_DAYS, so a round that waits the whole time still has days
 // left in which to be offered.
 const HOLD_DAYS = 7;
+
+// How long somebody who is not in the main race's result waits for the
+// Division 2 result of the same night before the round is told without it.
+// See otherFieldsRace.
+const DIV2_HOLD_DAYS = 2;
 
 // --- the switch -------------------------------------------------------------
 
@@ -162,10 +168,39 @@ async function weekendStillArriving(prisma, race) {
   return saved === 0;
 }
 
+// Did this person's evening happen in the OTHER field? A season with Division
+// 2 (lib/divisions.js) runs two races a round, saved one after the other: the
+// main race on the round's own row, Division 2's on a hidden child. The recap
+// tells the main race and nothing else, so sent as it is to a Division 2
+// driver it would be a recap of a race they were not in, and since arriving
+// counts as seen for good, the only one they get for the night.
+//
+// So: whoever is in the main race's result gets the recap as ever. A driver
+// with a Division 2 seat gets none sent. Anybody else (a reserve, a driver
+// who sat the night out) waits until Division 2's result is in, because until
+// then nobody can tell which race a reserve drove; after that they get the
+// round's recap unless their row is in Division 2's result. The wait is
+// bounded, for a round whose Division 2 race never comes.
+//
+// Like the sprint wait above, this is only about the recap that is PUSHED.
+async function otherFieldsRace(prisma, race, rowIds) {
+  if (!rowIds.length || !(await seasonHasDivision2(prisma, race.seasonId))) return false;
+  const count = (raceId) =>
+    prisma.raceResult.count({ where: { raceId, driverId: { in: rowIds } } }).catch(() => 0);
+  if ((await count(race.id)) > 0) return false;
+  const div2Seats = await readDivision2Drivers(prisma, race.seasonId);
+  if (rowIds.some((id) => div2Seats.has(id))) return true;
+  const childId = (await readDivisionChildren(prisma, [race.id])).get(race.id) || null;
+  const saved = childId ? await prisma.raceResult.count({ where: { raceId: childId } }).catch(() => 0) : 0;
+  if (saved > 0) return (await count(childId)) > 0;
+  const ran = race.date ? new Date(race.date).getTime() : null;
+  return ran == null || Date.now() - ran <= DIV2_HOLD_DAYS * 86_400_000;
+}
+
 // The newest finished round of any PUBLIC season this person is in, if it is
-// recent enough, finished arriving, and they have not been shown it yet.
-// null = nothing to show.
-export async function pendingRecapRace(prisma, driverId, discordId) {
+// recent enough, finished arriving, and they have not been shown it yet:
+// { id, date }, or null = nothing to show.
+export async function pendingRecap(prisma, driverId, discordId) {
   const rows = await personRows(prisma, driverId);
   const priv = await getPrivateSeasonIds(prisma);
   const seasonIds = [...new Set(rows.map((r) => r.seasonId).filter((id) => id && !priv.has(id)))];
@@ -180,12 +215,20 @@ export async function pendingRecapRace(prisma, driverId, discordId) {
       results: { some: {} },
     },
     orderBy: { date: "desc" },
-    select: { id: true, date: true },
+    select: { id: true, date: true, seasonId: true },
   });
   if (!race) return null;
-  if (await weekendStillArriving(prisma, race)) return null;
+  // The cheap question first: most asks come from somebody who has seen it.
   if ((await seenRecapRaceId(prisma, discordId)) === race.id) return null;
-  return race.id;
+  if (await weekendStillArriving(prisma, race)) return null;
+  const rowIds = rows.filter((r) => r.seasonId === race.seasonId).map((r) => r.id);
+  if (await otherFieldsRace(prisma, race, rowIds)) return null;
+  return { id: race.id, date: race.date ?? null };
+}
+
+// The same answer as just the round's id.
+export async function pendingRecapRace(prisma, driverId, discordId) {
+  return (await pendingRecap(prisma, driverId, discordId))?.id ?? null;
 }
 
 // --- the recap itself -------------------------------------------------------
