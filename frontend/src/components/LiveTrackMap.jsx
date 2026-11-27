@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
-import { Minus, Plus, X } from "lucide-react";
+import { Minus, Plus, Star, X } from "lucide-react";
 import { api } from "../api/client.js";
 import { createProgressTracker, computePitWindow, positionAtSpline, TRAFFIC_MS } from "../utils/pitWindow.mjs";
 import { useOwnLiveGuids, usePitWindowShown } from "../hooks/usePitWindow.js";
@@ -48,6 +48,14 @@ import SlidingTabs from "./SlidingTabs.jsx";
 // +/- controls change how close (to read two cars side by side, zoom in).
 // Clicking anywhere else zooms back out. The followed car's cockpit numbers
 // (speed, gear, revs) sit in a panel bottom left, under the map on a phone.
+//
+// HIGHLIGHTS: a corner can carry a moment from the league's past (two cars
+// touching there, a title decided), added by an admin in the Tracks tab
+// (backend lib/trackProfile.js). The Highlights button, off by default, marks
+// those corners, and only those, with a starred disc just outside the bend;
+// pointing at one (or tapping it) opens a card with the title, the story and
+// the picture. Real map only: the outline's start line and direction are not
+// the circuit's, and a moment pinned to the wrong corner is worse than none.
 //
 // AC map.pngs draw the circuit on transparency: dark asphalt with white edges.
 // That reads on a dark card as-is; the light theme inverts the image so the
@@ -656,6 +664,183 @@ function SectorTrack({ geo, r, counterRotate }) {
   );
 }
 
+// ---- Highlights --------------------------------------------------------------
+
+const CORNERS_KEY = "nabs_map_corners";
+const NO_CORNERS = [];
+const wrap01 = (f) => ((f % 1) + 1) % 1;
+// How far either side of a corner the lap is sampled to tell which way it
+// bends, as a share of the lap.
+const BEND_SPAN = 0.006;
+
+// "T4 Roggia", "T4" or "Roggia".
+function cornerLabel(c) {
+  return [c.turn != null ? `T${c.turn}` : "", c.name || ""].filter(Boolean).join(" ");
+}
+
+// A circuit's corners for the map: asked once per track, by the AC id first
+// and by the track's name when that spelling places nothing.
+function useCorners(trackId, track, layout) {
+  const [corners, setCorners] = useState([]);
+  useEffect(() => {
+    setCorners([]);
+    const names = [...new Set([trackId, track].filter(Boolean))];
+    if (!names.length) return undefined;
+    let live = true;
+    (async () => {
+      for (const name of names) {
+        try {
+          const res = await api.trackProfile(name, layout || "");
+          if (!live) return;
+          if (Array.isArray(res?.corners) && res.corners.length) {
+            setCorners(res.corners);
+            return;
+          }
+        } catch {
+          /* no corners, no button */
+        }
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [trackId, track, layout]);
+  return corners;
+}
+
+// A five-pointed star around the origin, as an SVG points list.
+function starPoints(R) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const d = i % 2 ? R * 0.45 : R;
+    pts.push(`${(Math.cos(a) * d).toFixed(2)},${(Math.sin(a) * d).toFixed(2)}`);
+  }
+  return pts.join(" ");
+}
+
+// A corner's highlight, if it has one.
+const hasHighlight = (c) => !!(c.title || c.story || c.image);
+
+// The highlights on the map: a starred disc in the series colour beside each
+// corner that has one, on the outside of the bend so it does not sit on the
+// cars going through. `at` finds a share of the
+// lap on the drawn circuit; `tips` is what the map around it does with them.
+// A disc that would leave the picture (`w` by `h`) on the outside goes on the
+// inside instead: circuits are drawn right up to the edge.
+function CornerMarks({ corners, at, r, w, h, counterRotate, tips }) {
+  const upright = counterRotate ? "rotate(-90)" : undefined;
+  return (
+    <g>
+      {corners.map((c) => {
+        const f = c.at / 100;
+        const a = at(wrap01(f - BEND_SPAN));
+        const p = at(wrap01(f));
+        const b = at(wrap01(f + BEND_SPAN));
+        // From the corner towards the line between its two neighbours is the
+        // inside; the disc goes the other way. On a straight bit, to one side.
+        let ox = p.x - (a.x + b.x) / 2;
+        let oy = p.y - (a.y + b.y) / 2;
+        const bend = Math.hypot(ox, oy);
+        const run = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        if (bend < run * 0.02) {
+          ox = -(b.y - a.y) / run;
+          oy = (b.x - a.x) / run;
+        } else {
+          ox /= bend;
+          oy /= bend;
+        }
+        const reach = r * 2.1;
+        const fits = (sx, sy) => {
+          const x = p.x + sx * reach, y = p.y + sy * reach;
+          return x > r * 1.2 && y > r * 1.2 && x < w - r * 1.2 && y < h - r * 1.2;
+        };
+        if (!fits(ox, oy) && fits(-ox, -oy)) {
+          ox = -ox;
+          oy = -oy;
+        }
+        const open = tips.openAt === c.at;
+        return (
+          <g
+            key={c.at}
+            transform={`translate(${p.x + ox * reach} ${p.y + oy * reach})`}
+            style={{ cursor: "pointer" }}
+            role="button"
+            aria-label={`Highlight: ${c.title || cornerLabel(c)}`}
+            onMouseEnter={() => tips.onEnter(c.at)}
+            onMouseLeave={() => tips.onLeave(c.at)}
+            onClick={(ev) => {
+              ev.stopPropagation();
+              tips.onToggle(c.at);
+            }}
+          >
+            <g transform={upright}>
+              {/* a roomier target than the disc itself */}
+              <circle r={r * 1.5} fill="transparent" stroke="none" />
+              <circle
+                ref={tips.register(c.at)}
+                r={r * (open ? 1.15 : 1)}
+                className="fill-brand stroke-card"
+                strokeWidth={r * 0.14}
+              />
+              <polygon points={starPoints(r * 0.62)} className="fill-onbrand" style={{ pointerEvents: "none" }} />
+            </g>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+// The card for the highlight being pointed at: the picture, the title, which
+// corner it was, the story. Kept on its disc every frame, since the map under it moves
+// while a car is being followed; above the disc where there is room, else
+// below, and inside the map's box left to right. Never in the way of a click.
+function CornerCard({ corner, markerOf, boxRef }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    let raf;
+    const place = () => {
+      const el = markerOf(corner.at);
+      const box = boxRef.current;
+      const card = ref.current;
+      if (el && box && card) {
+        const m = el.getBoundingClientRect();
+        const b = box.getBoundingClientRect();
+        const cx = m.left + m.width / 2 - b.left;
+        const cy = m.top + m.height / 2 - b.top;
+        const w = card.offsetWidth;
+        const h = card.offsetHeight;
+        const x = Math.min(Math.max(8, cx - w / 2), Math.max(8, b.width - w - 8));
+        const above = m.top - b.top - h - 8;
+        const y = above >= 4 ? above : m.bottom - b.top + 8;
+        card.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+        // The followed car took the map somewhere else: no card for a corner
+        // that is not in view.
+        card.style.visibility = cx < 0 || cy < 0 || cx > b.width || cy > b.height ? "hidden" : "visible";
+      }
+      raf = requestAnimationFrame(place);
+    };
+    raf = requestAnimationFrame(place);
+    return () => cancelAnimationFrame(raf);
+  }, [corner.at, markerOf, boxRef]);
+  return (
+    <div
+      ref={ref}
+      role="status"
+      className="pointer-events-none absolute left-0 top-0 z-20 w-64 max-w-[calc(100%-1rem)] overflow-hidden rounded-xl border border-border bg-card text-dark shadow-lift"
+      style={{ visibility: "hidden" }}
+    >
+      {corner.image && <img src={corner.image} alt="" className="block max-h-44 w-full object-cover" />}
+      <div className="px-3 py-2">
+        <div className="font-display text-sm font-extrabold uppercase leading-tight">{corner.title || cornerLabel(corner)}</div>
+        {corner.title && <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-light">{cornerLabel(corner)}</div>}
+        {corner.story && <p className="mt-1 text-sm leading-snug text-medium">{corner.story}</p>}
+      </div>
+    </div>
+  );
+}
+
 // Sector lines as the board sends them, or null when they are not two sane
 // shares of the lap in order.
 function validLines(lines) {
@@ -718,7 +903,7 @@ function useTrackLine(ver, server) {
 // stays a sensible landscape instead of a skyscraper of empty margin.
 const ROTATE_RATIO = 1.07;
 
-function RealTrackMap({ cars, map, matchFn, onPositions, focusGuid, zoom, onFocus, server = null, className = "", onImageError, aerial = false, aerialLoaded = false, onAerialLoad, loadAerial = false, aerialMap, incidents = null, line = null, sectorLines = null, ghost = null }) {
+function RealTrackMap({ cars, map, matchFn, onPositions, focusGuid, zoom, onFocus, server = null, className = "", onImageError, aerial = false, aerialLoaded = false, onAerialLoad, loadAerial = false, aerialMap, incidents = null, line = null, sectorLines = null, ghost = null, corners = null, tips = null }) {
   const W = map.width;
   const H = map.height;
   const rotated = H / W > ROTATE_RATIO;
@@ -852,6 +1037,9 @@ function RealTrackMap({ cars, map, matchFn, onPositions, focusGuid, zoom, onFocu
               <g opacity={showAerial ? 0 : 1} className="transition-opacity duration-500 motion-reduce:transition-none">
                 <SectorTrack geo={geo} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={rotated} />
               </g>
+            )}
+            {corners && lineGeo && (
+              <CornerMarks corners={corners} at={lineGeo.at} w={W} h={H} r={(r * 0.9) / (focusGuid ? Math.sqrt(zoom) : 1)} counterRotate={rotated} tips={tips} />
             )}
             {(incidents || []).map((inc) => {
               if (inc.x == null || inc.z == null) return null;
@@ -1169,7 +1357,7 @@ function usePitWindowState({ pitWindow, cars, focusGuid, pickGuid, trackId, matc
 // picks it without zooming: the map stays on the whole circuit, so car and
 // ring are both in view. + still zooms in on purpose, and − back out to the
 // whole circuit. Without it the map is exactly what it was.
-export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map, follow, onCarTelemetry, onPositions = null, server = null, className = "", wrapClassName = "", incidents = null, sectorLines = null, focusGuid: focusProp = null, onFocusChange = null, pitWindow = null }) {
+export default function LiveTrackMap({ track, trackId = null, layout = "", cars, matchFn, map, follow, onCarTelemetry, onPositions = null, server = null, className = "", wrapClassName = "", incidents = null, sectorLines = null, focusGuid: focusProp = null, onFocusChange = null, pitWindow = null }) {
   // Which car the camera follows. The map keeps that itself, unless the page
   // around it does (onFocusChange): the Live page lets a click on a driver's
   // name in its tables put the map on them, so the choice has to live there.
@@ -1242,6 +1430,49 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
     }
     setZoom((z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, dir > 0 ? z * 1.4 : z / 1.4)));
   };
+  // Highlights: the corners with a moment from the past, shown when the
+  // viewer turns them on (remembered on this device). `tipAt` is the corner whose card is open,
+  // `pinned` whether a tap opened it (it then stays until the next tap).
+  const allCorners = useCorners(trackId, track, layout);
+  // Placed along the real map's own line, so only once that is there.
+  const corners = useMemo(() => (real && line ? allCorners.filter(hasHighlight) : NO_CORNERS), [real, line, allCorners]);
+  const [cornersOn, setCornersOn] = useState(() => {
+    try {
+      return localStorage.getItem(CORNERS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleCorners = () => {
+    const next = !cornersOn;
+    setCornersOn(next);
+    setTip(null);
+    try {
+      if (next) localStorage.setItem(CORNERS_KEY, "1");
+      else localStorage.removeItem(CORNERS_KEY);
+    } catch {
+      /* private mode: on for this visit only */
+    }
+  };
+  const [tip, setTip] = useState(null); // { at, pinned }
+  const cornerEls = useRef(new Map());
+  const boxRef = useRef(null);
+  const markerOf = useCallback((at) => cornerEls.current.get(at) || null, []);
+  const tips = useMemo(
+    () => ({
+      openAt: tip?.at ?? null,
+      register: (at) => (el) => {
+        if (el) cornerEls.current.set(at, el);
+        else cornerEls.current.delete(at);
+      },
+      onEnter: (at) => setTip((t) => (t?.pinned ? t : { at, pinned: false })),
+      onLeave: (at) => setTip((t) => (t && !t.pinned && t.at === at ? null : t)),
+      onToggle: (at) => setTip((t) => (t?.pinned && t.at === at ? null : { at, pinned: true })),
+    }),
+    [tip?.at]
+  );
+  const showCorners = cornersOn && corners.length > 0;
+  const tipCorner = showCorners && tip ? corners.find((c) => c.at === tip.at) || null : null;
   const zoomBtn = "grid h-8 w-8 place-items-center text-medium transition hover:bg-surface2 hover:text-dark";
   const hud = (cls) => (
     <FollowHud
@@ -1256,19 +1487,9 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
   );
   return (
     <div className={`${wrapClassName || "relative"} flex flex-col`}>
-      <div className="relative min-h-0 flex-1">
-      {aerialAvailable && (
-        <div className="absolute right-2 top-2 z-10" role="group" aria-label="Map background">
-          <SlidingTabs
-            wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm"
-            btnClassName="px-3 py-1.5 text-xs uppercase tracking-wide"
-            pillClassName="rounded-md bg-brand"
-            items={[{ key: "track", label: "Track" }, { key: "aerial", label: "Satellite" }]}
-            value={aerial ? "aerial" : "track"}
-            onChange={(value) => { setImageFailed(false); setMapMode(value); if (value === "aerial") setLoadAerial(true); }}
-          />
-        </div>
-      )}
+      {/* A click anywhere on the map that is not a corner closes a pinned card. */}
+      <div ref={boxRef} className="relative min-h-0 flex-1" onClick={() => setTip(null)}>
+      {tipCorner && <CornerCard corner={tipCorner} markerOf={markerOf} boxRef={boxRef} />}
       {real ? (
         <RealTrackMap
           key={`${server || ""}:${map?.ver || ""}`}
@@ -1290,6 +1511,8 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
           line={line}
           sectorLines={lines}
           ghost={pit.ghost}
+          corners={showCorners ? corners : null}
+          tips={tips}
           onImageError={() => { setImageFailed(true); setMapMode("track"); setAerialLoaded(false); setLoadAerial(false); }}
         />
       ) : (
@@ -1327,6 +1550,43 @@ export default function LiveTrackMap({ track, trackId = null, cars, matchFn, map
       )}
       </div>
       {focusedCar && cockpit && hud("mt-2 flex shrink-0 sm:hidden")}
+      {/* Under the map, not on it: a control in a corner of the map sat on top
+          of whichever of the circuit's corners is drawn there. */}
+      {(corners.length > 0 || aerialAvailable) && (
+        <div className="mt-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-1">
+          {corners.length > 0 && (
+            <button
+              type="button"
+              aria-pressed={cornersOn}
+              title={cornersOn ? "Hide the highlights" : "Show where something happened here in past races"}
+              onClick={toggleCorners}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+                cornersOn ? "border-brand bg-brand text-onbrand" : "border-border bg-card text-medium hover:text-dark"
+              }`}
+            >
+              <Star className="h-3.5 w-3.5" aria-hidden="true" />
+              Highlights
+            </button>
+          )}
+          {cornersOn && corners.length > 0 && (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-light">
+              Point at a star or tap it
+            </span>
+          )}
+          {aerialAvailable && (
+            <div className="ml-auto" role="group" aria-label="Map background">
+              <SlidingTabs
+              wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm"
+              btnClassName="px-3 py-1.5 text-xs uppercase tracking-wide"
+              pillClassName="rounded-md bg-brand"
+              items={[{ key: "track", label: "Track" }, { key: "aerial", label: "Satellite" }]}
+              value={aerial ? "aerial" : "track"}
+              onChange={(value) => { setImageFailed(false); setMapMode(value); if (value === "aerial") setLoadAerial(true); }}
+            />
+            </div>
+          )}
+        </div>
+      )}
       {pit.subject && (
         <PitWindowPanel
           className="mt-2 shrink-0"

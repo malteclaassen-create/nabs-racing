@@ -1719,6 +1719,13 @@ export const api = {
     fd.append("file", file);
     return request(`/admin/tracks/${key}/outline`, { method: "POST", body: fd, auth: true, form: true });
   },
+  // A picture for one corner's highlight on the live map -> { url }. It is on
+  // the corner once saveTrackInfo stores that url on it.
+  uploadCornerImage: (key, file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request(`/admin/tracks/${key}/corner-image`, { method: "POST", body: fd, auth: true, form: true });
+  },
   clearTrackOutline: (key) => request(`/admin/tracks/${key}/outline`, { method: "DELETE", auth: true }),
 
   // Incident reports. The member's own side: file one, read the threads you are
