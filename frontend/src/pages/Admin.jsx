@@ -4436,8 +4436,8 @@ function reserveRuleText(rule, drivers) {
 
 // The rule of one reserve, in the drawer under their roster row.
 //
-// A reserve signs up on Division 2's grid and gets into Division 1 by taking
-// over a Division 1 seat on the Driver Market. Two separate things here,
+// A reserve gets into a race by taking over a seat on the Driver Market, in
+// Division 1 or Division 2. Two separate things here,
 // because the league asked for both: whether they may take a Division 1 seat
 // (never, or only for a round one of the named drivers is missing from), and
 // whether they may take over a seat at all. Saved the moment it is changed,
@@ -4457,7 +4457,7 @@ function ReserveRuleEditor({ d, seated, busy, onPatch }) {
             className="input w-auto py-1 text-xs"
             value={rule.div1 || ""}
             disabled={busy}
-            title="Whether this reserve can put their hand up for a Division 1 seat on the Driver Market. Signing up for a round is not affected: that puts a reserve on Division 2's grid. In a season with one division every seat is a Division 1 seat."
+            title="Whether this reserve can put their hand up for a Division 1 seat on the Driver Market. Division 2 seats are not affected. In a season with one division every seat is a Division 1 seat."
             onChange={(e) => save({ div1: e.target.value })}
           >
             <option value="">Can take one</option>
@@ -4549,10 +4549,10 @@ function ReserveRules({ drivers, busy, onSet }) {
     <div className="card mt-6 space-y-4 p-5">
       <CardHead eyebrow="Drivers" title="Reserve rules" />
       <p className="text-xs leading-relaxed text-light">
-        A reserve who signs up for a round is on Division 2&rsquo;s grid. They race in Division 1 only when they
-        take over a Division 1 seat on the Driver Market. This is who can&rsquo;t do that, and who can&rsquo;t take
-        over a seat at all. Set it in the roster above: open a reserve&rsquo;s row with the arrow at its end. A rule
-        only stops what the driver does themselves. You can still put them in a seat by hand.
+        In a season with Division 2, a reserve can&rsquo;t sign up for a round. They get in by taking over a seat
+        on the Driver Market, in Division 1 or Division 2. This is who can&rsquo;t take a Division 1 seat, and who
+        can&rsquo;t take over a seat at all. Set it in the roster above: open a reserve&rsquo;s row with the arrow
+        at its end. A rule only stops what the driver does themselves. You can still put them in a seat by hand.
       </p>
 
       <label className="flex cursor-pointer items-start gap-2.5 text-sm text-dark">
@@ -4566,9 +4566,9 @@ function ReserveRules({ drivers, busy, onSet }) {
         <span>
           <span className="font-semibold">New drivers can&rsquo;t take a Division 1 seat</span>
           <span className="mt-0.5 block text-xs leading-relaxed text-light">
-            Off: a new driver can put their hand up for any seat, like every reserve. On: somebody who signs
-            themselves up starts with this rule, in a season that runs Division 2, until you lift it in their row.
-            Drivers who are already on the list keep what they have.
+            Somebody who signs themselves up is put on the reserve list and starts with this rule, in a season that
+            runs Division 2. They can take Division 2 seats. Lift the rule in their row when they are ready for
+            Division 1. Drivers who are already on the list keep what they have.
           </span>
         </span>
       </label>
@@ -6270,7 +6270,7 @@ function Seasons({ gotoRaces, gotoInSeason }) {
       setMsg(
         s.division2
           ? `${s.name} runs one division again.`
-          : `${s.name} now runs Division 2. Give it teams on the Teams tab (tier "Division 2") and put newcomers in them. Reserves stay in the one Reserve pool: they sign up on Division 2's grid and race in Division 1 by taking over a Division 1 seat on the Driver Market.`
+          : `${s.name} now runs Division 2. Give it teams on the Teams tab (tier "Division 2") and put newcomers in them. Reserves stay in the one Reserve pool and get into a race by taking over a seat on the Driver Market, in either division.`
       );
       reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }

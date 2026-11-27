@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  readReserveRules, writeReserveRule, validCoverIds, driversOut, seatBlock,
+  readReserveRules, writeReserveRule, validCoverIds, driversOut, seatBlock, signUpBlock,
   applyNewDriverRule, writeNewDriverRule, readNewDriverRule, carryReserveRule,
 } from "./reserveRules.js";
 
@@ -50,6 +50,8 @@ function db({ division2 = true } = {}) {
         state.rsvps.filter((r) => r.raceId === where.raceId && r.status === where.status && inList(where, "driverId", r.driverId)),
     },
     seatOffer: {
+      findFirst: async ({ where }) =>
+        state.offers.find((o) => o.raceId === where.raceId && o.filledById === where.filledById && o.status === where.status) || null,
       findMany: async ({ where }) =>
         state.offers.filter((o) => o.raceId === where.raceId && o.status !== where.status.not && inList(where, "driverId", o.driverId)),
     },
@@ -168,32 +170,50 @@ describe("no subbing in", () => {
   });
 });
 
-describe("new drivers", () => {
-  it("can take any seat unless the admins say otherwise", async () => {
+describe("signing up", () => {
+  it("is not for a reserve in a season with two divisions: the Driver Market is", async () => {
     const prisma = db();
-    expect((await readNewDriverRule(prisma)).noDiv1).toBe(false);
-    expect(await applyNewDriverRule(prisma, { id: "guest", seasonId: "s9" })).toBe(false);
-    expect((await readReserveRules(prisma, ["guest"])).size).toBe(0);
+    expect(await signUpBlock(prisma, race, prisma.state.drivers.guest)).toMatch(/through the Driver Market/);
   });
 
-  it("start without Division 1 seats once the admins switch that on, in a season with Division 2", async () => {
+  it("is open to a reserve who was given a seat for the race", async () => {
     const prisma = db();
-    await writeNewDriverRule(prisma, { noDiv1: true });
+    prisma.state.offers.push({ raceId: "r5", driverId: "bot", filledById: "guest", status: "FILLED" });
+    expect(await signUpBlock(prisma, race, prisma.state.drivers.guest)).toBeNull();
+    expect(await signUpBlock(prisma, { ...race, id: "r6" }, prisma.state.drivers.guest)).not.toBeNull();
+  });
+
+  it("is open to everybody with a seat of their own, in either division", async () => {
+    const prisma = db();
+    expect(await signUpBlock(prisma, race, prisma.state.drivers.bot)).toBeNull();
+    expect(await signUpBlock(prisma, race, prisma.state.drivers.dee)).toBeNull();
+  });
+
+  it("is open to a reserve in a season with one division, and at a special event", async () => {
+    expect(await signUpBlock(db({ division2: false }), race, db().state.drivers.guest)).toBeNull();
+    expect(await signUpBlock(db(), { ...race, isSpecialEvent: true }, db().state.drivers.guest)).toBeNull();
+  });
+});
+
+describe("new drivers", () => {
+  it("start without Division 1 seats in a season with Division 2", async () => {
+    const prisma = db();
+    expect((await readNewDriverRule(prisma)).noDiv1).toBe(true);
     expect(await applyNewDriverRule(prisma, { id: "guest", seasonId: "s9" })).toBe(true);
     expect((await readReserveRules(prisma, ["guest"])).get("guest").div1).toBe("never");
+    // Division 2 seats are what is open to them.
+    expect(await seatBlock(prisma, race, d2Seat, prisma.state.drivers.guest)).toBeNull();
+    expect(await seatBlock(prisma, race, d1Seat, prisma.state.drivers.guest)).toMatch(/Division 1 seat/);
   });
 
   it("are left alone in a season with one division", async () => {
     const prisma = db({ division2: false });
-    await writeNewDriverRule(prisma, { noDiv1: true });
     expect(await applyNewDriverRule(prisma, { id: "guest", seasonId: "s9" })).toBe(false);
     expect((await readReserveRules(prisma, ["guest"])).size).toBe(0);
   });
 
-  it("are left alone again once the admins switch it off", async () => {
+  it("are left alone once the admins switch it off", async () => {
     const prisma = db();
-    await writeNewDriverRule(prisma, { noDiv1: true });
-    expect((await readNewDriverRule(prisma)).noDiv1).toBe(true);
     await writeNewDriverRule(prisma, { noDiv1: false });
     expect((await readNewDriverRule(prisma)).noDiv1).toBe(false);
     expect(await applyNewDriverRule(prisma, { id: "guest", seasonId: "s9" })).toBe(false);

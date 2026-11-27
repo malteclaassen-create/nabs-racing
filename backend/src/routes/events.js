@@ -21,7 +21,7 @@ import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
 import { WAITLIST, seatsFor, promoteFromWaitlist } from "../lib/waitlist.js";
 import { seasonHasDivision2, readDivision2Drivers, readReserveDrivers, readCapacity2, DIV2_TIER } from "../lib/divisions.js";
 import { offerSeatOnDecline, reclaimSeat } from "../lib/seatAuto.js";
-import { carryReserveRule } from "../lib/reserveRules.js";
+import { carryReserveRule, signUpBlock } from "../lib/reserveRules.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import {
   isEventRace, readCars, writeCar, numberTakenBy, parseCarNumber, parseLiveryUrl, parseLiveryOld, liveryDeadline, carLocked,
@@ -554,6 +554,21 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
       if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
     }
 
+    // A reserve in a season with two divisions gets into a race through the
+    // Driver Market, not by signing up (lib/reserveRules.js): they can say no
+    // here and nothing else. Pressing the answer they already have changes
+    // nothing and is not refused; an answer from before this rule stays until
+    // somebody changes it.
+    if (driver && status !== "DECLINED") {
+      const current = await prisma.raceRsvp.findUnique({
+        where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+        select: { status: true },
+      });
+      const team = driver.team || (await prisma.team.findUnique({ where: { id: driver.teamId } }));
+      const blocked = current?.status === status ? null : await signUpBlock(prisma, race, { ...driver, team });
+      if (blocked) return res.status(403).json({ error: blocked, notAllowed: true });
+    }
+
     // A special event's car (lib/eventCars.js). Checked before anything is
     // written, so a taken number leaves the answer as it was. A driver who
     // declines needs no car; everybody else needs a number, either one they
@@ -587,15 +602,14 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // this existed, where nobody is pushed out.
     // Somebody taking their own seat back is not queueing for one: the car was
     // held for them the whole time.
-    // A newcomer has no row yet, but will be a reserve, and a reserve signs up
-    // on Division 2's grid in a season that runs it (lib/divisions.js).
-    const seats = await seatsFor(
-      prisma,
-      race,
-      driver?.id ?? null,
-      newcomer && (await seasonHasDivision2(prisma, race.seasonId)) ? { division: 2 } : {}
-    );
-    if (status === "ACCEPTED" && !reclaimed && seats.mine !== "ACCEPTED" && !seats.free) {
+    //
+    // A newcomer has no row yet, but will be a reserve, and in a season with
+    // two divisions a reserve takes no place on a grid by signing up
+    // (`viaMarket`, settled right after their driver is made further down). So
+    // a full grid is not what they are told about.
+    const viaMarket = newcomer && !race.isSpecialEvent && (await seasonHasDivision2(prisma, race.seasonId));
+    const seats = await seatsFor(prisma, race, driver?.id ?? null);
+    if (status === "ACCEPTED" && !reclaimed && seats.mine !== "ACCEPTED" && !seats.free && !viaMarket) {
       return res.status(409).json({
         error: `The grid is full (${seats.accepted}/${seats.capacity}). Join the waiting list and you move up as soon as a seat comes free`,
         gridFull: true,
@@ -629,6 +643,26 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
       // `recognised`: not new at all. Their Steam account led to the driver
       // they raced as before (lib/newcomers.js recogniseBySteam).
       joined = { driverId: out.driver.id, driverName: out.driver.name, ...(out.recognised ? { recognised: true } : {}) };
+    }
+
+    // The newcomer is a reserve now, and in a season with two divisions a
+    // reserve gets into a race through the Driver Market (lib/reserveRules.js).
+    // Their driver stands: they are on the reserve list, the admins hear about
+    // them, and the page says where to go from here. Nothing is written for
+    // the race. Somebody Steam recognised as a driver with a seat is not a
+    // reserve; their answer goes on, past the grid check that was held back.
+    if (viaMarket && want !== "DECLINED") {
+      const team = driver.team || (await prisma.team.findUnique({ where: { id: driver.teamId } }));
+      const blocked = await signUpBlock(prisma, race, { ...driver, team });
+      if (blocked) return res.json({ ok: true, joined, notSignedUp: blocked });
+      const own = await seatsFor(prisma, race, driver.id);
+      if (want === "ACCEPTED" && own.mine !== "ACCEPTED" && !own.free) {
+        return res.status(409).json({
+          error: `The grid is full (${own.accepted}/${own.capacity}). Join the waiting list and you move up as soon as a seat comes free`,
+          gridFull: true,
+          joined,
+        });
+      }
     }
 
     // Written only when it actually changes. RaceRsvp.updatedAt is the waiting

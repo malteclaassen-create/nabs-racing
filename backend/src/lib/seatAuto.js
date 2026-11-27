@@ -19,9 +19,13 @@
 // ---------------------------------------------------------------------------
 import { notifySeatOffered, notifySeatReclaimed } from "./notifications.js";
 import { seatBlock } from "./reserveRules.js";
+import { DIV2_TIER } from "./divisions.js";
 
-// Same rule the market itself uses: only a Tier 1/2 seat is a seat to offer.
-const hasRealSeat = (team) => team?.tier === 1 || team?.tier === 2;
+// Same rule the market itself uses: a seat to offer is a seat in a team, Tier
+// 1, Tier 2 or Division 2. Division 2 was left out at first; since reserves
+// get into a race through the market only (lib/reserveRules.js), a Division 2
+// driver's no has to put their car up too, or nobody could stand in for them.
+const hasRealSeat = (team) => team?.tier === 1 || team?.tier === 2 || team?.tier === DIV2_TIER;
 
 // The seat a driver has on the market for one race, if any.
 export function standingOffer(prisma, raceId, driverId) {

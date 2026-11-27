@@ -15,8 +15,8 @@ import { eventSeasonIds } from "./events.js";
 import { notifySeatOffered, notifySeatFilled, notifyAdminsSeatDropped } from "../lib/notifications.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
 import { promoteFromWaitlist } from "../lib/waitlist.js";
-import { readReserveRules, seatBlock } from "../lib/reserveRules.js";
-import { seasonHasDivision2 } from "../lib/divisions.js";
+import { readReserveRules, seatBlock, signUpBlock } from "../lib/reserveRules.js";
+import { seasonHasDivision2, DIV2_TIER } from "../lib/divisions.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -57,8 +57,10 @@ async function requireDriverForSeason(req, res, seasonId) {
   return row;
 }
 
-// A driver can offer a seat only if they hold a real (tier 1/2) seat.
-const hasRealSeat = (driver) => driver.team?.tier === 1 || driver.team?.tier === 2;
+// A driver can offer a seat only if they hold a real one: Tier 1, Tier 2 or a
+// Division 2 team's.
+const hasRealSeat = (driver) =>
+  driver.team?.tier === 1 || driver.team?.tier === 2 || driver.team?.tier === DIV2_TIER;
 // Only reserve-roster drivers (tier 0) can take a seat over.
 const isReserve = (driver) => driver.team?.tier === 0;
 
@@ -171,12 +173,22 @@ router.get("/", async (req, res, next) => {
     // these drivers is out" depends on who has said no to that race. The
     // server refuses the hand-raise anyway; this is so the page shows the
     // reason instead of a button that answers with one.
+    //
+    // `signUpBlock` is the same for the sign-up itself: a reserve in a season
+    // with two divisions gets in through the market, not by pressing Accept.
     const blockOf = new Map(); // offerId -> sentence
+    const signUpBlockOf = new Map(); // raceId -> sentence
     for (const [sid, d] of rowBySeason) {
       if (!isReserve(d)) continue;
+      const twoDivisions = await seasonHasDivision2(prisma, sid);
+      if (twoDivisions) {
+        for (const race of races.filter((r) => r.seasonId === sid)) {
+          const why = await signUpBlock(prisma, race, d, { twoDivisions });
+          if (why) signUpBlockOf.set(race.id, why);
+        }
+      }
       const rule = (await readReserveRules(prisma, [d.id])).get(d.id);
       if (!rule) continue;
-      const twoDivisions = await seasonHasDivision2(prisma, sid);
       for (const race of races.filter((r) => r.seasonId === sid)) {
         for (const o of race.seatOffers) {
           if (o.status !== "OPEN") continue;
@@ -197,7 +209,9 @@ router.get("/", async (req, res, next) => {
         number: race.number,
         track: race.track,
         date: race.date,
-        me: meBySeason.get(race.seasonId) || null,
+        me: meBySeason.get(race.seasonId)
+          ? { ...meBySeason.get(race.seasonId), signUpBlock: signUpBlockOf.get(race.id) || null }
+          : null,
         offers: race.seatOffers.map((o) => ({ ...shapeOffer(o), myBlock: blockOf.get(o.id) || null })),
       })),
     });

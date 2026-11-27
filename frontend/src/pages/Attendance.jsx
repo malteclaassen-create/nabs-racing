@@ -112,11 +112,14 @@ export default function Attendance() {
   // Said once, right after the first answer made them a driver: "new" for a
   // fresh reserve, "back" when their Steam account led to the driver they
   // raced as before (lib/newcomers.js recogniseBySteam on the server).
+  // "held": a new driver in a season with two divisions. Their driver was made,
+  // but a reserve gets into a race through the Driver Market, so the answer
+  // itself was not taken.
   const [joinedNote, setJoinedNote] = useState(null);
   function tookAnswer(res) {
     if (!res?.joined) return;
     adoptDriver(res.joined);
-    setJoinedNote(res.joined.recognised ? "back" : "new");
+    setJoinedNote(res.notSignedUp ? "held" : res.joined.recognised ? "back" : "new");
   }
   async function requestSeat(raceId) {
     setError(null);
@@ -226,11 +229,12 @@ export default function Attendance() {
     autoFired.current = true;
     (async () => {
       try {
-        tookAnswer(await api.rsvp(race.id, driverId, wanted));
+        const res = await api.rsvp(race.id, driverId, wanted);
+        tookAnswer(res);
         // The market too: a newcomer's first answer made them a reserve, and
         // the market's idea of "me" was read before that.
         await Promise.all([events.reload(), market.reload()]);
-        setAutoAnswered(wanted);
+        if (!res?.notSignedUp) setAutoAnswered(wanted);
       } catch (e) {
         setError(e.message);
       } finally {
@@ -296,6 +300,13 @@ export default function Attendance() {
         <Notice kind="success">
           You&rsquo;re on the reserve list now, so you can answer every race from here. The admins look
           over new drivers and will get in touch on Discord if anything is missing.
+        </Notice>
+      )}
+      {joinedNote === "held" && (
+        <Notice kind="info">
+          You&rsquo;re on the reserve list now. Reserves get into a race through the Driver Market: when a seat
+          is free there, put your hand up for it and you are in once you are picked. The admins have been told
+          you&rsquo;re here.
         </Notice>
       )}
       {joinedNote === "back" && (

@@ -53,7 +53,8 @@ async function answersFor(prisma, raceId, division = null) {
 }
 
 // Which grid a driver lines up on for this race: 1 or 2. A reserve is on
-// Division 2's, unless they took over a Division 1 seat for this race.
+// Division 1's with a Division 1 seat for this race, and Division 2's with a
+// Division 2 seat or when an admin entered them by hand.
 export async function divisionForDriver(prisma, race, driverId) {
   if (!driverId || !race?.seasonId) return 1;
   return (await division2Grid(prisma, race)).has(driverId) ? 2 : 1;

@@ -16,9 +16,8 @@ import TeamLogo from "./TeamLogo.jsx";
 //
 // Where people start: the new season's copy of last season's team; the pool
 // for reserves and for drivers whose team did not carry on. There is one
-// Reserve pool for both divisions: a reserve signs up on Division 2's grid and
-// gets into a Division 1 race by taking over a Division 1 seat on the Driver
-// Market. Ticked to start
+// Reserve pool for both divisions: a reserve gets into a race by taking over a
+// seat on the Driver Market, in either division. Ticked to start
 // with: everybody who held a seat, and reserves who raced at least once.
 // Reserves who never drove start unticked and folded away at the bottom; the
 // attendance sign-up puts them back into the Reserve pool the first time they

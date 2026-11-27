@@ -21,9 +21,9 @@
 // of last season's teams carry on, in which division, which are new, and
 // whether the season runs Division 2 at all (lib/divisions.js). Division 2
 // teams are tier 3. There is ONE Reserve pool for both divisions: a reserve
-// signs up on Division 2's grid and races in Division 1 only by taking over a
-// Division 1 seat on the Driver Market (lib/divisions.js). The people list
-// then offers the new season's teams and the pool.
+// gets into a race by taking over a seat on the Driver Market, in either
+// division (lib/reserveRules.js). The people list then offers the new
+// season's teams and the pool.
 // Without a teams step (a season with no teams yet) the people step still
 // copies every team, as clone-roster did.
 // ---------------------------------------------------------------------------

@@ -12,14 +12,15 @@
 //     tier 1 or tier 2 therefore never sees one, and the Division 1 tables
 //     stay exactly what they were.
 //   * A driver is in Division 2 when their team is (Driver.tier follows the
-//     team, so 3 as well). There is ONE Reserve pool for both divisions, and
-//     a reserve races in Division 2: signing up for a round puts them on
-//     Division 2's grid (division2Grid). They race in Division 1 only on a
-//     night they took over a Division 1 driver's seat on the Driver Market
-//     (filledDivision1Seats); for that race they count on Division 1's grid.
-//     (League call, 2026-11-27. Before that it was the other way round: a
-//     reserve signed up on Division 1's grid.) The old Driver.division column
-//     (a Division 2 side of the pool) is no longer read.
+//     team, so 3 as well). There is ONE Reserve pool for both divisions. A
+//     reserve gets into a race by taking over a seat on the Driver Market
+//     (lib/reserveRules.js), and counts on the grid of that seat's division:
+//     Division 1's with a Division 1 seat (filledDivision1Seats), Division
+//     2's otherwise (division2Grid). "Otherwise" also covers a reserve an
+//     admin put on a grid by hand, and an answer from before this rule.
+//     (League call, 2026-11-27. Before that a reserve signed up on Division
+//     1's grid.) The old Driver.division column (a Division 2 side of the
+//     pool) is no longer read.
 //   * The Division 2 classification of a round sits on a hidden CHILD race row
 //     like a sprint's (Race.parentRaceId), told apart by Race.division = 2.
 //     The child is SPECIAL-typed and isSpecialEvent, so nothing that counts
@@ -115,9 +116,9 @@ export async function readReserveDrivers(prisma, seasonId) {
   }
 }
 
-// Everybody who lines up on Division 2's grid for one race: the Division 2
-// teams' drivers, and every reserve who has not taken over a Division 1 seat
-// for it. Empty for a season that runs one division. `race` needs id and
+// Everybody who would line up on Division 2's grid for one race: the Division
+// 2 teams' drivers, and every reserve who has not taken over a Division 1 seat
+// for it (so one with a Division 2 seat, and one an admin entered by hand). Empty for a season that runs one division. `race` needs id and
 // seasonId.
 export async function division2Grid(prisma, race) {
   if (!race?.seasonId || !(await seasonHasDivision2(prisma, race.seasonId))) return new Set();

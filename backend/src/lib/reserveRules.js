@@ -1,13 +1,16 @@
 // ---------------------------------------------------------------------------
-// Which seats a reserve may take over, set per driver by an admin.
+// How a reserve gets into a race, and which seats they may take.
 //
-// A reserve signs up on Division 2's grid (lib/divisions.js) and gets into
-// Division 1 only by taking over a Division 1 driver's seat on the Driver
-// Market. The league asked for a say in who can do that (Steve, 2026-11-27):
-// some reserves should not be able to get into Division 1, some should not be
-// able to sub in at all, and some only when a particular driver is missing
-// ("Guest and Mitch only if 13bot, Siggsta, Timmis or Takoda doesn't race").
-// New drivers most of all.
+// The league's rule for a season with two divisions (Steve, 2026-11-27): a
+// reserve does not sign up for a round. They get in through the Driver Market
+// only, by taking over the seat of a driver who is not racing, in Division 1
+// or Division 2 (signUpBlock below). A season with one division keeps the old
+// way: a reserve signs up and takes a free place on the grid.
+//
+// On top of that an admin has a say per driver in WHICH seats: some reserves
+// should not get into Division 1, some should not sub in at all, and some only
+// when a particular driver is missing ("Guest and Mitch only if 13bot,
+// Siggsta, Timmis or Takoda doesn't race"). New drivers most of all.
 //
 // Three things on a reserve's row:
 //
@@ -23,21 +26,19 @@
 // Driver Market for it (which is what a full-time driver's no turns into,
 // lib/seatAuto.js). Somebody who has not answered yet is not out.
 //
-// The rules only ever bite for a reserve (a tier-0 team) and only on a
-// championship round. Signing up is never refused by them: that is Division
-// 2's grid, open to every reserve. A season with one division has only
-// Division 1 seats, so "never" there means no seat at all.
+// All of it only ever bites for a reserve (a tier-0 team) and only on a
+// championship round. A season with one division has only Division 1 seats, so
+// "never" there means no seat at all.
 //
 // What an admin does by hand is not checked: putting a reserve into a seat on
-// the admin's Driver Market tab is the admin deciding, the same way the grid
-// size does not apply there (lib/waitlist.js). And nobody loses a seat to a
-// rule set later, or because the driver they cover for says yes after all.
+// the admin's Driver Market tab, or onto a grid in "Grid & waiting list", is
+// the admin deciding, the same way the grid size does not apply there
+// (lib/waitlist.js). And nobody loses a seat or an answer they already have.
 //
-// New drivers: a newcomer who signs themselves up (lib/newcomers.js) is a
-// reserve like any other and can put their hand up for every seat (league
-// call, 2026-11-27). The admins can switch on that newcomers start with
-// "never" in a season that runs Division 2 (Setting "reserve_rules"); an
-// admin then lifts the rule when they are ready for a Division 1 seat.
+// New drivers: a newcomer who signs themselves up (lib/newcomers.js) starts
+// with "never" in a season that runs Division 2, so Division 2 seats are what
+// is open to them, unless the admins switched that off (Setting
+// "reserve_rules"). An admin lifts the rule when they are ready for Division 1.
 //
 // Raw-SQL columns (ensureAppSchema, migration reserve_rules), so every read
 // and write goes through here.
@@ -152,14 +153,14 @@ export async function carryReserveRule(prisma, fromDriverId, toDriver) {
 
 // --- New drivers ------------------------------------------------------------
 
-// Whether a newcomer starts with "no Division 1 seat". Default: no.
+// Whether a newcomer starts with "no Division 1 seat". Default: yes.
 export async function readNewDriverRule(prisma) {
   try {
     const row = await prisma.setting.findUnique({ where: { key: SETTING_KEY } });
     const v = row?.value ? JSON.parse(row.value) : null;
-    return { noDiv1: v?.newDriversNoDiv1 === true };
+    return { noDiv1: v?.newDriversNoDiv1 !== false };
   } catch {
-    return { noDiv1: false };
+    return { noDiv1: true };
   }
 }
 
@@ -215,9 +216,25 @@ async function coverNames(prisma, ids) {
   return ids.map((id) => nameOf.get(id)).filter(Boolean);
 }
 
-// --- The verdict ---------------------------------------------------------------
+// --- The verdicts --------------------------------------------------------------
 
 const isReserve = (driver) => (driver?.team ? driver.team.tier === 0 : driver?.tier === 0);
+
+// May this driver put themselves on the grid of this race? Not a reserve in a
+// season with two divisions: they get in through the Driver Market. Returns
+// the sentence that says so, or null when they may. Somebody who was GIVEN a
+// seat for the race is on the grid by that, and is not stopped from pressing
+// the answer they already have.
+export async function signUpBlock(prisma, race, driver, { twoDivisions = null } = {}) {
+  if (!race?.id || !driver?.id || race.isSpecialEvent || !isReserve(driver)) return null;
+  if (!(twoDivisions ?? (await seasonHasDivision2(prisma, race.seasonId)))) return null;
+  const seated = await prisma.seatOffer.findFirst({
+    where: { raceId: race.id, filledById: driver.id, status: "FILLED" },
+    select: { id: true },
+  });
+  if (seated) return null;
+  return "Reserves get into a race through the Driver Market. Put your hand up for a free seat there, and you are in once you are picked";
+}
 
 // May this reserve take over this seat? Returns null when they may, or the
 // sentence that tells them why not. `driver` needs id, seasonId and its team
@@ -229,7 +246,8 @@ const isReserve = (driver) => (driver?.team ? driver.team.tier === 0 : driver?.t
 export async function seatBlock(prisma, race, team, driver, { rule = null, twoDivisions = null } = {}) {
   if (!race?.id || !driver?.id || race.isSpecialEvent || !isReserve(driver)) return null;
   const mine = rule || (await readReserveRule(prisma, driver.id));
-  const ask = "The admins set that for you, so ask them on Discord if it looks wrong";
+  // Worded for a new driver too, whose rule nobody set by hand.
+  const ask = "The admins decide who can, so ask them on Discord if it looks wrong";
   if (mine.noSubIn) return `You can't take over a seat. ${ask}`;
   // A Division 2 seat is open to every reserve who may sub in at all.
   if (team?.tier === DIV2_TIER || !mine.div1) return null;

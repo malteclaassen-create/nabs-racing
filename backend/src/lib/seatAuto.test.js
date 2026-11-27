@@ -68,6 +68,12 @@ describe("declining puts the seat up", () => {
     expect(notifySeatOffered).toHaveBeenCalledOnce();
   });
 
+  it("opens an offer for a Division 2 driver too", async () => {
+    const prisma = db();
+    await offerSeatOnDecline(prisma, race, { id: "dee", teamId: "d2", team: { id: "d2", tier: 3, name: "Porsche" } });
+    expect(prisma.state.offers).toMatchObject([{ raceId: "race8", driverId: "dee", teamId: "d2", status: "OPEN" }]);
+  });
+
   it("puts it up, it does not hand it to anybody", async () => {
     const prisma = db();
     await offerSeatOnDecline(prisma, race, pizd);
