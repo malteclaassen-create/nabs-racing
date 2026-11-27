@@ -7,6 +7,7 @@ import PitWindowPanel from "./PitWindowPanel.jsx";
 import { circuitForLive } from "../data/circuits.js";
 import { aerialForTrack } from "../data/aerialMaps.js";
 import SlidingTabs from "./SlidingTabs.jsx";
+import SuggestHighlight from "./SuggestHighlight.jsx";
 
 // Live track map. Two modes:
 //
@@ -56,6 +57,9 @@ import SlidingTabs from "./SlidingTabs.jsx";
 // pointing at one (or tapping it) opens a card with the title, the story and
 // the picture. Real map only: the outline's start line and direction are not
 // the circuit's, and a moment pinned to the wrong corner is worse than none.
+// Beside the button, "Suggest a highlight" lets anyone tell the admins about a
+// moment that is missing (SuggestHighlight.jsx); it is there for every circuit
+// that has corners to pin one to, also while none has a highlight yet.
 //
 // AC map.pngs draw the circuit on transparency: dark asphalt with white edges.
 // That reads on a dark card as-is; the light theme inverts the image so the
@@ -678,12 +682,14 @@ function cornerLabel(c) {
   return [c.turn != null ? `T${c.turn}` : "", c.name || ""].filter(Boolean).join(" ");
 }
 
-// A circuit's corners for the map: asked once per track, by the AC id first
-// and by the track's name when that spelling places nothing.
+// A circuit's corners for the map, and the name the site knows it by: asked
+// once per track, by the AC id first and by the track's name when that
+// spelling places nothing.
+const NO_PROFILE = { corners: NO_CORNERS, name: "" };
 function useCorners(trackId, track, layout) {
-  const [corners, setCorners] = useState([]);
+  const [profile, setProfile] = useState(NO_PROFILE);
   useEffect(() => {
-    setCorners([]);
+    setProfile(NO_PROFILE);
     const names = [...new Set([trackId, track].filter(Boolean))];
     if (!names.length) return undefined;
     let live = true;
@@ -693,7 +699,7 @@ function useCorners(trackId, track, layout) {
           const res = await api.trackProfile(name, layout || "");
           if (!live) return;
           if (Array.isArray(res?.corners) && res.corners.length) {
-            setCorners(res.corners);
+            setProfile({ corners: res.corners, name: typeof res.name === "string" ? res.name : "" });
             return;
           }
         } catch {
@@ -705,7 +711,7 @@ function useCorners(trackId, track, layout) {
       live = false;
     };
   }, [trackId, track, layout]);
-  return corners;
+  return profile;
 }
 
 // A five-pointed star around the origin, as an SVG points list.
@@ -1433,9 +1439,11 @@ export default function LiveTrackMap({ track, trackId = null, layout = "", cars,
   // Highlights: the corners with a moment from the past, shown when the
   // viewer turns them on (remembered on this device). `tipAt` is the corner whose card is open,
   // `pinned` whether a tap opened it (it then stays until the next tap).
-  const allCorners = useCorners(trackId, track, layout);
+  const { corners: allCorners, name: circuitName } = useCorners(trackId, track, layout);
   // Placed along the real map's own line, so only once that is there.
   const corners = useMemo(() => (real && line ? allCorners.filter(hasHighlight) : NO_CORNERS), [real, line, allCorners]);
+  // A missing highlight can be suggested wherever one could be shown.
+  const canSuggest = !!(real && line) && allCorners.length > 0;
   const [cornersOn, setCornersOn] = useState(() => {
     try {
       return localStorage.getItem(CORNERS_KEY) === "1";
@@ -1552,7 +1560,7 @@ export default function LiveTrackMap({ track, trackId = null, layout = "", cars,
       {focusedCar && cockpit && hud("mt-2 flex shrink-0 sm:hidden")}
       {/* Under the map, not on it: a control in a corner of the map sat on top
           of whichever of the circuit's corners is drawn there. */}
-      {(corners.length > 0 || aerialAvailable) && (
+      {(canSuggest || aerialAvailable) && (
         <div className="mt-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-1">
           {corners.length > 0 && (
             <button
@@ -1573,6 +1581,7 @@ export default function LiveTrackMap({ track, trackId = null, layout = "", cars,
               Point at a star or tap it
             </span>
           )}
+          {canSuggest && <SuggestHighlight trackName={circuitName || track || ""} corners={allCorners} labelOf={cornerLabel} />}
           {aerialAvailable && (
             <div className="ml-auto" role="group" aria-label="Map background">
               <SlidingTabs

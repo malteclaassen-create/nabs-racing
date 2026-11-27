@@ -3267,7 +3267,9 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, o
 
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") leave();
+      // A dialog opened from the board (the map's "Suggest a highlight") takes
+      // the Escape for itself; the board stays.
+      if (e.key === "Escape" && !document.querySelector('[role="dialog"][aria-modal="true"]')) leave();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

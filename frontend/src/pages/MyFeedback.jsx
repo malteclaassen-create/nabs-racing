@@ -24,7 +24,7 @@ import { ReplyImages, ImagePicker, acceptImages, pastedImages } from "../compone
 // evening has neither. Any signed-in member can open this one.
 // ---------------------------------------------------------------------------
 
-const KIND_LABEL = { BUG: "Bug report", IDEA: "Idea", OTHER: "Feedback" };
+const KIND_LABEL = { BUG: "Bug report", IDEA: "Idea", HIGHLIGHT: "Highlight suggestion", OTHER: "Feedback" };
 
 // What the admins' filing means for the person waiting on an answer. NEW gets no
 // pill: "we have not looked at it yet" is not news worth a badge.
