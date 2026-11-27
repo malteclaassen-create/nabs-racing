@@ -24,13 +24,40 @@ const { recapMode, recapVisibleTo, pendingRecapRace, seenRecapRaceId, weekendPoi
 // classification (null = not imported yet) and `sprintResults` how many rows
 // that classification holds — the three things that say whether a sprint
 // weekend has finished arriving.
-function fakePrisma({ setting = null, drivers = [], race = null, seen = null, format = null, sprintChild = null, sprintResults = 0 } = {}) {
+//
+// Division 2: `division2` switches it on for the season, `div2Seats` are the
+// driver rows with a Division 2 seat, `div2Child` the id of the round's
+// Division 2 classification, and `results` says who is in which
+// classification ({ raceId: [driverId, ...] }).
+function fakePrisma({
+  setting = null,
+  drivers = [],
+  race = null,
+  seen = null,
+  format = null,
+  sprintChild = null,
+  sprintResults = 0,
+  division2 = false,
+  div2Seats = [],
+  div2Child = null,
+  results = null,
+} = {}) {
   return {
     setting: { findUnique: vi.fn(async () => (setting == null ? null : { value: setting })) },
     driver: { findMany: vi.fn(async () => drivers) },
     race: { findFirst: vi.fn(async () => race) },
-    raceResult: { count: vi.fn(async () => sprintResults) },
+    raceResult: {
+      count: vi.fn(async ({ where } = {}) => {
+        if (!results) return sprintResults;
+        const rows = results[where?.raceId] || [];
+        const only = where?.driverId?.in;
+        return only ? rows.filter((id) => only.includes(id)).length : rows.length;
+      }),
+    },
     $queryRawUnsafe: vi.fn(async (sql) => {
+      if (sql.includes('"division2"')) return [{ division2: division2 ? 1 : 0 }];
+      if (sql.includes('"Team"')) return div2Seats.map((id) => ({ id }));
+      if (sql.includes('"division" = 2')) return div2Child && race ? [{ id: div2Child, parentRaceId: race.id }] : [];
       if (sql.includes('"raceFormat"')) return format && race ? [{ id: race.id, raceFormat: format }] : [];
       // readSprintChildren; readParentIds is the one with IS NOT NULL.
       if (sql.includes('"parentRaceId"')) {
@@ -189,5 +216,64 @@ describe("what the round paid, race by race", () => {
   it("falls back to the classification when the standings have no cell for the round", () => {
     expect(weekendPoints(null, { points: 18, fastestLap: 1 })).toMatchObject({ isSprintWeekend: false, feature: 18, featureFastestLap: 1, total: 18 });
     expect(weekendPoints(null, null)).toMatchObject({ feature: 0, sprint: null, total: 0 });
+  });
+});
+
+// A season with Division 2 runs two races a round, saved one after the other.
+// A recap is shown once, so everybody has to be sent the one of the race they
+// were in, and nobody one before it is known which that is.
+describe("a round with a Division 2 race", () => {
+  const drivers = [{ id: "d1", seasonId: "season-9" }];
+  const race = { id: "race-1", date: new Date(), seasonId: "season-9" };
+  const ask = (opts) => pendingRecapRace(fakePrisma({ drivers, race, division2: true, ...opts }), "d1", "discord-1");
+  const both = (main, second) => ({ div2Child: "race-1-d2", results: { "race-1": main, "race-1-d2": second } });
+
+  it("offers the round to a driver who is in the main race's result", async () => {
+    expect(await ask({ results: { "race-1": ["d1", "x"] } })).toBe("race-1");
+    expect(await ask(both(["d1", "x"], ["y"]))).toBe("race-1");
+  });
+
+  it("offers the Division 2 race to whoever is in its result", async () => {
+    expect(await ask({ div2Seats: ["d1"], ...both(["x"], ["d1", "y"]) })).toBe("race-1-d2");
+    // A reserve who took a Division 2 seat for the night.
+    expect(await ask(both(["x"], ["d1", "y"]))).toBe("race-1-d2");
+  });
+
+  it("sends a Division 2 driver nothing while only the main race is saved", async () => {
+    expect(await ask({ div2Seats: ["d1"], results: { "race-1": ["x"] } })).toBeNull();
+    expect(await ask({ div2Seats: ["d1"], ...both(["x"], []) })).toBeNull();
+  });
+
+  it("tells a Division 2 driver who sat out their own field's race, never the main one", async () => {
+    expect(await ask({ div2Seats: ["d1"], ...both(["x"], ["y"]) })).toBe("race-1-d2");
+    const old = { id: "race-1", date: new Date(Date.now() - 3 * 86_400_000), seasonId: "season-9" };
+    expect(await ask({ race: old, div2Seats: ["d1"], results: { "race-1": ["x"] } })).toBeNull();
+  });
+
+  it("lets a reserve wait until the Division 2 result is in", async () => {
+    expect(await ask({ results: { "race-1": ["x"] } })).toBeNull();
+    expect(await ask(both(["x"], []))).toBeNull();
+  });
+
+  it("offers the round to somebody who drove neither race, once both are in", async () => {
+    expect(await ask(both(["x"], ["y"]))).toBe("race-1");
+  });
+
+  it("stops waiting for a Division 2 result that never comes", async () => {
+    const old = { id: "race-1", date: new Date(Date.now() - 3 * 86_400_000), seasonId: "season-9" };
+    expect(await ask({ race: old, results: { "race-1": ["x"] } })).toBe("race-1");
+  });
+
+  it("does not offer a Division 2 recap that was seen", async () => {
+    expect(await ask({ seen: "race-1-d2", ...both(["x"], ["d1"]) })).toBeNull();
+  });
+
+  it("does not hold a Division 2 recap back for the main field's sprint", async () => {
+    expect(await ask({ format: "SPRINT_FEATURE", ...both(["x"], ["d1"]) })).toBe("race-1-d2");
+    expect(await ask({ format: "SPRINT_FEATURE", ...both(["d1"], ["y"]) })).toBeNull();
+  });
+
+  it("changes nothing in a season without Division 2", async () => {
+    expect(await ask({ division2: false, results: { "race-1": ["x"] } })).toBe("race-1");
   });
 });

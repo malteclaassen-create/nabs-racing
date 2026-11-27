@@ -13,6 +13,14 @@
 // points are shown as the two races that paid them rather than as one sum:
 // `weekend` carries the feature's share, the sprint's, and the total.
 //
+// A season with DIVISION 2 (lib/divisions.js) runs two fields a round, and a
+// driver is told the race THEY were in. Division 2's classification sits on a
+// hidden child row of the round; a recap of it is built from that row, with
+// the Division 2 table and the Division 2 teams around it, and carries the
+// child's id (race.division = 2). What belongs to the round rather than to one
+// classification (the rating's point, the NABS Tokens, the round number) is
+// read under the round, where the site files it for both fields.
+//
 // Nothing here is stored. Every number is derived on request from the same
 // services the site's pages use (the classification, the standings frozen at
 // a round, the rating replay, the token ledger), so the recap can never
@@ -26,6 +34,7 @@ import {
   getDriverStandings,
   getT1ConstructorStandings,
   getT2ConstructorStandings,
+  getDiv2ConstructorStandings,
 } from "../services/standingsService.js";
 import { getDriverRatingHistory } from "../services/ratingHistoryService.js";
 import { raceDetailPayload } from "../services/raceDetailService.js";
@@ -49,6 +58,7 @@ import { contactMapForRace } from "./contactMap.js";
 import { groupKeyFor } from "./trackKeys.js";
 import { cockpitContext } from "../services/cockpitService.js";
 import { cardCatalogueFor } from "./tokens.js";
+import { seasonHasDivision2, readDivision2Drivers, readDivisionChildren, readDivisionParents, DIV2_TIER } from "./divisions.js";
 
 export const RECAP_SETTING = "race_recap";
 export const RECAP_MODES = ["off", "admins", "all"];
@@ -63,6 +73,11 @@ const FRESH_DAYS = 10;
 // Well inside FRESH_DAYS, so a round that waits the whole time still has days
 // left in which to be offered.
 const HOLD_DAYS = 7;
+
+// How long somebody who is in neither result of a round with two fields waits
+// for the Division 2 result of the same night before the round is told
+// without it. See recapSubject.
+const DIV2_HOLD_DAYS = 2;
 
 // --- the switch -------------------------------------------------------------
 
@@ -162,10 +177,45 @@ async function weekendStillArriving(prisma, race) {
   return saved === 0;
 }
 
+// Which classification of the round this person is owed a recap of, in a
+// season with Division 2 (lib/divisions.js). The two results of the night are
+// saved one after the other, the main race on the round's own row, Division
+// 2's on a hidden child; a recap is shown once, so nobody may be sent the
+// wrong one, or one before it is known which is theirs.
+//
+//   in the main race's result      -> the round, as ever
+//   in Division 2's result         -> Division 2's race
+//   a Division 2 seat, not raced   -> Division 2's race once its result is in
+//                                     (the night told from the pit wall)
+//   anybody else (a reserve, a     -> the round, but only once Division 2's
+//   driver who sat the night out)     result is in: until then nobody can tell
+//                                     which race a reserve drove
+//
+// The last wait is bounded, for a round whose Division 2 race never comes.
+// Returns { id, division } or null = nothing to send yet. Like the sprint wait
+// above, this is only about the recap that is PUSHED.
+async function recapSubject(prisma, race, rowIds) {
+  const main = { id: race.id, division: 1 };
+  if (!rowIds.length || !(await seasonHasDivision2(prisma, race.seasonId))) return main;
+  const count = (raceId) =>
+    prisma.raceResult.count({ where: { raceId, driverId: { in: rowIds } } }).catch(() => 0);
+  if ((await count(race.id)) > 0) return main;
+  const childId = (await readDivisionChildren(prisma, [race.id])).get(race.id) || null;
+  const saved = childId ? await prisma.raceResult.count({ where: { raceId: childId } }).catch(() => 0) : 0;
+  const second = { id: childId, division: 2 };
+  if (saved > 0 && (await count(childId)) > 0) return second;
+  const div2Seats = await readDivision2Drivers(prisma, race.seasonId);
+  if (rowIds.some((id) => div2Seats.has(id))) return saved > 0 ? second : null;
+  if (saved > 0) return main;
+  const ran = race.date ? new Date(race.date).getTime() : null;
+  return ran != null && Date.now() - ran > DIV2_HOLD_DAYS * 86_400_000 ? main : null;
+}
+
 // The newest finished round of any PUBLIC season this person is in, if it is
-// recent enough, finished arriving, and they have not been shown it yet.
-// null = nothing to show.
-export async function pendingRecapRace(prisma, driverId, discordId) {
+// recent enough, finished arriving, and they have not been shown it yet:
+// { id, date }, or null = nothing to show. `id` is the classification the
+// recap is of: the round, or its Division 2 race for somebody of that field.
+export async function pendingRecap(prisma, driverId, discordId) {
   const rows = await personRows(prisma, driverId);
   const priv = await getPrivateSeasonIds(prisma);
   const seasonIds = [...new Set(rows.map((r) => r.seasonId).filter((id) => id && !priv.has(id)))];
@@ -180,12 +230,23 @@ export async function pendingRecapRace(prisma, driverId, discordId) {
       results: { some: {} },
     },
     orderBy: { date: "desc" },
-    select: { id: true, date: true },
+    select: { id: true, date: true, seasonId: true },
   });
   if (!race) return null;
-  if (await weekendStillArriving(prisma, race)) return null;
-  if ((await seenRecapRaceId(prisma, discordId)) === race.id) return null;
-  return race.id;
+  // The cheap question first: most asks come from somebody who has seen it.
+  const seen = await seenRecapRaceId(prisma, discordId);
+  if (seen === race.id) return null;
+  const rowIds = rows.filter((r) => r.seasonId === race.seasonId).map((r) => r.id);
+  const subject = await recapSubject(prisma, race, rowIds);
+  if (!subject || seen === subject.id) return null;
+  // Division 2 runs no sprint, so its recap has no second file to wait for.
+  if (subject.division === 1 && (await weekendStillArriving(prisma, race))) return null;
+  return { id: subject.id, date: race.date ?? null };
+}
+
+// The same answer as just the round's id.
+export async function pendingRecapRace(prisma, driverId, discordId) {
+  return (await pendingRecap(prisma, driverId, discordId))?.id ?? null;
 }
 
 // --- the recap itself -------------------------------------------------------
@@ -197,7 +258,9 @@ const pick = (row) => (row ? { position: row.position, total: row.total } : null
 // overridden champion show as they do on the site) and a frozen table
 // otherwise; `before` is always frozen at the previous round, and absent for
 // the season opener, which has no previous table.
-async function standingsAround(prisma, seasonId, number) {
+// `division` 2 reads the second field's own tables: its driver standings and
+// its teams (tier 3), which score from the Division 2 classifications.
+async function standingsAround(prisma, seasonId, number, division = 1) {
   const latest = await prisma.race.findFirst({
     where: { seasonId, isCompleted: true, isSpecialEvent: false, number: { not: null } },
     orderBy: { number: "desc" },
@@ -205,6 +268,15 @@ async function standingsAround(prisma, seasonId, number) {
   });
   const isLatest = latest?.number === number;
   const opts = isLatest ? {} : { upToRound: number };
+  if (division === 2) {
+    const [after, before, teams, teamsBefore] = await Promise.all([
+      getDriverStandings(prisma, seasonId, { ...opts, division: 2 }),
+      number > 1 ? getDriverStandings(prisma, seasonId, { upToRound: number - 1, division: 2 }) : null,
+      getDiv2ConstructorStandings(prisma, seasonId, opts),
+      number > 1 ? getDiv2ConstructorStandings(prisma, seasonId, { upToRound: number - 1 }) : null,
+    ]);
+    return { after, before, teams: { [DIV2_TIER]: [teams, teamsBefore] } };
+  }
   const [after, before, t1, t2] = await Promise.all([
     getDriverStandings(prisma, seasonId, opts),
     number > 1 ? getDriverStandings(prisma, seasonId, { upToRound: number - 1 }) : null,
@@ -227,12 +299,13 @@ async function standingsAround(prisma, seasonId, number) {
 // own pace, the stints. null without a file, or a driver without a Steam id.
 // `sprint` reads the sprint half's file of a sprint weekend; `race` then has
 // to be the archive's view of the child row (archiveView below), which
-// carries its event's round number.
-async function storyFor(prisma, race, rowId, ownRow, rows = [], sprint = false) {
+// carries its event's round number. `division` 2 reads the round's Division 2
+// file instead, with `race` the same kind of view of that child row.
+async function storyFor(prisma, race, rowId, ownRow, rows = [], sprint = false, division = 1) {
   if (!rowId || !ownRow || ownRow.status === "DNS") return null;
   const d = await prisma.driver.findUnique({ where: { id: rowId }, select: { steamId: true } }).catch(() => null);
   if (!d?.steamId) return null;
-  const json = findArchiveForRace(race, { sprint });
+  const json = findArchiveForRace(race, { sprint, division });
   if (!json) return null;
   const a = analyzeRaceFor(json, d.steamId);
   if (!a) return null;
@@ -305,17 +378,17 @@ async function paceTableFor(prisma, race, json, ownGuid, rows) {
 // who with. Read from the same archived file the stewards' reports use, so
 // only when that file is really this race's. The other car is named by the
 // league's own name where the Steam id is known, else by the game's.
-async function incidentsFor(prisma, race, rowId, ownRow, steamId, sprint = false) {
-  if (!rowId || !steamId || !findArchiveForRace(race, { sprint })) return null;
+async function incidentsFor(prisma, race, rowId, ownRow, steamId, sprint = false, division = 1) {
+  if (!rowId || !steamId || !findArchiveForRace(race, { sprint, division })) return null;
   let list = [];
   try {
-    list = contactsForDriver(race.season, race.number, steamId, sprint);
+    list = contactsForDriver(race.season, race.number, steamId, sprint, division);
   } catch {
     return null;
   }
   // Where they happened, on the circuit (lib/contactMap.js). Optional: without
   // the circuit's line the list below is the whole story, as it always was.
-  const map = await contactMapForRace(prisma, race, { steamId, sprint }).catch(() => null);
+  const map = await contactMapForRace(prisma, race, { steamId, sprint, division }).catch(() => null);
   const guids = [...new Set([...list.map((c) => c.other?.guid), ...(map?.mine || []).map((m) => m.other?.guid)].filter(Boolean))];
   const named = guids.length
     ? await prisma.driver.findMany({ where: { seasonId: race.seasonId, steamId: { in: guids } }, select: { id: true, name: true, steamId: true } })
@@ -359,7 +432,13 @@ async function incidentsFor(prisma, race, rowId, ownRow, steamId, sprint = false
 // was best, what the record at this track is, how long the run is, where
 // it points. All from stored results of the person's rows in this series,
 // so it works for any round, not just the newest.
-async function careerFor(prisma, race, rowId, ownRow, season) {
+//
+// A Division 2 race sits on a hidden child row with no round number, typed as
+// a special event (lib/divisions.js), and would be left out with the events.
+// It is the driver's race of that round, so it is counted as that round.
+// `subjectId` is the classification the recap is about (the round's own, or
+// its Division 2 race), which is the one left out of "before".
+async function careerFor(prisma, race, rowId, ownRow, season, subjectId = race.id) {
   if (!rowId || !ownRow) return null;
   const ctx = await cockpitContext(prisma, rowId).catch(() => null);
   if (!ctx) return null;
@@ -369,7 +448,22 @@ async function careerFor(prisma, race, rowId, ownRow, season) {
     where: { driverId: { in: ids } },
     include: { race: { select: { id: true, track: true, number: true, seasonId: true, date: true, isCompleted: true, isSpecialEvent: true } } },
   });
-  const rows = results.filter((r) => r.race?.isCompleted && !r.race.isSpecialEvent && r.race.id !== race.id);
+  const roundOfDiv2 = await readDivisionParents(prisma, results.map((r) => r.race?.id));
+  const rounds = roundOfDiv2.size
+    ? new Map(
+        (
+          await prisma.race
+            .findMany({ where: { id: { in: [...new Set(roundOfDiv2.values())] } }, select: { id: true, number: true } })
+            .catch(() => [])
+        ).map((r) => [r.id, r])
+      )
+    : new Map();
+  const rows = results
+    .map((r) => {
+      const round = rounds.get(roundOfDiv2.get(r.race?.id));
+      return round ? { ...r, race: { ...r.race, number: round.number, isSpecialEvent: false } } : r;
+    })
+    .filter((r) => r.race?.isCompleted && !r.race.isSpecialEvent && r.race.id !== subjectId);
   const thisSeasonNumber = race.season?.number ?? null;
   // Everything before this race: earlier seasons, and earlier rounds of this one.
   const before = rows.filter((r) => {
@@ -550,7 +644,12 @@ async function ratingMove(prisma, rowId, raceId) {
 // `demo` (the admin preview) fills in what the round WOULD pay when the
 // ledger has nothing for it yet (counting paused, or a round before the
 // start day), so the chapter can be looked at before the first real payout.
-async function pointsFor(prisma, req, discordId, race, rowId, halves, demo = false) {
+//
+// `rateRaceId` is where the round's multiplier was stamped for this driver:
+// under the classification that was saved, so Division 2's child row for a
+// Division 2 driver, while their ledger rows sit under the round like
+// everybody's (lib/tokens.js payRace).
+async function pointsFor(prisma, req, discordId, race, rowId, halves, demo = false, rateRaceId = race.id) {
   if (!discordId || !(await tokensVisibleTo(prisma, req))) return null;
   const earning = await isEarningOn(prisma);
   if (earning) await syncEarned(prisma, discordId).catch(() => {});
@@ -579,7 +678,7 @@ async function pointsFor(prisma, req, discordId, race, rowId, halves, demo = fal
     race: label(halfOfKey.get(r.refKey)) ?? null,
   }));
   const rateRow = await prisma
-    .$queryRawUnsafe(`SELECT "rate" FROM "TokenRaceRate" WHERE "raceId" = ? AND "driverId" = ?`, race.id, rowId)
+    .$queryRawUnsafe(`SELECT "rate" FROM "TokenRaceRate" WHERE "raceId" = ? AND "driverId" = ?`, rateRaceId, rowId)
     .catch(() => []);
   const rate = Number(rateRow[0]?.rate) || null;
   // The bonuses the weekend will still pay once the stewards are done with it,
@@ -687,6 +786,8 @@ async function cardFor(prisma, race, rowId, ownRow) {
 // The race row as the ARCHIVE knows a sprint classification: the child row
 // carries no round number and no season of its own, so it borrows its event's
 // (lib/cockpitArchive.js files the sprint under the round number, flagged).
+// The same view serves a Division 2 classification, filed under its round's
+// number in the division2/ folder.
 const archiveView = (child, parent) => ({ ...child, number: parent.number, season: parent.season, seasonId: parent.seasonId });
 
 // The sprint half of a sprint weekend, built to the same shape as the feature
@@ -737,6 +838,26 @@ async function sprintHalf(prisma, parent, childId, rowId, cell, steamId) {
   };
 }
 
+// The round's Division 2 classification, when THAT is the race to tell this
+// person about; null = the round's own. Their own race decides: whoever is in
+// the main race's result is told the main race and whoever is in Division 2's
+// is told that one, whichever id the recap was asked under. Somebody who drove
+// neither gets what was asked for (the Recap button on the Division 2 tab), or
+// else the field their seat is in.
+async function division2Race(prisma, round, rowId, asked, include) {
+  const childId = (await readDivisionChildren(prisma, [round.id])).get(round.id) || null;
+  if (!childId) return null;
+  const inResult = async (raceId) =>
+    !!rowId && (await prisma.raceResult.count({ where: { raceId, driverId: rowId } }).catch(() => 0)) > 0;
+  let second;
+  if (await inResult(round.id)) second = false;
+  else if (await inResult(childId)) second = true;
+  else if (asked) second = true;
+  else second = !!rowId && (await readDivision2Drivers(prisma, round.seasonId)).has(rowId);
+  if (!second) return null;
+  return prisma.race.findUnique({ where: { id: childId }, include }).catch(() => null);
+}
+
 // Build the recap of `raceId` for the person behind `driverId` (any of their
 // rows; the one in the race's season is used). `discordId` is the member the
 // points belong to; `req` decides what they may see. driverId null = a
@@ -745,16 +866,16 @@ async function sprintHalf(prisma, parent, childId, rowId, cell, steamId) {
 // Asked for the sprint half of a sprint weekend, this builds the WEEKEND: the
 // sprint is not a round of its own and its recap is the round's, with both
 // races in it.
+//
+// In a round with a Division 2 race the recap is of ONE of the two fields
+// (division2Race below decides which): `race` stays the round, `subject` is
+// the classification being told, which is the round itself or its Division 2
+// child.
 export async function buildRaceRecap(prisma, { raceId, driverId = null, discordId = null, req = null, demo = false }) {
   const parentId = (await readParentIds(prisma, [raceId])).get(raceId) || null;
-  const race = await prisma.race.findUnique({
-    where: { id: parentId || raceId },
-    include: { season: { select: { id: true, number: true, name: true, seriesId: true } } },
-  });
+  const seasonOf = { season: { select: { id: true, number: true, name: true, seriesId: true } } };
+  const race = await prisma.race.findUnique({ where: { id: parentId || raceId }, include: seasonOf });
   if (!race || !race.seasonId) return null;
-  const detail = await raceDetailPayload(prisma, race);
-  const rows = detail.results || [];
-  if (!rows.length) return null;
 
   // The person's row in THIS season, if they have one.
   let rowId = null;
@@ -762,6 +883,14 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
     const rows0 = await personRows(prisma, driverId);
     rowId = rows0.find((r) => r.seasonId === race.seasonId)?.id || null;
   }
+
+  const askedForDiv2 = !!parentId && (await readDivisionParents(prisma, [raceId])).has(raceId);
+  const div2 = await division2Race(prisma, race, rowId, askedForDiv2, seasonOf);
+  const subject = div2 || race;
+  const division = div2 ? 2 : 1;
+  const detail = await raceDetailPayload(prisma, subject);
+  const rows = detail.results || [];
+  if (!rows.length) return null;
   const ownRow = rowId ? rows.find((r) => r.driverId === rowId) || null : null;
 
   const finished = rows.filter((r) => r.status === "FINISHED" && r.position != null);
@@ -775,7 +904,7 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
   let teammates = [];
   const number = race.number;
   if (number != null && !race.isSpecialEvent) {
-    const around = await standingsAround(prisma, race.seasonId, number);
+    const around = await standingsAround(prisma, race.seasonId, number, division);
     // The field as the standings page shows it: reserves who never got in a
     // car are not in the championship, so they are neither counted nor ranked.
     const field = (table) => (table ? table.standings.filter((r) => !isIdleReserve(r)) : []);
@@ -929,19 +1058,23 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
   // The sprint of a sprint weekend, told the same way as the race above. It
   // is built before the NABS Tokens so the ledger can be asked about both
   // races at once.
-  const sprintId = (await readSprintChildren(prisma, [race.id])).get(race.id) || null;
+  // Division 2 runs no sprint: the sprint of the weekend is the main field's.
+  const sprintId = division === 2 ? null : (await readSprintChildren(prisma, [race.id])).get(race.id) || null;
   const sprint = sprintId ? await sprintHalf(prisma, race, sprintId, rowId, cell, steamRow?.steamId).catch(() => null) : null;
   // The ROUND ran a sprint whether or not this driver scored in it (a DNS
   // leaves no sprint share on their cell), and the page is telling them about
   // the weekend, not about their cell.
   if (sprint) weekend.isSprintWeekend = true;
+  // The Division 2 file as the archive knows it, under its round's number.
+  const filed = division === 2 ? archiveView(subject, race) : race;
   const halves = [
+    // A Division 2 driver's tokens are filed under the round as well.
     { raceId: race.id, label: sprint ? "Feature race" : "Race", own },
     ...(sprint ? [{ raceId: sprintId, label: "Sprint", own: sprint.you }] : []),
   ];
   const [rating, points, series, card, heroes, seasonHero, story, incidents, career] = await Promise.all([
     rowId && own?.raced ? ratingMove(prisma, rowId, race.id) : null,
-    rowId ? pointsFor(prisma, req, discordId, race, rowId, halves, demo) : null,
+    rowId ? pointsFor(prisma, req, discordId, race, rowId, halves, demo, subject.id) : null,
     race.season.seriesId ? getSeriesById(prisma, race.season.seriesId) : null,
     cardFor(prisma, race, rowId, ownRow),
     readRaceHeroes(prisma, [race.id]).catch(() => new Map()),
@@ -949,14 +1082,22 @@ export async function buildRaceRecap(prisma, { raceId, driverId = null, discordI
       .$queryRawUnsafe(`SELECT "heroImageUrl" FROM "Season" WHERE "id" = ?`, race.seasonId)
       .then((rows) => rows[0]?.heroImageUrl || null)
       .catch(() => null),
-    storyFor(prisma, race, rowId, ownRow, rows).catch(() => null),
-    incidentsFor(prisma, race, rowId, ownRow, steamRow?.steamId).catch(() => null),
-    careerFor(prisma, race, rowId, ownRow, season).catch(() => null),
+    storyFor(prisma, filed, rowId, ownRow, rows, false, division).catch(() => null),
+    incidentsFor(prisma, filed, rowId, ownRow, steamRow?.steamId, false, division).catch(() => null),
+    careerFor(prisma, race, rowId, ownRow, season, subject.id).catch(() => null),
   ]);
 
   return {
     race: {
       ...detail.race,
+      // A Division 2 classification has no number of its own and is typed as
+      // an event; it is this round's race for its field, and reads that way.
+      number: race.number,
+      isSpecialEvent: race.isSpecialEvent,
+      // The evening is the round's: the child keeps the date it was made with.
+      date: race.date,
+      division,
+      roundId: race.id,
       seasonNumber: race.season.number,
       seasonName: race.season.name,
       seriesSlug: series?.slug || null,

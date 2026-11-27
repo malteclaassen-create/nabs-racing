@@ -287,8 +287,8 @@ async function cornersFor(prisma, track) {
 // file, the file names no circuit, or the circuit's line cannot be had.
 // `race` carries season and number the way the recap files it (a sprint is
 // asked for under its round's number with `sprint`).
-export async function contactMapForRace(prisma, race, { steamId, sprint = false } = {}) {
-  const scene = contactSceneForRound(race.season, race.number, sprint);
+export async function contactMapForRace(prisma, race, { steamId, sprint = false, division = 1 } = {}) {
+  const scene = contactSceneForRound(race.season, race.number, sprint, division);
   if (!scene?.track) return null;
   const [line, corners] = await Promise.all([lineFor(scene.track), cornersFor(prisma, scene.track)]);
   if (!line) return null;
