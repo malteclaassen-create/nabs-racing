@@ -700,6 +700,20 @@ export default function Home() {
       alive = false;
     };
   }, [lastRace?.sprintRaceId]);
+  // Division 2 raced the same round on the second server; its result is a
+  // hidden race row of its own. Fetched beside the feature so the latest
+  // result card can switch between the two fields.
+  const [latestDiv2, setLatestDiv2] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const id = lastRace?.division2RaceId;
+    const hit = id ? peekCached(() => api.raceResults(id)) : null;
+    setLatestDiv2(hit ? hit.data : null);
+    if (id) api.raceResults(id).then((d) => alive && setLatestDiv2(d)).catch(() => alive && setLatestDiv2({ results: [] }));
+    return () => {
+      alive = false;
+    };
+  }, [lastRace?.division2RaceId]);
   // End-of-season honours — for the live finale AND archived seasons (the API
   // reads the selected season; awards without data simply stay away, so old
   // seasons show whatever can still be computed).
@@ -976,6 +990,8 @@ export default function Home() {
             lastCircuit,
             feature: latest,
             sprint: lastRace?.sprintRaceId ? latestSprint : null,
+            div2: lastRace?.division2RaceId ? latestDiv2 : null,
+            seasonIsLive: !!season && !!active && season.id === active.id,
             news,
             photo: heroFor(season, heroRace),
             photoFallback: heroFor(season),

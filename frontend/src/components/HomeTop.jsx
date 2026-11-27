@@ -11,6 +11,7 @@ import { flagFor } from "../data/circuits.js";
 import { fmtRaceTime, raceKickoff, LIVE_WINDOW_MS } from "../utils/raceTime.js";
 import { fmtDateLong, fmtStamp, isLapTime, NO_VALUE } from "../utils/format.js";
 import { seasonGameLabel } from "../utils/seasonGame.js";
+import { useRoundDivision } from "../hooks/useRoundDivision.js";
 
 // ---------------------------------------------------------------------------
 // The top of the member home while a season runs: one strip with the season
@@ -257,17 +258,37 @@ function agoLabel(date) {
 }
 
 // A sprint weekend gets a switcher between its two races, feature first, the
-// one the championship is decided on.
+// one the championship is decided on. A round Division 2 raced too gets a
+// Div 1 / Div 2 switcher, and opens on the race the signed-in member drove in
+// (useRoundDivision); a tab picked by hand wins from then on.
 function useResult(d) {
-  const [tab, setTab] = useState("feature");
+  const [picked, setTab] = useState(null);
+  const div2RaceId = d.lastRace?.division2RaceId || null;
+  const mine = useRoundDivision({ feature: d.feature, div2RaceId, seasonIsLive: d.seasonIsLive });
+  const hasDiv2 = !!div2RaceId && topTen(d.div2).rows.length > 0;
   const tabs = [
-    { key: "feature", label: "Feature", result: topTen(d.feature) },
+    { key: "feature", label: hasDiv2 ? "Div 1" : "Feature", result: topTen(d.feature) },
     d.sprint && { key: "sprint", label: "Sprint", result: topTen(d.sprint) },
+    hasDiv2 && { key: "div2", label: "Div 2", result: topTen(d.div2) },
   ].filter((t) => t && t.result.rows.length > 0);
+  const tab = picked || (mine.division === 2 ? "div2" : "feature");
   const open = tabs.find((t) => t.key === tab) || tabs[0] || null;
   const result = open?.result || null;
-  const resultsTo = result?.race?.id ? `/races?race=${result.race.id}` : d.lastRace?.id ? `/races?race=${d.lastRace.id}` : "/races";
-  return { tabs, open, setTab, result, resultsTo };
+  const roundTo = d.lastRace?.id ? `/races?race=${d.lastRace.id}` : "/races";
+  // Division 2's own race row is hidden: its link is the round, on its tab.
+  const resultsTo =
+    open?.key === "div2" && d.lastRace?.id
+      ? `${roundTo}&session=div2`
+      : open?.key === "feature" && hasDiv2 && d.lastRace?.id
+        ? `${roundTo}&session=race`
+        : result?.race?.id
+          ? `/races?race=${result.race.id}`
+          : roundTo;
+  const standingsTo = open?.key === "div2" ? "/drivers?division=2" : "/drivers";
+  // Hold the list while it is still being worked out which race is theirs, so
+  // a Division 2 driver never sees Division 1's top ten flash up first.
+  const waiting = !picked && !!div2RaceId && (!mine.ready || (mine.division === 2 && !d.div2));
+  return { tabs, open, setTab, result: waiting ? null : result, resultsTo, standingsTo, waiting };
 }
 
 function RaceTabs({ r }) {
@@ -360,7 +381,7 @@ function ResultButtons({ r, d }) {
         Full results <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" strokeWidth={2.5} />
       </Link>
       <Link
-        to="/drivers"
+        to={r.standingsTo}
         className="inline-flex flex-1 items-center justify-center whitespace-nowrap rounded-lg border border-border px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-dark transition hover:bg-surface2 sm:flex-none"
       >
         Standings
@@ -426,13 +447,13 @@ function ResultCard({ d }) {
             </div>
             <RaceTabs r={r} />
           </div>
-          {r.result ? (
+          {r.result && !r.waiting ? (
             <ol className="divide-y divide-border/60">
               {r.result.rows.map((row, i) => (
                 <ResultRow key={row.driverId} r={row} i={i} result={r.result} />
               ))}
             </ol>
-          ) : d.feature ? (
+          ) : d.feature && !r.waiting ? (
             <p className="py-10 text-center text-sm text-light">The classification is on its way.</p>
           ) : (
             // Still loading: hold the rows' place so the buttons do not jump.

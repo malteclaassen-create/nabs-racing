@@ -5,7 +5,7 @@ import { seasonLabelOf } from "../utils/pageTitle.js";
 import { useSeriesPath } from "../context/SeriesContext.jsx";
 import { api, peekCached } from "../api/client.js";
 import { useApi } from "../hooks/useApi.js";
-import { useMyDivision } from "../hooks/useMyDivision.js";
+import { useRoundDivision } from "../hooks/useRoundDivision.js";
 import { ErrorBox, PageHeader, PageHeaderSkeleton, TableSkeleton, Skeleton, readableAccent, SmoothHeight } from "../components/ui.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import SlidingTabs from "../components/SlidingTabs.jsx";
@@ -705,20 +705,26 @@ export default function Races() {
       alive = false;
     };
   }, [session, div2RaceId]);
-  // A Division 2 driver opens a round on THEIR race, the way the Live page
-  // and the standings open on their division. Once per visit, only in the
-  // season being raced, and never over a tab they (or a link) picked.
+  // A round opens on the race the signed-in member drove in: Division 2 for
+  // whoever is in its classification, Division 1 for whoever is in the
+  // round's own, and otherwise the field they race in this season (the way
+  // the Live page and the standings open on it). It follows them from round
+  // to round, a reserve who drove both fields included, until they (or a
+  // link) pick a tab by hand.
   const sessionPicked = useRef(searchParams.get("session") != null);
   const pickSession = (s) => {
     sessionPicked.current = true;
     setSession(s);
   };
-  const mine = useMyDivision(!!div2RaceId && !sessionPicked.current && !!activeSeason && current?.id === activeSeason.id);
+  const mine = useRoundDivision({
+    feature: detail?.race?.id === selectedId ? detail : null,
+    div2RaceId: sessionPicked.current ? null : div2RaceId,
+    seasonIsLive: !!activeSeason && current?.id === activeSeason.id,
+  });
   useEffect(() => {
-    if (sessionPicked.current || !div2RaceId || mine.division !== 2) return;
-    sessionPicked.current = true;
-    setSession("div2");
-  }, [div2RaceId, mine.division]);
+    if (sessionPicked.current || !div2RaceId || !mine.division) return;
+    setSession((s) => (mine.division === 2 ? "div2" : s === "div2" ? "race" : s));
+  }, [selectedId, div2RaceId, mine.division]);
   // The choice is sticky across rounds (see above) — a round without a sprint
   // shows its race table instead of an empty Sprint view.
   const shownSession =
