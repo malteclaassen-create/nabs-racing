@@ -33,10 +33,11 @@
 // size does not apply there (lib/waitlist.js). And nobody loses a seat to a
 // rule set later, or because the driver they cover for says yes after all.
 //
-// New drivers: a newcomer who signs themselves up (lib/newcomers.js) starts
-// with "never" in a season that runs Division 2, unless the admins switched
-// that off (Setting "reserve_rules"). They race in Division 2 like every
-// reserve; an admin lifts the rule when they are ready for a Division 1 seat.
+// New drivers: a newcomer who signs themselves up (lib/newcomers.js) is a
+// reserve like any other and can put their hand up for every seat (league
+// call, 2026-11-27). The admins can switch on that newcomers start with
+// "never" in a season that runs Division 2 (Setting "reserve_rules"); an
+// admin then lifts the rule when they are ready for a Division 1 seat.
 //
 // Raw-SQL columns (ensureAppSchema, migration reserve_rules), so every read
 // and write goes through here.
@@ -151,14 +152,14 @@ export async function carryReserveRule(prisma, fromDriverId, toDriver) {
 
 // --- New drivers ------------------------------------------------------------
 
-// Whether a newcomer starts with "no Division 1 seat". Default: yes.
+// Whether a newcomer starts with "no Division 1 seat". Default: no.
 export async function readNewDriverRule(prisma) {
   try {
     const row = await prisma.setting.findUnique({ where: { key: SETTING_KEY } });
     const v = row?.value ? JSON.parse(row.value) : null;
-    return { noDiv1: v?.newDriversNoDiv1 !== false };
+    return { noDiv1: v?.newDriversNoDiv1 === true };
   } catch {
-    return { noDiv1: true };
+    return { noDiv1: false };
   }
 }
 

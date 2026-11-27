@@ -169,20 +169,30 @@ describe("no subbing in", () => {
 });
 
 describe("new drivers", () => {
-  it("start without Division 1 seats in a season with Division 2", async () => {
+  it("can take any seat unless the admins say otherwise", async () => {
     const prisma = db();
+    expect((await readNewDriverRule(prisma)).noDiv1).toBe(false);
+    expect(await applyNewDriverRule(prisma, { id: "guest", seasonId: "s9" })).toBe(false);
+    expect((await readReserveRules(prisma, ["guest"])).size).toBe(0);
+  });
+
+  it("start without Division 1 seats once the admins switch that on, in a season with Division 2", async () => {
+    const prisma = db();
+    await writeNewDriverRule(prisma, { noDiv1: true });
     expect(await applyNewDriverRule(prisma, { id: "guest", seasonId: "s9" })).toBe(true);
     expect((await readReserveRules(prisma, ["guest"])).get("guest").div1).toBe("never");
   });
 
   it("are left alone in a season with one division", async () => {
     const prisma = db({ division2: false });
+    await writeNewDriverRule(prisma, { noDiv1: true });
     expect(await applyNewDriverRule(prisma, { id: "guest", seasonId: "s9" })).toBe(false);
     expect((await readReserveRules(prisma, ["guest"])).size).toBe(0);
   });
 
-  it("are left alone once the admins switch it off", async () => {
+  it("are left alone again once the admins switch it off", async () => {
     const prisma = db();
+    await writeNewDriverRule(prisma, { noDiv1: true });
     expect((await readNewDriverRule(prisma)).noDiv1).toBe(true);
     await writeNewDriverRule(prisma, { noDiv1: false });
     expect((await readNewDriverRule(prisma)).noDiv1).toBe(false);

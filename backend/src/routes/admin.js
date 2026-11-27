@@ -3545,7 +3545,7 @@ router.put("/drivers/:id", async (req, res, next) => {
 // PUT /api/admin/reserve-rules/new-drivers  { noDiv1 }
 // Whether a newcomer who signs themselves up starts with "no Division 1 seat"
 // on the Driver Market, in a season that runs Division 2
-// (lib/reserveRules.js). On unless switched off.
+// (lib/reserveRules.js). Off unless switched on.
 router.get("/reserve-rules/new-drivers", async (req, res, next) => {
   try {
     res.json(await readNewDriverRule(prisma));

@@ -4566,9 +4566,9 @@ function ReserveRules({ drivers, busy, onSet }) {
         <span>
           <span className="font-semibold">New drivers can&rsquo;t take a Division 1 seat</span>
           <span className="mt-0.5 block text-xs leading-relaxed text-light">
-            Somebody who signs themselves up is put on the reserve list and starts with this rule, in a season that
-            runs Division 2. They race in Division 2 like every reserve. Lift the rule in their row when they are ready
-            for Division 1. Drivers who are already on the list keep what they have.
+            Off: a new driver can put their hand up for any seat, like every reserve. On: somebody who signs
+            themselves up starts with this rule, in a season that runs Division 2, until you lift it in their row.
+            Drivers who are already on the list keep what they have.
           </span>
         </span>
       </label>
