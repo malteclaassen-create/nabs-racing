@@ -5,7 +5,6 @@ import { useSharedRound } from "../hooks/useSharedRound.js";
 import { latestPastRace } from "../utils/sharedRound.js";
 import { useSeason } from "../context/SeasonContext.jsx";
 import { Notice, CardHead, Field } from "./ui.jsx";
-import SlidingTabs from "./SlidingTabs.jsx";
 import RacePreview from "./RacePreview.jsx";
 import { useAsk } from "./overlay.jsx";
 import { canonicalTrack } from "../data/circuits.js";
@@ -184,6 +183,85 @@ function ArchiveFiles({ files, error, sprintWeekend }) {
   );
 }
 
+// What a round has and what it still needs, as a bar and a short list: one
+// line per thing the import page can add to it (each race of the night, the
+// qualifying), ticked when it is stored. A line with `onSelect` is a race the
+// page can be pointed at (Division 1's or Division 2's); the one being
+// imported now is marked. This is the page's answer to "what is already in?",
+// which the admin used to read out of three paragraphs.
+function RoundProgress({ items, disabled = false }) {
+  const done = items.filter((it) => it.done).length;
+  const selectable = items.some((it) => it.onSelect);
+  return (
+    <div className="max-w-xl space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+          What this round has
+        </span>
+        <span className="shrink-0 font-mono text-[11px] font-bold uppercase tracking-wider text-light">
+          {done} of {items.length} in
+        </span>
+      </div>
+      <div
+        className="flex gap-1"
+        role="progressbar"
+        aria-label="Imported for this round"
+        aria-valuemin={0}
+        aria-valuemax={items.length}
+        aria-valuenow={done}
+      >
+        {items.map((it) => (
+          <span key={it.key} className={`h-1.5 flex-1 rounded-full ${it.done ? "bg-emerald-500" : "bg-surface2"}`} />
+        ))}
+      </div>
+      <ul className="space-y-1.5">
+        {items.map((it) => {
+          const body = (
+            <>
+              <span
+                aria-hidden="true"
+                className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
+                  it.done ? "bg-emerald-500 text-white" : "border border-light/50 text-transparent"
+                }`}
+              >
+                ✓
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-dark">{it.label}</span>
+                <span className="block text-xs text-light">{it.detail}</span>
+              </span>
+              {it.selected && <span className="pill shrink-0 bg-brand/25 text-dark">importing now</span>}
+            </>
+          );
+          // A race the page can be pointed at is a framed button; a line that
+          // only reports (the qualifying) has no frame, so it does not look
+          // like something to press.
+          const row = "flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left";
+          const frame = `${row} ${it.selected ? "border-brand bg-brand/10" : "border-border"}`;
+          return (
+            <li key={it.key}>
+              {it.onSelect ? (
+                <button
+                  type="button"
+                  className={`${frame} transition hover:border-brand disabled:opacity-60`}
+                  aria-pressed={!!it.selected}
+                  onClick={it.onSelect}
+                  disabled={disabled}
+                >
+                  {body}
+                </button>
+              ) : (
+                <div className={`${row} border-transparent`}>{body}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {selectable && <p className="text-xs text-light">Choose Division 1 or Division 2 to import that race.</p>}
+    </div>
+  );
+}
+
 export default function AdminImport({ onCommitted }) {
   const ask = useAsk();
   const { current: currentSeason } = useSeason();
@@ -239,7 +317,7 @@ export default function AdminImport({ onCommitted }) {
     }
   }
 
-  // Step 1 — the race this import is for. Chosen before any file is touched,
+  // The race this import is for. Chosen before any file is touched,
   // because it decides everything else on this page: which server session is
   // the right one, whether a result is being added or replaced, and whether
   // attaching a qualifying is even possible yet. It also removes the old
@@ -309,10 +387,6 @@ export default function AdminImport({ onCommitted }) {
   const div2Server = liveServers.data?.division2Key || null;
   // After Division 1's race is saved: offer Division 2's straight away.
   const [div2Next, setDiv2Next] = useState(null); // { roundNumber } | null
-  // Division 2's race of the round, found on the second server beside
-  // Division 1's, the way a sprint weekend's two races are found side by side.
-  const [div2RemoteId, setDiv2RemoteId] = useState("");
-  const [div2RemoteAuto, setDiv2RemoteAuto] = useState(false);
   const offersDivision2 =
     !!currentSeason?.division2 &&
     !!targetRace &&
@@ -361,11 +435,10 @@ export default function AdminImport({ onCommitted }) {
     setTargetDivision(2);
     setDone(null);
     const night = nightSessions(sessionsOfDivision(remote.data?.results, true), targetTrack, targetDate);
-    const found = pickNightSession(night, { sprintWeekend: false, session: "RACE" });
-    const pick = div2RemoteId ? { id: div2RemoteId } : found;
+    const pick = pickNightSession(night, { sprintWeekend: false, session: "RACE" });
     if (pick) {
       setRemoteId(pick.id);
-      setRemoteAuto(div2RemoteId ? div2RemoteAuto : true);
+      setRemoteAuto(true);
       await loadRemote(pick.id, null);
     } else {
       setRemoteId("");
@@ -374,16 +447,19 @@ export default function AdminImport({ onCommitted }) {
     }
   }
 
-  // "Load Division 2 only": switch to Division 2 and load the race picked
-  // beside Division 1's.
-  async function loadDivision2() {
-    if (!div2RemoteId) return;
-    const id = div2RemoteId;
+  // Which race of the round the page imports: Division 1's or Division 2's.
+  // The table on the page belongs to the race it was loaded for, so switching
+  // clears it, and a sprint weekend's walk starts over.
+  function chooseDivision(d) {
+    if (d === targetDivision) return;
+    setTargetDivision(d);
     setDiv2Next(null);
-    setTargetDivision(2);
-    setRemoteId(id);
-    setRemoteAuto(div2RemoteAuto);
-    await loadRemote(id, null);
+    setDone(null);
+    setError(null);
+    setParsed(null);
+    setRows([]);
+    setWeekendStep(null);
+    setTargetSession("RACE");
   }
 
   // Picking the round pre-selects its session on the race server: same circuit,
@@ -409,17 +485,6 @@ export default function AdminImport({ onCommitted }) {
     const sprintPick = second && second.id !== pick?.id ? second : null;
     setSprintRemoteId(sprintPick?.id || "");
     setSprintRemoteAuto(!!sprintPick);
-    // Division 2's race, from the second server only. Without knowing which
-    // server that is, nothing is guessed: Division 1's race would be the pick.
-    if (offersDivision2 && !asDivision2 && div2Server) {
-      const night2 = nightSessions(sessionsOfDivision(remote.data?.results, true), targetTrack, targetDate);
-      const d2 = pickNightSession(night2, { sprintWeekend: false, session: "RACE" });
-      setDiv2RemoteId(d2?.id || "");
-      setDiv2RemoteAuto(!!d2);
-    } else if (!asDivision2) {
-      setDiv2RemoteId("");
-      setDiv2RemoteAuto(false);
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetTrack, targetDate, remote.data, isSprintWeekend, targetSession, importBoth, weekendStep, asDivision2, mainServer, div2Server, offersDivision2]);
 
@@ -869,7 +934,13 @@ export default function AdminImport({ onCommitted }) {
         setDiv2Next(null);
       }
       if (asDivision2 && res.number != null) {
-        setDone(`Round ${res.number} Division 2 saved. Standings recalculated. Both divisions of this round are in.${qualiMsg}${conflictNote}`);
+        setDone(
+          `Round ${res.number} Division 2 saved. Standings recalculated. ${
+            targetRace?.resultCount > 0
+              ? "Both divisions of this round are in."
+              : "Division 1's race of this round is still to come."
+          }${qualiMsg}${conflictNote}`
+        );
       }
       // The two-race walk: the feature is in, the sprint is next. It loads
       // on its own from the session picked beside the feature's, so the
@@ -926,93 +997,144 @@ export default function AdminImport({ onCommitted }) {
         `${r.dateStr || ""} ${r.track || ""} ${r.serverName || ""}`.toLowerCase().includes(remoteQuery.trim().toLowerCase())
       )
     : remoteList;
+  // The sessions offered for the race being imported: in a round with two
+  // divisions, only the ones of that division's own server.
+  const offeredRemote = offersDivision2 ? sessionsOfDivision(filteredRemote, asDivision2) : filteredRemote;
+
+  // What the picked round has, for the progress list at the top.
+  const roundSprint = targetRace?.raceFormat === "SPRINT_FEATURE";
+  const d1 = offersDivision2 ? "Division 1 " : "";
+  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  const progressItems = targetRace
+    ? [
+        {
+          key: "race",
+          label: cap(`${d1}${roundSprint ? "feature race" : "race"}`),
+          done: targetRace.resultCount > 0,
+          detail: targetRace.resultCount > 0 ? `${targetRace.resultCount} results stored` : "not imported yet",
+          onSelect: offersDivision2 ? () => chooseDivision(1) : null,
+          selected: offersDivision2 && !asDivision2,
+        },
+        ...(roundSprint
+          ? [
+              {
+                key: "sprint",
+                label: cap(`${d1}sprint`),
+                done: !!targetRace.sprintRaceId,
+                detail: targetRace.sprintRaceId ? "stored" : "not imported yet",
+                onSelect: offersDivision2 ? () => chooseDivision(1) : null,
+                selected: offersDivision2 && !asDivision2,
+              },
+            ]
+          : []),
+        {
+          key: "quali",
+          label: cap(`${d1}qualifying`),
+          done: !!targetRace.hasQuali,
+          detail: targetRace.hasQuali
+            ? "stored"
+            : targetRace.resultCount > 0
+              ? "not added yet, see below"
+              : "comes with the race from the server",
+        },
+        ...(offersDivision2
+          ? [
+              {
+                key: "div2",
+                label: "Division 2 race",
+                done: !!targetRace.division2RaceId,
+                detail: targetRace.division2RaceId ? "stored" : "not imported yet",
+                onSelect: () => chooseDivision(2),
+                selected: asDivision2,
+              },
+            ]
+          : []),
+      ]
+    : [];
+  // Loading a race that is already stored replaces it: said once, where the
+  // race is loaded.
+  const replaceNote = !targetRace
+    ? null
+    : asDivision2
+      ? targetRace.division2RaceId
+        ? "Division 2's race of this round is already stored. Importing it again replaces that classification."
+        : null
+      : asSprint
+        ? targetRace.sprintRaceId
+          ? "The sprint is already stored. Importing it again replaces the sprint classification; the feature result is untouched."
+          : null
+        : targetRace.resultCount > 0
+          ? `${targetRace.resultCount} results are already stored for this race. Importing it again replaces that classification.`
+          : null;
 
   return (
     <div className="space-y-5">
-      {/* Step 1 — the round. Nothing else on the page opens until this is
-          answered, because every later question depends on it. */}
-      <div className="card space-y-3 p-5">
-        <CardHead eyebrow="Step 1" title="Which race is this for?" />
-        <p className="text-sm text-light">
-          Pick the round of {currentSeason ? `Season ${currentSeason.number}` : "this season"} the result belongs
-          to. The right session on the race server is then found for you, and what you can do with it depends on
-          what that round already has.
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            aria-label="Race this import is for"
-            className="input max-w-md"
-            value={targetRaceId}
-            onChange={(e) => {
-              setTargetRaceId(e.target.value);
-              setNewRoundNumber("");
-              setTargetSession("RACE");
-              setWeekendStep(null);
-              setQualiNote(null);
-              setDone(null);
-            }}
-            disabled={seasonRaces.loading || busy}
-          >
-            <option value="">{seasonRaces.loading ? "Loading the calendar…" : "Choose a race…"}</option>
-            {champRaces.length > 0 && (
-              <optgroup label="Championship rounds">
-                {champRaces.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {`${raceLabel(r)} · ${raceState(r, !!currentSeason?.division2)}`}
-                  </option>
-                ))}
+      {/* The round. Nothing else on the page opens until one is picked, because
+          every later question depends on it; it opens on the night that was
+          just run, so most of the time it is already the right one. Under it,
+          what the round has so far. */}
+      <div className="card space-y-4 p-5">
+        <div>
+          <label htmlFor="import-round" className="mb-1.5 block font-mono text-[11px] font-bold uppercase tracking-wider text-medium">
+            Round of {currentSeason ? `Season ${currentSeason.number}` : "this season"}
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              id="import-round"
+              aria-label="Race this import is for"
+              className="input max-w-md"
+              value={targetRaceId}
+              onChange={(e) => {
+                setTargetRaceId(e.target.value);
+                setNewRoundNumber("");
+                setTargetSession("RACE");
+                setWeekendStep(null);
+                setQualiNote(null);
+                setDone(null);
+              }}
+              disabled={seasonRaces.loading || busy}
+            >
+              <option value="">{seasonRaces.loading ? "Loading the calendar…" : "Choose a race…"}</option>
+              {champRaces.length > 0 && (
+                <optgroup label="Championship rounds">
+                  {champRaces.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {`${raceLabel(r)} · ${raceState(r, !!currentSeason?.division2)}`}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {otherRaces.length > 0 && (
+                <optgroup label="Training and events">
+                  {otherRaces.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {`${raceLabel(r)} · ${raceState(r, !!currentSeason?.division2)}`}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Not in the calendar">
+                <option value={NEW_ROUND}>A round that isn’t in the calendar yet…</option>
               </optgroup>
-            )}
-            {otherRaces.length > 0 && (
-              <optgroup label="Training and events">
-                {otherRaces.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {`${raceLabel(r)} · ${raceState(r, !!currentSeason?.division2)}`}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            <optgroup label="Not in the calendar">
-              <option value={NEW_ROUND}>A round that isn’t in the calendar yet…</option>
-            </optgroup>
-          </select>
-          {targetRaceId === NEW_ROUND && (
-            <input
-              aria-label="Round number"
-              className="input w-32"
-              type="number"
-              min="1"
-              value={newRoundNumber}
-              onChange={(e) => setNewRoundNumber(e.target.value)}
-              placeholder="Round #"
-            />
-          )}
-        </div>
-        {offersDivision2 && (
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-sm font-semibold text-medium">This round ran two races. Import</span>
-              <SlidingTabs
-                items={[
-                  { key: 1, label: `Division 1 race${targetRace?.resultCount ? " (in)" : ""}` },
-                  { key: 2, label: `Division 2 race${targetRace?.division2RaceId ? " (in)" : ""}` },
-                ]}
-                value={targetDivision}
-                onChange={(d) => {
-                  setTargetDivision(d);
-                  setDiv2Next(null);
-                  setDone(null);
-                  setParsed(null);
-                  setRows([]);
-                }}
-                btnClassName="px-3 py-1.5 text-sm"
+            </select>
+            {targetRaceId === NEW_ROUND && (
+              <input
+                aria-label="Round number"
+                className="input w-32"
+                type="number"
+                min="1"
+                value={newRoundNumber}
+                onChange={(e) => setNewRoundNumber(e.target.value)}
+                placeholder="Round #"
               />
-            </div>
-            <p className="text-xs text-light">
-              Division 1 first, then Division 2: after saving Division 1 the page offers Division 2 by itself.
-              Division 1&rsquo;s race is looked for on the main server, Division 2&rsquo;s on the second server.
-            </p>
+            )}
           </div>
+        </div>
+        {targetRace && <RoundProgress items={progressItems} disabled={busy} />}
+        {targetRace && targetRace.number == null && (
+          <p className="text-sm text-light">
+            Training and event results are viewable on the Races page but never count towards any standings.
+          </p>
         )}
         {isSprintWeekend && (
           <div className="space-y-2">
@@ -1081,21 +1203,6 @@ export default function AdminImport({ onCommitted }) {
             )}
           </Notice>
         )}
-        {targetRace && (
-          <p className="text-sm text-medium">
-            {asSprint
-              ? targetRace.sprintRaceId
-                ? "Importing the sprint again replaces the stored sprint classification. The feature result is untouched. The sprint scores the same points as the feature race, added to this round."
-                : "The sprint classification is stored alongside the event — the feature race import stays separate. The sprint scores the same points as the feature race, added to this round."
-              : targetRace.resultCount > 0
-                ? `${targetRace.resultCount} results are stored for this race${
-                    targetRace.hasQuali ? ", qualifying included" : ", but no qualifying"
-                  }. Importing the race again replaces the stored classification.`
-                : "Nothing is stored for this race yet."}
-            {targetRace.number == null &&
-              " Training and event results are viewable on the Races page but never count towards any standings."}
-          </p>
-        )}
         {oddDistance && (
           <Notice kind="warn">
             The leader of this file ran {fileLaps} laps, which is neither the feature distance ({targetRace.raceLaps}) nor the
@@ -1109,7 +1216,13 @@ export default function AdminImport({ onCommitted }) {
             entered in the calendar.
           </p>
         )}
-        {targetRace && targetRace.number != null && archive.files && archive.raceId === targetRace.id && (
+        {targetRace &&
+          targetRace.number != null &&
+          archive.files &&
+          archive.raceId === targetRace.id &&
+          // With nothing imported there is no file to expect either: the list
+          // above already says the round is empty.
+          (archive.files.length > 0 || archive.error || targetRace.resultCount > 0) && (
           <ArchiveFiles files={archive.files} error={archive.error} sprintWeekend={isSprintWeekend} />
         )}
       </div>
@@ -1117,19 +1230,20 @@ export default function AdminImport({ onCommitted }) {
       {hasTarget && (
         <div className="card space-y-5 p-5">
           <CardHead
-            eyebrow="Step 2"
+            eyebrow="Step 1"
             title={
               asDivision2
-                ? "Import the Division 2 race"
+                ? "Load the Division 2 race"
                 : importBoth
                 ? weekendStep === "SPRINT"
-                  ? "Import the sprint (2 of 2)"
-                  : "Import the feature race and the sprint"
-                : targetRace?.resultCount
-                  ? "Import the race result again"
-                  : "Import the race result"
+                  ? "Load the sprint (2 of 2)"
+                  : `Load the ${d1}feature race and the sprint`
+                : asSprint
+                  ? `Load the ${d1}sprint`
+                  : `Load the ${d1}${isSprintWeekend ? "feature race" : "race"}${targetRace?.resultCount ? " again" : ""}`
             }
           />
+          {replaceNote && <p className="text-sm text-medium">{replaceNote}</p>}
 
           {/* Source A — straight from the race server */}
           <div className="rounded-xl border border-border bg-surface2/40 p-4">
@@ -1140,7 +1254,9 @@ export default function AdminImport({ onCommitted }) {
               <span className="pill bg-emerald-500/15 text-ok">recommended · penalty-corrected</span>
             </div>
             <p className="mt-1 text-sm text-light">
-              Pull the finished race straight from the race servers. No file export needed.
+              {offersDivision2
+                ? `Pull the finished race straight from ${asDivision2 ? "the second server, where Division 2 races" : "the main server, where Division 1 races"}. No file export needed.`
+                : "Pull the finished race straight from the race servers. No file export needed."}
             </p>
             {remote.error ? (
               <p className="mt-3 text-sm text-warn">
@@ -1158,10 +1274,7 @@ export default function AdminImport({ onCommitted }) {
                   />
                 )}
                 <div className="flex flex-wrap items-center gap-2">
-                  {importBoth && <span className="w-24 text-sm font-semibold text-medium">Feature race</span>}
-                  {offersDivision2 && !importBoth && (
-                    <span className="w-24 text-sm font-semibold text-medium">{asDivision2 ? "Division 2" : "Division 1"}</span>
-                  )}
+                  <span className="w-24 text-sm font-semibold text-medium">{importBoth ? "Feature race" : asSprint ? "Sprint" : "Race"}</span>
                   <select
                     aria-label={importBoth ? "Feature race on the server" : "Race on the server"}
                     className="input max-w-sm"
@@ -1173,10 +1286,12 @@ export default function AdminImport({ onCommitted }) {
                       {remote.loading
                         ? "Loading sessions…"
                         : remoteList.length
-                        ? `Choose a race… (${filteredRemote.length})`
+                        ? remoteId || !targetRace?.date
+                          ? `Choose a race… (${offeredRemote.length})`
+                          : `No race found for this night. Choose one… (${offeredRemote.length})`
                         : "No races on the servers"}
                     </option>
-                    <SessionOptions sessions={filteredRemote} track={targetTrack} />
+                    <SessionOptions sessions={offeredRemote} track={targetTrack} />
                   </select>
                   {remoteAuto && remoteId && (
                     <span className="pill bg-emerald-500/15 text-ok">found for this round</span>
@@ -1206,7 +1321,7 @@ export default function AdminImport({ onCommitted }) {
                       <option value="">
                         {remote.loading ? "Loading sessions…" : "No sprint session yet — choose one…"}
                       </option>
-                      <SessionOptions sessions={filteredRemote} track={targetTrack} />
+                      <SessionOptions sessions={offeredRemote} track={targetTrack} />
                     </select>
                     {sprintRemoteAuto && sprintRemoteId && (
                       <span className="pill bg-emerald-500/15 text-ok">found: the session after the feature</span>
@@ -1231,41 +1346,12 @@ export default function AdminImport({ onCommitted }) {
                     )}
                   </div>
                 )}
-                {/* Division 2's race of the same night, found on the second
-                    server beside Division 1's. Saving Division 1 offers it next
-                    (the "Next" card); the button loads it on its own. */}
-                {offersDivision2 && !asDivision2 && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="w-24 text-sm font-semibold text-medium">Division 2</span>
-                    <select
-                      aria-label="Division 2 race on the second server"
-                      className="input max-w-sm"
-                      value={div2RemoteId}
-                      onChange={(e) => { setDiv2RemoteId(e.target.value); setDiv2RemoteAuto(false); }}
-                      disabled={remote.loading || busy}
-                    >
-                      <option value="">
-                        {remote.loading
-                          ? "Loading sessions…"
-                          : div2Server
-                            ? "No Division 2 race found for this night yet. Choose one…"
-                            : "Choose the Division 2 race…"}
-                      </option>
-                      <SessionOptions sessions={sessionsOfDivision(filteredRemote, true)} track={targetTrack} />
-                    </select>
-                    {div2RemoteAuto && div2RemoteId && (
-                      <span className="pill bg-emerald-500/15 text-ok">found on the second server</span>
-                    )}
-                    <button className="btn-secondary" onClick={loadDivision2} disabled={!div2RemoteId || busy}>
-                      Load Division 2 only
-                    </button>
-                  </div>
-                )}
                 {/* second row: the qualifying session, auto-found for the picked
                     race (same circuit, right before the start). Saved together
                     with the race on confirm. */}
                 {remoteId && (
                   <div className="flex flex-wrap items-center gap-2">
+                    <span className="w-24 text-sm font-semibold text-medium">Qualifying</span>
                     <select
                       aria-label="Qualifying session"
                       className="input max-w-sm"
@@ -1316,7 +1402,7 @@ export default function AdminImport({ onCommitted }) {
 
       {/* Qualifying on its own. Only for a race whose result is already stored:
           before that there is nothing to attach it to, and a fresh import
-          carries its qualifying along in step 2 anyway. */}
+          carries its qualifying along when the race is loaded anyway. */}
       {targetRace && targetRace.resultCount > 0 && (
         <div className="card space-y-3 p-5">
           <CardHead
@@ -1410,7 +1496,7 @@ export default function AdminImport({ onCommitted }) {
           {pitNote && <Notice kind={pitNote.kind}>{pitNote.text}</Notice>}
           <div className="card p-5">
             <CardHead
-              eyebrow="Step 3"
+              eyebrow="Step 2"
               title={`Check the drivers and save into ${
                 targetRace ? raceLabel(targetRace) : `Round ${newRoundNumber}`
               }${
@@ -1442,7 +1528,7 @@ export default function AdminImport({ onCommitted }) {
                 />
               </Field>
               {/* The qualifying is only asked for once. A session picked in step
-                  2 already rides along on save, so the upload would be a second
+                  1 already rides along on save, so the upload would be a second
                   answer to a question that has one. */}
               {qualiRemoteId ? (
                 <Field label="Qualifying" tone="plain">
