@@ -30,6 +30,7 @@ import { ensureReservePool } from "./reservePool.js";
 import { dbLinkDrivers, getPersonGroups } from "./persons.js";
 import { uniqueDriverId } from "./driverHandles.js";
 import { DIV2_TIER, seasonHasDivision2, writeSeasonDivision2 } from "./divisions.js";
+import { carryReserveRule } from "./reserveRules.js";
 
 export { DIV2_TIER };
 
@@ -473,6 +474,9 @@ export async function commitCarryOver(prisma, { target, fromSeasonId, picks }) {
       await prisma.$executeRawUnsafe(`UPDATE "Driver" SET "steamId" = ? WHERE "id" = ?`, steamId, id).catch(() => {});
     }
     await dbLinkDrivers(prisma, [d.id, id]).catch(() => {});
+    // A reserve staying a reserve keeps what the admins set for them
+    // (lib/reserveRules.js). After the link, which a "cover" list is read by.
+    if (team.tier === 0) await carryReserveRule(prisma, d.id, { id, seasonId: target.id });
     takenNames.add(norm(d.name));
     if (personId) takenPersons.add(personId);
     created.push({ name: d.name, teamName: team.name });

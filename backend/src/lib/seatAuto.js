@@ -18,6 +18,7 @@
 // to find out and ask again.
 // ---------------------------------------------------------------------------
 import { notifySeatOffered, notifySeatReclaimed } from "./notifications.js";
+import { seatBlock } from "./reserveRules.js";
 
 // Same rule the market itself uses: only a Tier 1/2 seat is a seat to offer.
 const hasRealSeat = (team) => team?.tier === 1 || team?.tier === 2;
@@ -64,10 +65,17 @@ export async function reclaimSeat(prisma, race, driverId) {
 
   // First in line for every other seat still open: interest, not a seat.
   // Whoever offered that one still picks.
-  const open = await prisma.seatOffer.findMany({
+  // Only the seats they may take (lib/reserveRules.js): a reserve who was in
+  // for one driver alone is not put down for everybody else's car.
+  const reserve = await prisma.driver.findUnique({ where: { id: bumpedId }, include: { team: true } });
+  const candidates = await prisma.seatOffer.findMany({
     where: { raceId: race.id, status: "OPEN", driverId: { not: bumpedId } },
-    select: { id: true },
+    select: { id: true, team: { select: { tier: true } } },
   });
+  const open = [];
+  for (const o of candidates) {
+    if (!(await seatBlock(prisma, race, o.team, reserve).catch(() => null))) open.push(o);
+  }
   for (const o of open) {
     await prisma.seatInterest
       .upsert({
@@ -78,7 +86,6 @@ export async function reclaimSeat(prisma, race, driverId) {
       .catch(() => {});
   }
 
-  const reserve = await prisma.driver.findUnique({ where: { id: bumpedId } });
   notifySeatReclaimed(prisma, { race, reserve, openSeats: open.length });
   return { reclaimed: true, bumped: bumpedId, movedTo: open.length };
 }

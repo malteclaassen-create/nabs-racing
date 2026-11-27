@@ -22,6 +22,7 @@ import { getAdminDiscordIds } from "./adminUsers.js";
 import { dbListSeries } from "./series.js";
 import { stillToAnswer, reachableDiscordIds, splitByReach } from "./stillToAnswer.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
+import { readReserveRules, seatBlock } from "./reserveRules.js";
 
 // Type keys the frontend maps to icons: RESULTS | REMINDER | DOWNLOAD | MARKET.
 // New kinds (achievements, card frames, ...) just add a key + an icon.
@@ -486,6 +487,24 @@ export async function notifySeatOffered(prisma, { race, teamName, driver }) {
     });
     const reserveIds = new Set(roster.filter((d) => d.team?.tier === 0).map((d) => d.discordUserId));
 
+    // Reserves the admins have kept out of this seat (lib/reserveRules.js): a
+    // bell for a car they are not allowed to take is noise, and an invitation
+    // to press a button that says no.
+    const kept = new Set();
+    try {
+      const reserves = roster.filter((d) => d.team?.tier === 0);
+      const rules = await readReserveRules(prisma, reserves.map((d) => d.id));
+      if (rules.size) {
+        const team = driver?.team || (driver?.teamId ? await prisma.team.findUnique({ where: { id: driver.teamId } }) : null);
+        for (const d of reserves) {
+          const rule = rules.get(d.id);
+          if (rule && (await seatBlock(prisma, race, team, d, { rule }))) kept.add(d.discordUserId);
+        }
+      }
+    } catch {
+      /* the rules are a filter on top; without them everybody is told, as before */
+    }
+
     // Anyone already driving this round. A reserve who has been given a seat is
     // ON the grid, so a second offer for the same race is not an opportunity —
     // it is a message about somebody else's problem, sent to the one person who
@@ -504,6 +523,7 @@ export async function notifySeatOffered(prisma, { race, teamName, driver }) {
     const recipients = members.filter((m) => {
       if (m.discordId === driver?.discordUserId) return false; // not the offerer
       if (seated.has(m.discordId)) return false; // already has a seat this round
+      if (kept.has(m.discordId)) return false; // not a seat they may take
       return audience === "all" || reserveIds.has(m.discordId);
     });
 

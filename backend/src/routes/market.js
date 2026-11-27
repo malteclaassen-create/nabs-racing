@@ -15,6 +15,8 @@ import { eventSeasonIds } from "./events.js";
 import { notifySeatOffered, notifySeatFilled, notifyAdminsSeatDropped } from "../lib/notifications.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
 import { promoteFromWaitlist } from "../lib/waitlist.js";
+import { readReserveRules, division1Block, seatBlock } from "../lib/reserveRules.js";
+import { seasonHasDivision2 } from "../lib/divisions.js";
 
 const router = Router();
 router.use(optionalUser);
@@ -141,6 +143,7 @@ router.get("/", async (req, res, next) => {
     // roster, so each race carries the context of ITS season. The top-level
     // `me` (the viewed/active season's row) stays for the page-level bits.
     const meBySeason = new Map();
+    const rowBySeason = new Map();
     const myDriverId = await resolveDriverId(prisma, req.user);
     if (myDriverId) {
       const base = await prisma.driver.findUnique({
@@ -158,7 +161,31 @@ router.get("/", async (req, res, next) => {
             canOffer: hasRealSeat(d),
             isReserve: isReserve(d),
           });
+          rowBySeason.set(sid, d);
         }
+      }
+    }
+    // What the admins set for the caller as a reserve (lib/reserveRules.js),
+    // worked out per race because "only when one of these drivers is out"
+    // depends on who has said no to that race. `signUpBlock` is why they can't
+    // put themselves on the grid (null = they can), and each offer's `myBlock`
+    // why that seat is not for them. The server refuses both anyway; this is
+    // so the page shows the reason instead of a button that answers with one.
+    const blocksByRace = new Map();
+    for (const [sid, d] of rowBySeason) {
+      if (!isReserve(d)) continue;
+      const rule = (await readReserveRules(prisma, [d.id])).get(d.id);
+      if (!rule) continue;
+      const twoDivisions = await seasonHasDivision2(prisma, sid);
+      for (const race of races.filter((r) => r.seasonId === sid)) {
+        const seats = new Map();
+        for (const o of race.seatOffers) {
+          if (o.status === "OPEN") seats.set(o.id, await seatBlock(prisma, race, o.team, d, { rule, twoDivisions }));
+        }
+        blocksByRace.set(race.id, {
+          signUp: await division1Block(prisma, race, d, { rule, twoDivisions }),
+          seats,
+        });
       }
     }
     const activeSeasonId = await resolveSeasonId(prisma, req.query.season, {
@@ -173,8 +200,13 @@ router.get("/", async (req, res, next) => {
         number: race.number,
         track: race.track,
         date: race.date,
-        me: meBySeason.get(race.seasonId) || null,
-        offers: race.seatOffers.map(shapeOffer),
+        me: meBySeason.get(race.seasonId)
+          ? { ...meBySeason.get(race.seasonId), signUpBlock: blocksByRace.get(race.id)?.signUp || null }
+          : null,
+        offers: race.seatOffers.map((o) => ({
+          ...shapeOffer(o),
+          myBlock: blocksByRace.get(race.id)?.seats.get(o.id) || null,
+        })),
       })),
     });
   } catch (e) {
@@ -230,9 +262,10 @@ router.get("/alert", async (req, res, next) => {
       select: {
         id: true,
         seasonId: true,
+        isSpecialEvent: true,
         seatOffers: {
           where: { status: "OPEN" },
-          select: { id: true, driverId: true, interests: { select: { driverId: true } } },
+          select: { id: true, driverId: true, team: { select: { tier: true } }, interests: { select: { driverId: true } } },
         },
       },
     });
@@ -256,10 +289,13 @@ router.get("/alert", async (req, res, next) => {
       const row = rowFor.get(race.seasonId);
       if (!row || !isReserve(row)) continue;
       reserveSomewhere = true;
+      const rule = (await readReserveRules(prisma, [row.id])).get(row.id) || null;
       for (const offer of race.seatOffers) {
         // Their own seat is not an opportunity, however open it is.
         if (offer.driverId === row.id) continue;
         if (!live.has(offer.id)) continue; // open, but nobody has been told yet
+        // Nor is a seat the admins have said they can't take (lib/reserveRules.js).
+        if (rule && (await seatBlock(prisma, race, offer.team, row, { rule }))) continue;
         const token = `${offer.id}@${announced.at}`;
         open.push(token);
         if (offer.interests.some((i) => i.driverId === row.id)) mine.push(token);
@@ -378,7 +414,7 @@ router.post("/offer/:offerId/interest", async (req, res, next) => {
   try {
     const offer = await prisma.seatOffer.findUnique({
       where: { id: req.params.offerId },
-      include: { race: { select: { seasonId: true, isCompleted: true } } },
+      include: { race: { select: { id: true, seasonId: true, isCompleted: true, isSpecialEvent: true } }, team: true },
     });
     if (!offer) return res.status(404).json({ error: "Offer not found" });
     if (offer.status === "CANCELLED") return res.status(400).json({ error: "Offer is no longer open" });
@@ -388,6 +424,10 @@ router.post("/offer/:offerId/interest", async (req, res, next) => {
     if (!isReserve(driver)) {
       return res.status(403).json({ error: "Only reserve drivers can express interest" });
     }
+    // A reserve the admins have kept out of this seat (no subbing in at all,
+    // or no Division 1 for them this round, lib/reserveRules.js).
+    const blocked = await seatBlock(prisma, offer.race, offer.team, driver);
+    if (blocked) return res.status(403).json({ error: blocked, notAllowed: true });
 
     await prisma.seatInterest.upsert({
       where: { offerId_driverId: { offerId: offer.id, driverId: driver.id } },
@@ -427,7 +467,11 @@ router.post("/offer/:offerId/pick", async (req, res, next) => {
   try {
     const offer = await prisma.seatOffer.findUnique({
       where: { id: req.params.offerId },
-      include: { interests: true, race: { select: { seasonId: true, isCompleted: true } } },
+      include: {
+        interests: true,
+        team: true,
+        race: { select: { id: true, seasonId: true, isCompleted: true, isSpecialEvent: true } },
+      },
     });
     if (!offer) return res.status(404).json({ error: "Offer not found" });
     // The pick freezes with the race: post-race corrections are admin-only
@@ -444,6 +488,13 @@ router.post("/offer/:offerId/pick", async (req, res, next) => {
       // Must be one of the reserves who actually expressed interest.
       if (!offer.interests.some((i) => i.driverId === pickId)) {
         return res.status(400).json({ error: "That driver hasn't expressed interest" });
+      }
+      // Their hand may have gone up before the admins set a rule for them
+      // (lib/reserveRules.js). An admin can still put them in the seat from
+      // the admin's Driver Market tab; the driver picking cannot.
+      const reserve = await prisma.driver.findUnique({ where: { id: pickId }, include: { team: true } });
+      if (reserve && (await seatBlock(prisma, offer.race, offer.team, reserve))) {
+        return res.status(409).json({ error: `${reserve.name} can't take this seat. The admins have set that for them` });
       }
     }
     const updated = await prisma.seatOffer.update({

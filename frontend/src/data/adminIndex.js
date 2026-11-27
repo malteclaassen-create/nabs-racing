@@ -462,6 +462,12 @@ export const ADMIN_INDEX = [
   },
   {
     tab: "drivers",
+    title: "Reserve rules",
+    hint: "Stop a reserve from signing up for Division 1 or from taking over a seat, or only let them in when a certain driver is out.",
+    keywords: "reserve rule division 1 div sign up signup sub in substitute seat driver market block restrict new drivers newcomer cover",
+  },
+  {
+    tab: "drivers",
     title: "Safety car drivers",
     hint: "Mark who drives the safety car. Shows on their profile, in results and on the live board.",
     keywords: "safety car sc pace car role badge marshal",

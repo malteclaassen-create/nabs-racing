@@ -21,6 +21,7 @@ import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
 import { WAITLIST, seatsFor, promoteFromWaitlist } from "../lib/waitlist.js";
 import { seasonHasDivision2, readDivision2Drivers, readCapacity2 } from "../lib/divisions.js";
 import { offerSeatOnDecline, reclaimSeat } from "../lib/seatAuto.js";
+import { division1Block, carryReserveRule } from "../lib/reserveRules.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import {
   isEventRace, readCars, writeCar, numberTakenBy, parseCarNumber, parseLiveryUrl, parseLiveryOld, liveryDeadline, carLocked,
@@ -103,7 +104,27 @@ async function addToReservePool(prisma, base, seasonId) {
   } catch {
     /* linking is best-effort; the RSVP itself must not fail on it */
   }
+  // What the admins set for this person as a reserve holds in the new season
+  // too (lib/reserveRules.js); otherwise signing up for next season's opener
+  // would be the way around it.
+  await carryReserveRule(prisma, base.id, driver);
   return driver;
+}
+
+// May this driver put themselves on the grid of this race? A reserve the
+// admins have kept out of Division 1 may not (lib/reserveRules.js): returns
+// the sentence that says why, or null. Somebody who was GIVEN a seat for the
+// race is on the grid by that, whatever their rule says.
+async function signUpBlock(race, driver) {
+  if (!driver) return null;
+  const withTeam = driver.team ? driver : { ...driver, team: await prisma.team.findUnique({ where: { id: driver.teamId } }) };
+  const reason = await division1Block(prisma, race, withTeam);
+  if (!reason) return null;
+  const seated = await prisma.seatOffer.findFirst({
+    where: { raceId: race.id, filledById: driver.id, status: "FILLED" },
+    select: { id: true },
+  });
+  return seated ? null : reason;
 }
 
 // GET /api/events -> upcoming races (not completed) with RSVP lists.
@@ -531,6 +552,20 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
       if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
     }
 
+    // A reserve the admins have kept out of Division 1 can say no and nothing
+    // else (lib/reserveRules.js). Before the grid is counted, so they are not
+    // offered a waiting list they could not join either.
+    // Pressing the answer they already have changes nothing and is not refused:
+    // an answer from before the rule was set stays until somebody changes it.
+    if (driver && status !== "DECLINED") {
+      const current = await prisma.raceRsvp.findUnique({
+        where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+        select: { status: true },
+      });
+      const blocked = current?.status === status ? null : await signUpBlock(race, driver);
+      if (blocked) return res.status(403).json({ error: blocked, notAllowed: true });
+    }
+
     // A special event's car (lib/eventCars.js). Checked before anything is
     // written, so a taken number leaves the answer as it was. A driver who
     // declines needs no car; everybody else needs a number, either one they
@@ -599,6 +634,15 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
       // `recognised`: not new at all. Their Steam account led to the driver
       // they raced as before (lib/newcomers.js recogniseBySteam).
       joined = { driverId: out.driver.id, driverName: out.driver.name, ...(out.recognised ? { recognised: true } : {}) };
+    }
+
+    // New drivers start without Division 1 in a season that runs Division 2
+    // (lib/reserveRules.js). Their driver is made all the same: they are on the
+    // reserve list from here, the admins hear about them, and the page says
+    // why this answer was not taken. Nothing is written for the race.
+    if (newcomer && want !== "DECLINED") {
+      const blocked = await signUpBlock(race, driver);
+      if (blocked) return res.json({ ok: true, joined, notSignedUp: blocked });
     }
 
     // Written only when it actually changes. RaceRsvp.updatedAt is the waiting

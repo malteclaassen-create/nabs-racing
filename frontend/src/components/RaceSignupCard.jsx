@@ -289,6 +289,11 @@ export default function RaceSignupCard({
   const mySeat = (marketRace?.offers || []).find(
     (o) => o.status === "FILLED" && myIds.has(o.filledBy?.driverId)
   );
+  // A reserve the admins have kept out of Division 1 for this race (never, or
+  // only while one of the drivers they cover for is out): the server's
+  // sentence saying why, or null. They can still say no. Being given a seat
+  // overrides it, and an answer from before the rule was set stays theirs.
+  const signUpBlock = !mySeat && meHere?.signUpBlock ? meHere.signUpBlock : null;
   const [standingDown, setStandingDown] = useState(false);
   const ask = useAsk();
   async function standDown() {
@@ -531,7 +536,11 @@ export default function RaceSignupCard({
                 <button
                   key={status}
                   onClick={() => answer(status)}
-                  disabled={(!!myOffer && status !== "ACCEPTED") || busy === `${ev.id}:${status}`}
+                  disabled={
+                    (!!myOffer && status !== "ACCEPTED") ||
+                    (!!signUpBlock && status !== "DECLINED" && !active) ||
+                    busy === `${ev.id}:${status}`
+                  }
                   aria-pressed={active}
                   // The one it is stuck on keeps its colour, so the card still
                   // says what the answer IS. The other two go flat: greying the
@@ -541,11 +550,19 @@ export default function RaceSignupCard({
                       ? status === "ACCEPTED"
                         ? "Take your seat back"
                         : "Your seat is up in the Driver Market"
-                      : undefined
+                      : signUpBlock && status !== "DECLINED" && !active
+                        ? signUpBlock
+                        : undefined
                   }
                   className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition sm:flex-none ${
                     active ? ui.active : ui.idle
-                  } ${myOffer && status !== "ACCEPTED" ? (active ? "cursor-not-allowed" : "cursor-not-allowed opacity-40") : "disabled:opacity-50"}`}
+                  } ${
+                    myOffer && status !== "ACCEPTED"
+                      ? active ? "cursor-not-allowed" : "cursor-not-allowed opacity-40"
+                      : signUpBlock && status !== "DECLINED" && !active
+                        ? "cursor-not-allowed opacity-40"
+                        : "disabled:opacity-50"
+                  }`}
                 >
                   {ui.Icon ? (
                     <ui.Icon className={`h-4 w-4 ${active ? "" : ui.idleIcon}`} aria-hidden="true" />
@@ -579,6 +596,11 @@ export default function RaceSignupCard({
                 Your seat is up in the Driver Market, so you&rsquo;re down as declined. Changed your
                 mind? Press Accept and the seat is yours again.
               </p>
+            )}
+            {/* Why the other buttons are grey, in words: a title on a disabled
+                button is no help on a phone. */}
+            {signUpBlock && (
+              <p className="w-full text-sm leading-relaxed text-light">{signUpBlock}.</p>
             )}
             {/* A reserve who was GIVEN a seat is entered by somebody else, so
                 "Clear my answer" is not the way out: the seat would still be

@@ -7,6 +7,7 @@ import { readDriverRoles } from "../lib/driverRoles.js";
 import { stripPrivateDriverFields } from "../lib/privacy.js";
 import { getConstructorStandingsForTier } from "../services/standingsService.js";
 import { DIV2_TIER, divisionOf } from "../lib/divisions.js";
+import { readReserveRules } from "../lib/reserveRules.js";
 import { isSeasonComplete, seasonConcluded } from "../lib/seasonComplete.js";
 import { readTeamHistory } from "../services/teamHistoryService.js";
 import { getTeamAllTime } from "../services/teamAllTimeService.js";
@@ -62,6 +63,9 @@ router.get("/", async (req, res, next) => {
     const effectiveDiscord = admin
       ? await discordIdsForDrivers(prisma, allIds).catch(() => new Map())
       : new Map();
+    // What each reserve may do (lib/reserveRules.js), for the admin's Drivers
+    // tab. Not part of the public roster.
+    const reserveRules = admin ? await readReserveRules(prisma, allIds) : new Map();
     // Archive rosters show the person's current name with a "raced as" note.
     // No-op for the active season (its own row already carries the current name).
     for (const t of teams) {
@@ -86,6 +90,7 @@ router.get("/", async (req, res, next) => {
           // Inherited from a linked season row (own column empty).
           const eff = effectiveDiscord.get(d.id) || null;
           d.inheritedDiscordUserId = !d.discordUserId && eff ? eff : null;
+          d.reserveRule = reserveRules.get(d.id) || null;
         } else {
           // Contact identities never leave the server for the public roster.
           // This endpoint feeds the Constructors, Live and team pages, so

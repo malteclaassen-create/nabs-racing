@@ -164,7 +164,10 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
             const iAmPicked = me && offer.filledBy?.driverId === me.driverId;
             const filled = offer.status === "FILLED";
             // Free, not mine, and I am a reserve who could take it.
-            const forMe = highlight && !mine && !iAmInterested && !filled && me?.isReserve;
+            // A seat the admins have said this reserve can't take: the server's
+            // sentence saying why (null = it is open to them).
+            const blocked = !mine && me?.isReserve ? offer.myBlock || null : null;
+            const forMe = highlight && !mine && !iAmInterested && !filled && me?.isReserve && !blocked;
 
             // A settled seat is a fact, not a decision. It used to carry the
             // interest list, a divider and the whole action block, roughly a
@@ -304,6 +307,8 @@ export default function SeatMarket({ race, me, reload, highlight = false, blockR
                         >
                           Withdraw interest
                         </button>
+                      ) : blocked ? (
+                        <span className="text-xs leading-relaxed text-light">{blocked}.</span>
                       ) : (
                         <button
                           className="btn-primary"
