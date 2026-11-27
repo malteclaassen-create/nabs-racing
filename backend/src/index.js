@@ -30,6 +30,7 @@ import teamSignupRoutes from "./routes/teamSignup.js";
 import reportsRoutes from "./routes/reports.js";
 import liveIncidentsRoutes from "./routes/liveIncidents.js";
 import raceControlRoutes from "./routes/raceControl.js";
+import { clearReserveSignupsOnce } from "./lib/reserveSignupCleanup.js";
 import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { compressOldBackups } from "./services/backupService.js";
@@ -122,6 +123,9 @@ ensureAppSchema(prisma)
   // Once: what a restart paid for rounds before the token start day is taken
   // back (lib/tokens.js, flag-guarded).
   .then(() => dropPreStartPayoutsOnce(prisma))
+  // Once: the sign-ups reserves had made before they could only get in through
+  // the Driver Market are taken off (lib/reserveSignupCleanup.js, flag-guarded).
+  .then(() => clearReserveSignupsOnce(prisma))
   // One-off feature announcements (broadcasts, deduped so reboots never repeat).
   .then(() => announceFeatures(prisma))
   // Bells rung by filling in a past season's results go again (lib/notifications.js).

@@ -588,6 +588,26 @@ export async function notifySeatReclaimed(prisma, { race, reserve, openSeats = 0
   }
 }
 
+// A reserve's sign-up from before "reserves get in through the Driver Market"
+// was taken off (lib/reserveSignupCleanup.js). Not muteable: they signed up
+// and would otherwise turn up thinking they are in.
+export async function notifyReserveSignupRemoved(prisma, { race, driverId, recipientId }) {
+  try {
+    if (!recipientId || !race?.id) return;
+    const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
+    await dbCreateNotification(prisma, {
+      type: "MARKET",
+      title: `Your sign-up for ${roundName(race)} was taken off`,
+      body: `Reserves now get into a race through the Driver Market. Put your hand up for a free seat at ${race.track} there, and you are in once you are picked.`,
+      link: `${prefix}/attendance?race=${race.id}`,
+      recipientId,
+      dedupeKey: `reserve-signup-removed:${race.id}:${driverId}`,
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 // A seat came free and the front of the waiting list moved onto the grid. Not
 // muteable: it is the answer to a question they asked by joining the queue, and
 // somebody who does not hear it turns up to a race they think they are not in
