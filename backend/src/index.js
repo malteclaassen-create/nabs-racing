@@ -48,7 +48,9 @@ import { ownSteamIds } from "./lib/liveOwnCar.js";
 import { liveCentreLine } from "./lib/trackMaps.js";
 import { startMemoryLog } from "./services/memoryDiagnostics.js";
 import { serverKeyForSeries, serverConfigForSeries, resolveServerKey, LIVE_SERVERS } from "./lib/liveServers.js";
-import { seasonHasDivision2, readDivision2Drivers, filledDivision2Seats, division2OnAir } from "./lib/divisions.js";
+import {
+  seasonHasDivision2, readDivision2Drivers, readReserveDrivers, filledDivision1Seats, division2OnAir,
+} from "./lib/divisions.js";
 import { getLinkedDriverIds } from "./lib/persons.js";
 import { resolveSeasonId as resolveSeasonForLive } from "./services/seasonService.js";
 import { boardLiveryColors, boardSkins, getLivery } from "./lib/liveryPreview.js";
@@ -423,19 +425,23 @@ app.get("/api/live/me", optionalUser, async (req, res) => {
       ? await resolveSeasonForLive(prisma, undefined, { series: req.query.series }).catch(() => null)
       : null;
     if (seasonId && (await seasonHasDivision2(prisma, seasonId))) {
-      const [mine, div2] = await Promise.all([getLinkedDriverIds(prisma, driverId), readDivision2Drivers(prisma, seasonId)]);
+      const [mine, div2, reserves] = await Promise.all([
+        getLinkedDriverIds(prisma, driverId),
+        readDivision2Drivers(prisma, seasonId),
+        readReserveDrivers(prisma, seasonId),
+      ]);
       const rows = await prisma.driver.findMany({ where: { id: { in: mine }, seasonId }, select: { id: true } });
       if (rows.length) division = rows.some((r) => div2.has(r.id)) ? 2 : 1;
-      // A reserve (one pool) races in Division 2 on a night they took over a
-      // Division 2 seat: the season's next open round decides.
-      if (division === 1) {
+      // A reserve races in Division 2, except on a night they took over a
+      // Division 1 seat: the season's next open round decides.
+      if (division === 1 && rows.some((r) => reserves.has(r.id))) {
         const next = await prisma.race.findFirst({
           where: { seasonId, isCompleted: false, isSpecialEvent: false },
           orderBy: [{ date: "asc" }, { number: "asc" }],
           select: { id: true },
         });
-        const filled = next ? await filledDivision2Seats(prisma, next.id) : new Set();
-        if (rows.some((r) => filled.has(r.id))) division = 2;
+        const filled = next ? await filledDivision1Seats(prisma, next.id) : new Set();
+        if (!rows.some((r) => filled.has(r.id))) division = 2;
       }
     }
   } catch {

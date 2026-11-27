@@ -3361,7 +3361,7 @@ router.put("/drivers/:id", async (req, res, next) => {
         return res.status(400).json({ error: `${team.name} belongs to a different season` });
       }
     }
-    // What this driver may do as a reserve (lib/reserveRules.js):
+    // Which seats this driver may take over as a reserve (lib/reserveRules.js):
     // { div1: "" | "never" | "cover", cover: [driverId], noSubIn }. Any of the
     // three can be sent alone.
     let rulePatch = null;
@@ -3543,8 +3543,9 @@ router.put("/drivers/:id", async (req, res, next) => {
 
 // GET /api/admin/reserve-rules/new-drivers -> { noDiv1 }
 // PUT /api/admin/reserve-rules/new-drivers  { noDiv1 }
-// Whether a newcomer who signs themselves up starts without Division 1, in a
-// season that runs Division 2 (lib/reserveRules.js). On unless switched off.
+// Whether a newcomer who signs themselves up starts with "no Division 1 seat"
+// on the Driver Market, in a season that runs Division 2
+// (lib/reserveRules.js). On unless switched off.
 router.get("/reserve-rules/new-drivers", async (req, res, next) => {
   try {
     res.json(await readNewDriverRule(prisma));

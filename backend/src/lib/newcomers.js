@@ -230,8 +230,9 @@ export async function joinAsNewcomer(prisma, { discordId, seasonId, race = null 
 
   await markNew(prisma, id);
   await markSelfMade(prisma, [driver.id]);
-  // New drivers start without Division 1 in a season that runs Division 2,
-  // unless the admins switched that off (lib/reserveRules.js).
+  // New drivers start without Division 1 seats on the Driver Market in a
+  // season that runs Division 2, unless the admins switched that off
+  // (lib/reserveRules.js). They race in Division 2 like every reserve.
   await applyNewDriverRule(prisma, driver);
   // A Steam account proved on the welcome page goes onto the row now, so the
   // import of the very race they signed up for matches them by Steam id.

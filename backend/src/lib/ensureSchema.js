@@ -335,11 +335,11 @@ export async function ensureAppSchema(prisma) {
   // member_newcomer.
   await addColumn(prisma, "Driver", "selfMadeAt", "DATETIME");
 
-  // --- What a reserve may do, set per driver by an admin (migration
-  // reserve_rules, lib/reserveRules.js). div1Rule: null = signs up for
-  // Division 1 like any reserve, 'never' = may not, 'cover' = only for a round
-  // where one of the drivers in div1Cover (JSON array of driver ids) is out.
-  // noSubIn: may not take over a seat on the Driver Market.
+  // --- Which seats a reserve may take over on the Driver Market, set per
+  // driver by an admin (migration reserve_rules, lib/reserveRules.js).
+  // div1Rule: null = any Division 1 seat, 'never' = none, 'cover' = only for a
+  // round where one of the drivers in div1Cover (JSON array of driver ids) is
+  // out. noSubIn: no seat at all, in either division.
   await addColumn(prisma, "Driver", "div1Rule", "TEXT");
   await addColumn(prisma, "Driver", "div1Cover", "TEXT");
   await addColumn(prisma, "Driver", "noSubIn", "BOOLEAN NOT NULL DEFAULT 0");

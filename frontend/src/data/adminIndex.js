@@ -463,7 +463,7 @@ export const ADMIN_INDEX = [
   {
     tab: "drivers",
     title: "Reserve rules",
-    hint: "Stop a reserve from signing up for Division 1 or from taking over a seat, or only let them in when a certain driver is out.",
+    hint: "Stop a reserve from taking a Division 1 seat or from subbing in at all, or only let them in when a certain driver is out.",
     keywords: "reserve rule division 1 div sign up signup sub in substitute seat driver market block restrict new drivers newcomer cover",
   },
   {

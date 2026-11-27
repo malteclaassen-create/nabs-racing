@@ -15,7 +15,7 @@ import { eventSeasonIds } from "./events.js";
 import { notifySeatOffered, notifySeatFilled, notifyAdminsSeatDropped } from "../lib/notifications.js";
 import { syncRaceToDiscord } from "../services/discordService.js";
 import { promoteFromWaitlist } from "../lib/waitlist.js";
-import { readReserveRules, division1Block, seatBlock } from "../lib/reserveRules.js";
+import { readReserveRules, seatBlock } from "../lib/reserveRules.js";
 import { seasonHasDivision2 } from "../lib/divisions.js";
 
 const router = Router();
@@ -165,27 +165,24 @@ router.get("/", async (req, res, next) => {
         }
       }
     }
-    // What the admins set for the caller as a reserve (lib/reserveRules.js),
-    // worked out per race because "only when one of these drivers is out"
-    // depends on who has said no to that race. `signUpBlock` is why they can't
-    // put themselves on the grid (null = they can), and each offer's `myBlock`
-    // why that seat is not for them. The server refuses both anyway; this is
-    // so the page shows the reason instead of a button that answers with one.
-    const blocksByRace = new Map();
+    // Seats the admins have said the caller can't take (lib/reserveRules.js):
+    // each open offer's `myBlock` is the sentence that says why, null when the
+    // seat is open to them. Worked out per race, because "only when one of
+    // these drivers is out" depends on who has said no to that race. The
+    // server refuses the hand-raise anyway; this is so the page shows the
+    // reason instead of a button that answers with one.
+    const blockOf = new Map(); // offerId -> sentence
     for (const [sid, d] of rowBySeason) {
       if (!isReserve(d)) continue;
       const rule = (await readReserveRules(prisma, [d.id])).get(d.id);
       if (!rule) continue;
       const twoDivisions = await seasonHasDivision2(prisma, sid);
       for (const race of races.filter((r) => r.seasonId === sid)) {
-        const seats = new Map();
         for (const o of race.seatOffers) {
-          if (o.status === "OPEN") seats.set(o.id, await seatBlock(prisma, race, o.team, d, { rule, twoDivisions }));
+          if (o.status !== "OPEN") continue;
+          const why = await seatBlock(prisma, race, o.team, d, { rule, twoDivisions });
+          if (why) blockOf.set(o.id, why);
         }
-        blocksByRace.set(race.id, {
-          signUp: await division1Block(prisma, race, d, { rule, twoDivisions }),
-          seats,
-        });
       }
     }
     const activeSeasonId = await resolveSeasonId(prisma, req.query.season, {
@@ -200,13 +197,8 @@ router.get("/", async (req, res, next) => {
         number: race.number,
         track: race.track,
         date: race.date,
-        me: meBySeason.get(race.seasonId)
-          ? { ...meBySeason.get(race.seasonId), signUpBlock: blocksByRace.get(race.id)?.signUp || null }
-          : null,
-        offers: race.seatOffers.map((o) => ({
-          ...shapeOffer(o),
-          myBlock: blocksByRace.get(race.id)?.seats.get(o.id) || null,
-        })),
+        me: meBySeason.get(race.seasonId) || null,
+        offers: race.seatOffers.map((o) => ({ ...shapeOffer(o), myBlock: blockOf.get(o.id) || null })),
       })),
     });
   } catch (e) {
@@ -425,7 +417,7 @@ router.post("/offer/:offerId/interest", async (req, res, next) => {
       return res.status(403).json({ error: "Only reserve drivers can express interest" });
     }
     // A reserve the admins have kept out of this seat (no subbing in at all,
-    // or no Division 1 for them this round, lib/reserveRules.js).
+    // or no Division 1 seat for them this round, lib/reserveRules.js).
     const blocked = await seatBlock(prisma, offer.race, offer.team, driver);
     if (blocked) return res.status(403).json({ error: blocked, notAllowed: true });
 
@@ -509,6 +501,11 @@ router.post("/offer/:offerId/pick", async (req, res, next) => {
       await setSeatRsvp(prisma, offer.raceId, offer.filledById, false);
     }
     if (pickId) await setSeatRsvp(prisma, offer.raceId, pickId, true);
+    // A reserve signs up on Division 2's grid and is on Division 1's with a
+    // Division 1 seat (lib/divisions.js). Picking one who had signed up moves
+    // them over, which leaves a place on Division 2's grid for its queue.
+    const promoted = await promoteFromWaitlist(prisma, offer.raceId);
+    if (promoted.length) await syncRaceToDiscord(prisma, offer.raceId).catch(() => {});
     // Tell the picked reserve personally (needs their linked Discord id).
     if (updated.filledBy) {
       notifySeatFilled(prisma, { offerId: offer.id, raceId: offer.raceId, reserve: updated.filledBy });

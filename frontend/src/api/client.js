@@ -1296,8 +1296,8 @@ export const api = {
       auth: true,
     }),
   updateDriver: (id, body) => request(`/admin/drivers/${id}`, { method: "PUT", body, auth: true }),
-  // Whether a newcomer who signs themselves up starts without Division 1 (in a
-  // season that runs Division 2). A reserve's own rule goes through
+  // Whether a newcomer who signs themselves up starts without Division 1 seats
+  // on the Driver Market (in a season that runs Division 2). A reserve's own rule goes through
   // updateDriver as `reserveRule`.
   newDriverRule: () => request("/admin/reserve-rules/new-drivers", { auth: true }),
   setNewDriverRule: (noDiv1) => request("/admin/reserve-rules/new-drivers", { method: "PUT", body: { noDiv1 }, auth: true }),

@@ -63,8 +63,8 @@ router.get("/", async (req, res, next) => {
     const effectiveDiscord = admin
       ? await discordIdsForDrivers(prisma, allIds).catch(() => new Map())
       : new Map();
-    // What each reserve may do (lib/reserveRules.js), for the admin's Drivers
-    // tab. Not part of the public roster.
+    // Which seats each reserve may take over (lib/reserveRules.js), for the
+    // admin's Drivers tab. Not part of the public roster.
     const reserveRules = admin ? await readReserveRules(prisma, allIds) : new Map();
     // Archive rosters show the person's current name with a "raced as" note.
     // No-op for the active season (its own row already carries the current name).

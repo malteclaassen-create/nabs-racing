@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  readReserveRules, writeReserveRule, validCoverIds, driversOut, division1Block, seatBlock,
+  readReserveRules, writeReserveRule, validCoverIds, driversOut, seatBlock,
   applyNewDriverRule, writeNewDriverRule, readNewDriverRule, carryReserveRule,
 } from "./reserveRules.js";
 
@@ -70,8 +70,8 @@ describe("a reserve's rule", () => {
   it("is nothing until an admin sets one", async () => {
     const prisma = db();
     expect((await readReserveRules(prisma, ["guest"])).size).toBe(0);
-    expect(await division1Block(prisma, race, prisma.state.drivers.guest)).toBeNull();
     expect(await seatBlock(prisma, race, d1Seat, prisma.state.drivers.guest)).toBeNull();
+    expect(await seatBlock(prisma, race, d2Seat, prisma.state.drivers.guest)).toBeNull();
   });
 
   it("writes only what was sent, and drops the list with any rule but cover", async () => {
@@ -93,52 +93,50 @@ describe("a reserve's rule", () => {
   });
 });
 
-describe("no Division 1", () => {
-  it("refuses the sign-up and a Division 1 seat, not a Division 2 seat", async () => {
+describe("no Division 1 seat", () => {
+  it("refuses a Division 1 seat, not a Division 2 seat", async () => {
     const prisma = db();
     const guest = prisma.state.drivers.guest;
     await writeReserveRule(prisma, "guest", { div1: "never" });
-    expect(await division1Block(prisma, race, guest)).toMatch(/can't sign up for Division 1/);
-    expect(await seatBlock(prisma, race, d1Seat, guest)).toMatch(/Division 1/);
+    expect(await seatBlock(prisma, race, d1Seat, guest)).toMatch(/can't take a Division 1 seat/);
     expect(await seatBlock(prisma, race, d2Seat, guest)).toBeNull();
   });
 
-  it("does not name a division in a season with one grid", async () => {
+  it("does not name a division in a season with one", async () => {
     const prisma = db({ division2: false });
     await writeReserveRule(prisma, "guest", { div1: "never" });
-    const said = await division1Block(prisma, race, prisma.state.drivers.guest);
-    expect(said).toMatch(/sign up as a reserve/);
+    const said = await seatBlock(prisma, race, d1Seat, prisma.state.drivers.guest);
+    expect(said).toMatch(/can't take a seat/);
     expect(said).not.toMatch(/Division/);
   });
 
-  it("leaves a driver with a seat, a special event and a training alone", async () => {
+  it("leaves a driver with a seat and a special event alone", async () => {
     const prisma = db();
     await writeReserveRule(prisma, "bot", { div1: "never", noSubIn: true });
     await writeReserveRule(prisma, "guest", { div1: "never", noSubIn: true });
-    expect(await division1Block(prisma, race, prisma.state.drivers.bot)).toBeNull();
+    expect(await seatBlock(prisma, race, d1Seat, prisma.state.drivers.bot)).toBeNull();
     const event = { ...race, isSpecialEvent: true };
-    expect(await division1Block(prisma, event, prisma.state.drivers.guest)).toBeNull();
     expect(await seatBlock(prisma, event, d1Seat, prisma.state.drivers.guest)).toBeNull();
   });
 });
 
-describe("only when one of these drivers is out", () => {
+describe("a Division 1 seat only when one of these drivers is out", () => {
   it("is shut while all of them race, and says who", async () => {
     const prisma = db();
     await writeReserveRule(prisma, "guest", { div1: "cover", cover: ["bot", "sigg"] });
-    const said = await division1Block(prisma, race, prisma.state.drivers.guest);
-    expect(said).toMatch(/when 13bot or Siggsta isn't racing/);
-    expect(await seatBlock(prisma, race, d1Seat, prisma.state.drivers.guest)).toBe(said);
+    const said = await seatBlock(prisma, race, d1Seat, prisma.state.drivers.guest);
+    expect(said).toMatch(/only take a Division 1 seat when 13bot or Siggsta isn't racing/);
+    // Division 2 is not what the list is about.
+    expect(await seatBlock(prisma, race, d2Seat, prisma.state.drivers.guest)).toBeNull();
   });
 
   it("opens when one of them says no", async () => {
     const prisma = db();
     await writeReserveRule(prisma, "guest", { div1: "cover", cover: ["bot", "sigg"] });
     prisma.state.rsvps.push({ raceId: "r5", driverId: "sigg", status: "DECLINED" });
-    expect(await division1Block(prisma, race, prisma.state.drivers.guest)).toBeNull();
     expect(await seatBlock(prisma, race, d1Seat, prisma.state.drivers.guest)).toBeNull();
     // Another race is another question.
-    expect(await division1Block(prisma, { ...race, id: "r6" }, prisma.state.drivers.guest)).not.toBeNull();
+    expect(await seatBlock(prisma, { ...race, id: "r6" }, d1Seat, prisma.state.drivers.guest)).not.toBeNull();
   });
 
   it("opens when a seat of theirs is on the market, but not for a cancelled offer or a maybe", async () => {
@@ -147,38 +145,37 @@ describe("only when one of these drivers is out", () => {
     prisma.state.offers.push({ raceId: "r5", driverId: "bot", status: "CANCELLED" });
     prisma.state.rsvps.push({ raceId: "r5", driverId: "bot", status: "TENTATIVE" });
     expect([...(await driversOut(prisma, "r5", ["bot"]))]).toEqual([]);
-    expect(await division1Block(prisma, race, prisma.state.drivers.guest)).toMatch(/when 13bot isn't racing/);
-    prisma.state.offers.push({ raceId: "r5", driverId: "bot", status: "FILLED" });
+    expect(await seatBlock(prisma, race, d1Seat, prisma.state.drivers.guest)).toMatch(/when 13bot isn't racing/);
+    prisma.state.offers.push({ raceId: "r5", driverId: "bot", status: "OPEN" });
     expect([...(await driversOut(prisma, "r5", ["bot"]))]).toEqual(["bot"]);
-    expect(await division1Block(prisma, race, prisma.state.drivers.guest)).toBeNull();
+    expect(await seatBlock(prisma, race, d1Seat, prisma.state.drivers.guest)).toBeNull();
   });
 
   it("with nobody on the list it is simply shut", async () => {
     const prisma = db();
     await writeReserveRule(prisma, "guest", { div1: "cover", cover: [] });
-    expect(await division1Block(prisma, race, prisma.state.drivers.guest)).toMatch(/can't sign up for Division 1/);
+    expect(await seatBlock(prisma, race, d1Seat, prisma.state.drivers.guest)).toMatch(/can't take a Division 1 seat/);
   });
 });
 
 describe("no subbing in", () => {
-  it("refuses every seat, in both divisions, and leaves the sign-up alone", async () => {
+  it("refuses every seat, in both divisions", async () => {
     const prisma = db();
     const mitch = prisma.state.drivers.mitch;
     await writeReserveRule(prisma, "mitch", { noSubIn: true });
     expect(await seatBlock(prisma, race, d1Seat, mitch)).toMatch(/can't take over a seat/);
     expect(await seatBlock(prisma, race, d2Seat, mitch)).toMatch(/can't take over a seat/);
-    expect(await division1Block(prisma, race, mitch)).toBeNull();
   });
 });
 
 describe("new drivers", () => {
-  it("start without Division 1 in a season with Division 2", async () => {
+  it("start without Division 1 seats in a season with Division 2", async () => {
     const prisma = db();
     expect(await applyNewDriverRule(prisma, { id: "guest", seasonId: "s9" })).toBe(true);
     expect((await readReserveRules(prisma, ["guest"])).get("guest").div1).toBe("never");
   });
 
-  it("are left alone in a season with one grid", async () => {
+  it("are left alone in a season with one division", async () => {
     const prisma = db({ division2: false });
     expect(await applyNewDriverRule(prisma, { id: "guest", seasonId: "s9" })).toBe(false);
     expect((await readReserveRules(prisma, ["guest"])).size).toBe(0);

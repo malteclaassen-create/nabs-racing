@@ -12,12 +12,14 @@
 //     tier 1 or tier 2 therefore never sees one, and the Division 1 tables
 //     stay exactly what they were.
 //   * A driver is in Division 2 when their team is (Driver.tier follows the
-//     team, so 3 as well). There is ONE Reserve pool for both divisions: a
-//     reserve signs up on Division 1's grid and gets into a Division 2 race
-//     only by taking over a Division 2 driver's seat on the Driver Market;
-//     for that race they then count on Division 2's grid
-//     (filledDivision2Seats). The old Driver.division column (a Division 2
-//     side of the pool) is no longer read.
+//     team, so 3 as well). There is ONE Reserve pool for both divisions, and
+//     a reserve races in Division 2: signing up for a round puts them on
+//     Division 2's grid (division2Grid). They race in Division 1 only on a
+//     night they took over a Division 1 driver's seat on the Driver Market
+//     (filledDivision1Seats); for that race they count on Division 1's grid.
+//     (League call, 2026-11-27. Before that it was the other way round: a
+//     reserve signed up on Division 1's grid.) The old Driver.division column
+//     (a Division 2 side of the pool) is no longer read.
 //   * The Division 2 classification of a round sits on a hidden CHILD race row
 //     like a sprint's (Race.parentRaceId), told apart by Race.division = 2.
 //     The child is SPECIAL-typed and isSpecialEvent, so nothing that counts
@@ -34,9 +36,10 @@ import { raceKickoff, LEAGUE_TZ } from "./raceKickoff.js";
 
 export const DIV2_TIER = 3;
 
-// Which division a driver races in: 1 or 2. `driver` needs tier; `team` is
-// optional and wins when given, because a driver row's tier can lag a team
-// that was just re-tiered. Reserves are Division 1 (one pool, see above).
+// Which division a driver's SEAT is in: 1 or 2. `driver` needs tier; `team`
+// is optional and wins when given, because a driver row's tier can lag a team
+// that was just re-tiered. A reserve has no seat and comes out as 1 here;
+// which grid they are on is a question per race (division2Grid below).
 export function divisionOf(driver, team = driver?.team) {
   const tier = team?.tier ?? driver?.tier;
   return tier === DIV2_TIER ? 2 : 1;
@@ -80,6 +83,51 @@ export async function filledDivision2Seats(prisma, raceId) {
   } catch {
     return new Set();
   }
+}
+
+// Who took over a Division 1 seat for this race on the Driver Market (a
+// filled offer from a team that is not a Division 2 team): the reserves who
+// race in Division 1 that night. Set of driver ids; empty on any error.
+export async function filledDivision1Seats(prisma, raceId) {
+  if (!raceId) return new Set();
+  try {
+    const rows = await prisma.seatOffer.findMany({
+      where: { raceId, status: "FILLED", filledById: { not: null } },
+      select: { filledById: true, team: { select: { tier: true } } },
+    });
+    return new Set(rows.filter((r) => r.team?.tier !== DIV2_TIER).map((r) => r.filledById));
+  } catch {
+    return new Set();
+  }
+}
+
+// The season's reserves: everybody in the Reserve pool (the tier-0 team).
+export async function readReserveDrivers(prisma, seasonId) {
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT d."id" FROM "Driver" d LEFT JOIN "Team" t ON t."id" = d."teamId"
+        WHERE d."seasonId" = ? AND COALESCE(t."tier", d."tier") = 0`,
+      seasonId
+    );
+    return new Set(rows.map((r) => r.id));
+  } catch {
+    return new Set();
+  }
+}
+
+// Everybody who lines up on Division 2's grid for one race: the Division 2
+// teams' drivers, and every reserve who has not taken over a Division 1 seat
+// for it. Empty for a season that runs one division. `race` needs id and
+// seasonId.
+export async function division2Grid(prisma, race) {
+  if (!race?.seasonId || !(await seasonHasDivision2(prisma, race.seasonId))) return new Set();
+  const [grid, reserves, inDivision1] = await Promise.all([
+    readDivision2Drivers(prisma, race.seasonId),
+    readReserveDrivers(prisma, race.seasonId),
+    filledDivision1Seats(prisma, race.id),
+  ]);
+  for (const id of reserves) if (!inDivision1.has(id)) grid.add(id);
+  return grid;
 }
 
 // The reserve-pool flag of the given drivers: Map driverId -> 2 (only the
