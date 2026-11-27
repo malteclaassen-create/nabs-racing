@@ -25,8 +25,10 @@ import { dbCreateNotification } from "./notifications.js";
 import { getAdminDiscordIds } from "./adminUsers.js";
 import { removeFeedbackFiles } from "./feedbackFiles.js";
 
-// What the sender says this is. The three the widget offers, nothing else.
-export const FEEDBACK_KINDS = ["BUG", "IDEA", "OTHER"];
+// What the sender says this is. The three the widget offers, and HIGHLIGHT
+// for a moment someone wants on the live map (the map's "Suggest a
+// highlight" link sends it). Nothing else.
+export const FEEDBACK_KINDS = ["BUG", "IDEA", "OTHER", "HIGHLIGHT"];
 
 // Where the admin has got to with it. NEW is where everything starts.
 export const FEEDBACK_STATUSES = ["NEW", "PLANNED", "DONE", "DECLINED"];
@@ -250,6 +252,9 @@ export async function dbAddFeedbackReply(prisma, { feedbackId, author, authorNam
   return shapeReply(rows[0]);
 }
 
+// What a submission is called in the admins' bell.
+const KIND_BELL_LABEL = { BUG: "Bug report", IDEA: "Feature idea", HIGHLIGHT: "Highlight suggestion" };
+
 // Ping the admins' bell so a report doesn't sit unseen until somebody happens to
 // open the Feedback tab. Personal notifications (one per designated Discord
 // admin) — never a broadcast, this is not league news. Best-effort like every
@@ -258,7 +263,7 @@ export async function notifyAdminsOfFeedback(prisma, entry) {
   try {
     const ids = await getAdminDiscordIds(prisma);
     if (!ids || ids.size === 0) return;
-    const label = entry.kind === "BUG" ? "Bug report" : entry.kind === "IDEA" ? "Feature idea" : "Feedback";
+    const label = KIND_BELL_LABEL[entry.kind] || "Feedback";
     const who = entry.senderName || "Someone";
     for (const discordId of ids) {
       await dbCreateNotification(prisma, {

@@ -22,7 +22,7 @@ import { ReplyImages, ImagePicker, acceptImages, pastedImages } from "./Feedback
 // Deliberately plain rows rather than a wall of cards: this is a working list,
 // read top to bottom, and the only colour on it means something (the status).
 
-const KIND_LABEL = { BUG: "Bug", IDEA: "Idea", OTHER: "Other" };
+const KIND_LABEL = { BUG: "Bug", IDEA: "Idea", HIGHLIGHT: "Map highlight", OTHER: "Other" };
 
 const STATUSES = [
   { key: "NEW", label: "New", cls: "bg-brand/20 text-dark" },
@@ -37,6 +37,7 @@ const FILTERS = [
   { key: "ALL", label: "Everything" },
   { key: "BUG", label: "Bugs" },
   { key: "IDEA", label: "Ideas" },
+  { key: "HIGHLIGHT", label: "Map highlights" },
 ];
 
 function statusMeta(key) {
