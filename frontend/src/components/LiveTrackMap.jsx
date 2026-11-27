@@ -1559,39 +1559,51 @@ export default function LiveTrackMap({ track, trackId = null, layout = "", cars,
       </div>
       {focusedCar && cockpit && hud("mt-2 flex shrink-0 sm:hidden")}
       {/* Under the map, not on it: a control in a corner of the map sat on top
-          of whichever of the circuit's corners is drawn there. */}
+          of whichever of the circuit's corners is drawn there. The Highlights
+          button and the background switch share a line, left and right; what
+          belongs to the highlights (how to open one, suggesting a missing
+          one) sits under the button in a small line of its own. */}
       {(canSuggest || aerialAvailable) && (
-        <div className="mt-2 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 px-1">
-          {corners.length > 0 && (
-            <button
-              type="button"
-              aria-pressed={cornersOn}
-              title={cornersOn ? "Hide the highlights" : "Show where something happened here in past races"}
-              onClick={toggleCorners}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
-                cornersOn ? "border-brand bg-brand text-onbrand" : "border-border bg-card text-medium hover:text-dark"
-              }`}
-            >
-              <Star className="h-3.5 w-3.5" aria-hidden="true" />
-              Highlights
-            </button>
-          )}
-          {cornersOn && corners.length > 0 && (
-            <span className="font-mono text-[10px] uppercase tracking-wider text-light">
-              Point at a star or tap it
-            </span>
-          )}
-          {canSuggest && <SuggestHighlight trackName={circuitName || track || ""} corners={allCorners} labelOf={cornerLabel} />}
-          {aerialAvailable && (
-            <div className="ml-auto" role="group" aria-label="Map background">
-              <SlidingTabs
-              wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm"
-              btnClassName="px-3 py-1.5 text-xs uppercase tracking-wide"
-              pillClassName="rounded-md bg-brand"
-              items={[{ key: "track", label: "Track" }, { key: "aerial", label: "Satellite" }]}
-              value={aerial ? "aerial" : "track"}
-              onChange={(value) => { setImageFailed(false); setMapMode(value); if (value === "aerial") setLoadAerial(true); }}
-            />
+        <div className="mt-2 shrink-0 space-y-1.5 px-1">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            {corners.length > 0 ? (
+              <button
+                type="button"
+                aria-pressed={cornersOn}
+                title={cornersOn ? "Hide the highlights" : "Show where something happened here in past races"}
+                onClick={toggleCorners}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+                  cornersOn ? "border-brand bg-brand text-onbrand" : "border-border bg-card text-medium hover:text-dark"
+                }`}
+              >
+                <Star className="h-3.5 w-3.5" aria-hidden="true" />
+                Highlights
+              </button>
+            ) : (
+              // No highlight on this circuit yet: the link takes the button's place.
+              canSuggest && <SuggestHighlight trackName={circuitName || track || ""} corners={allCorners} labelOf={cornerLabel} />
+            )}
+            {aerialAvailable && (
+              <div className="ml-auto" role="group" aria-label="Map background">
+                <SlidingTabs
+                  wrapClassName="inline-flex rounded-lg border border-border bg-card p-0.5 shadow-sm"
+                  btnClassName="px-3 py-1.5 text-xs uppercase tracking-wide"
+                  pillClassName="rounded-md bg-brand"
+                  items={[{ key: "track", label: "Track" }, { key: "aerial", label: "Satellite" }]}
+                  value={aerial ? "aerial" : "track"}
+                  onChange={(value) => { setImageFailed(false); setMapMode(value); if (value === "aerial") setLoadAerial(true); }}
+                />
+              </div>
+            )}
+          </div>
+          {corners.length > 0 && canSuggest && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {cornersOn && (
+                <span className="font-mono text-[10px] uppercase tracking-wider text-light">
+                  Point at a star or tap it
+                </span>
+              )}
+              <SuggestHighlight trackName={circuitName || track || ""} corners={allCorners} labelOf={cornerLabel} />
             </div>
           )}
         </div>
