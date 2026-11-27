@@ -109,6 +109,14 @@ export function effectiveTypes(info, key) {
 
 export const MAX_CORNERS = 30;
 const MAX_CORNER_NAME = 40;
+// A corner can carry a track tip for the live map: a line or two on how to
+// take it, and a picture of something that happened there with a caption.
+export const MAX_CORNER_TIP = 280;
+export const MAX_CORNER_CAPTION = 120;
+// Only pictures the corner upload wrote itself (routes/admin.js), with or
+// without its cache-busting query.
+const CORNER_IMAGE_RE = /^\/api\/uploads\/tracks\/[A-Za-z0-9]+__corner-[a-z0-9]+\.webp(\?v=\d+)?$/;
+export const cornerImageFile = (url) => (CORNER_IMAGE_RE.test(String(url || "")) ? String(url).split("?")[0].split("/").pop() : null);
 
 // The corners of the circuits the site has official data for, as
 // (percent of the lap, turn number, name). Every official corner is here,
@@ -302,7 +310,9 @@ export function effectiveCorners(info, key, layout = "") {
 // Named corners, cleaned: a position between 0 and 100 (one decimal), a name
 // or a turn number (at least one of the two), sorted round the lap. Two
 // corners at the same spot are one too many; the first one stays. Anything
-// that is not a list is "never set" (null), like the types.
+// that is not a list is "never set" (null), like the types. The tip, the
+// picture and its caption are only on a corner that has them, so a plain
+// corner stays the three fields it always was.
 export function sanitizeCorners(input) {
   if (!Array.isArray(input)) return null;
   const out = [];
@@ -317,7 +327,15 @@ export function sanitizeCorners(input) {
     const pos = Math.round(at * 10) / 10;
     if (seen.has(pos)) continue;
     seen.add(pos);
-    out.push({ at: pos, turn, name });
+    const corner = { at: pos, turn, name };
+    const tip = typeof c?.tip === "string" ? c.tip.trim().slice(0, MAX_CORNER_TIP) : "";
+    if (tip) corner.tip = tip;
+    if (cornerImageFile(c?.image)) {
+      corner.image = c.image;
+      const caption = typeof c?.caption === "string" ? c.caption.trim().slice(0, MAX_CORNER_CAPTION) : "";
+      if (caption) corner.caption = caption;
+    }
+    out.push(corner);
   }
   return out.sort((a, b) => a.at - b.at).slice(0, MAX_CORNERS);
 }

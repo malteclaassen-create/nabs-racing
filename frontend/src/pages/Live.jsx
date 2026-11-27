@@ -2243,6 +2243,7 @@ function TrackMapSection({ session, entries, match, follow, onCarTelemetry, onPo
             <LiveTrackMap
               track={session.trackName || session.track}
               trackId={session.track}
+              layout={session.layout || ""}
               cars={cars}
               matchFn={match}
               map={realMap}
@@ -3592,6 +3593,7 @@ function TvMode({ session, entries, receivedAt, match, follow, onCarTelemetry, o
                 <LiveTrackMap
                   track={session.trackName || session.track}
               trackId={session.track}
+              layout={session.layout || ""}
                   cars={cars}
                   matchFn={match}
                   map={session.map || null}

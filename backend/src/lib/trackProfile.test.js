@@ -58,6 +58,21 @@ describe("corner names", () => {
     expect(sanitizeCorners(null)).toBeNull();
   });
 
+  it("keeps a corner's tip, and its picture only when the corner upload wrote it", () => {
+    const image = "/api/uploads/tracks/Monza__corner-ab12cd34.webp?v=17";
+    expect(
+      sanitizeCorners([
+        { at: 11, turn: 1, name: "Rettifilo", tip: "  Brake at the 150 board ", image, caption: " Lap 1, Season 6 " },
+        { at: 31.5, turn: 4, name: "Roggia", image: "https://example.com/x.webp", caption: "No picture, no caption" },
+        { at: 86, turn: 11, name: "Parabolica", tip: "", image: "/api/uploads/tracks/../teams/x.webp" },
+      ])
+    ).toEqual([
+      { at: 11, turn: 1, name: "Rettifilo", tip: "Brake at the 150 board", image, caption: "Lap 1, Season 6" },
+      { at: 31.5, turn: 4, name: "Roggia" },
+      { at: 86, turn: 11, name: "Parabolica" },
+    ]);
+  });
+
   it("rides along in the track info blob", () => {
     const out = sanitizeTrackInfo({ types: ["power"], corners: [{ at: 5, turn: 1, name: "T1" }] });
     expect(out.types).toEqual(["power"]);

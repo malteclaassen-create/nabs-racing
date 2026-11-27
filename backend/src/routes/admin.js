@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
 import multer from "multer";
 import bcrypt from "bcryptjs";
 import { writeFileSync, mkdirSync, existsSync, unlinkSync, renameSync, readdirSync, statSync, statfsSync, rmSync } from "fs";
@@ -71,7 +71,7 @@ import { parseManualPointsEntry, writeManualPoints } from "../lib/manualPoints.j
 import { teamDeletionBlockers } from "../lib/teamDeletion.js";
 import { readTeamLinks, writeTeamLinks, cleanTeamLinks, suggestTeamLinks, linkMap } from "../lib/teamLineage.js";
 import { readTrackInfo, writeTrackInfo, imageSizeOf, imageKeyOf, shrinkTrackOutline } from "../lib/trackInfo.js";
-import { effectiveTypes, effectiveCorners, TRACK_TYPES } from "../lib/trackProfile.js";
+import { effectiveTypes, effectiveCorners, TRACK_TYPES, cornerImageFile } from "../lib/trackProfile.js";
 import { readTeamArt, writeTeamArt, writeTeamCountry, ART_KINDS, readCarFraming, writeCarFraming } from "../lib/teamArt.js";
 import { checkImageUpload } from "../lib/imageIntegrity.js";
 import {
@@ -7058,9 +7058,65 @@ router.put("/tracks/:key/info", async (req, res, next) => {
       merged.outlineSize = stored.outlineSize;
     }
     const saved = await writeTrackInfo(prisma, key, merged);
+    sweepCornerImages(key, saved.corners);
     // A circuit's types are what the track strengths group by.
     invalidateTrackStrengthCache();
     res.json({ ok: true, content: saved });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Corner pictures of this circuit that no corner shows any more (the corner
+// was removed, or its picture replaced): deleted, but only once they are an
+// hour old, so a picture uploaded in the form and not saved yet survives a
+// save from another tab. Best-effort.
+const CORNER_IMAGE_KEEP_MS = 60 * 60 * 1000;
+function sweepCornerImages(key, corners) {
+  try {
+    const used = new Set((corners || []).map((c) => cornerImageFile(c.image)).filter(Boolean));
+    for (const name of readdirSync(TRACKS_DIR)) {
+      if (!name.startsWith(`${key}__corner-`) || used.has(name)) continue;
+      const file = safeUploadPath(TRACKS_DIR, name);
+      if (file && Date.now() - statSync(file).mtimeMs > CORNER_IMAGE_KEEP_MS) rmSync(file, { force: true });
+    }
+  } catch {
+    /* no folder yet, nothing to sweep */
+  }
+}
+
+// POST /api/admin/tracks/:key/corner-image (multipart "file") -> { url }: a
+// picture for one corner's track tip on the live map. Shrunk to a WebP no
+// wider than the card it shows in needs. It belongs to no corner until the
+// track info is saved with this url on one (lib/trackProfile.js).
+const CORNER_IMAGE_MAX = 960;
+router.post("/tracks/:key/corner-image", upload.single("file"), async (req, res, next) => {
+  try {
+    const key = safeTrackKey(req.params.key);
+    if (!key) return res.status(400).json({ error: "Invalid track key" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!["image/png", "image/jpeg", "image/webp"].includes(req.file.mimetype))
+      return res.status(400).json({ error: "Unsupported image type (use PNG, JPG or WEBP)" });
+    if (refusedBrokenImage(req, res, "corner picture")) return;
+    let buffer;
+    try {
+      const { loadImage, createCanvas } = await import("@napi-rs/canvas");
+      const img = await loadImage(req.file.buffer);
+      const scale = Math.min(1, CORNER_IMAGE_MAX / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = createCanvas(w, h);
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      buffer = await canvas.encode("webp", 82);
+    } catch {
+      return res.status(400).json({ error: "That picture didn't open. Try another one" });
+    }
+    mkdirSync(TRACKS_DIR, { recursive: true });
+    const filename = `${key}__corner-${randomBytes(6).toString("hex")}.webp`;
+    const dest = safeUploadPath(TRACKS_DIR, filename);
+    if (!dest) return res.status(400).json({ error: "Invalid track key" });
+    writeFileSync(dest, buffer);
+    res.json({ ok: true, url: `/api/uploads/tracks/${filename}?v=${Date.now()}` });
   } catch (e) {
     next(e);
   }

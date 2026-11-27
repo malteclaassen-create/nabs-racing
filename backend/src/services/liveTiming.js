@@ -2261,6 +2261,9 @@ function createRelay(server) {
         name: si.Name || "",
         serverName: si.ServerName || "",
         track: si.Track || "",
+        // AC's own layout id: decides whether the circuit's default corners
+        // fit (lib/trackProfile.js), for the corner tips on the map.
+        layout: si.TrackConfig || "",
         // The same key the telemetry store files a lap under (lib/telemetryLaps
         // .js), so "which track is this board on" is one string both sides
         // agree on — the admin import matches the two by it.
