@@ -163,7 +163,11 @@ export default function RaceRecapPage() {
   // Of the shown race; the rest is the weekend's and comes off `recap`.
   const { race, results, quali, you, story, incidents } = shown;
   const { career, season, teammates, standings, team, rating, points, card, sprint, weekend } = recap;
-  const resultsLink = seriesPath(`/races?race=${recap.race.id}`);
+  // A Division 2 recap is of the round's second race, which the Races page
+  // shows as a tab of its round.
+  const resultsLink = seriesPath(
+    recap.race.division === 2 ? `/races?race=${recap.race.roundId || recap.race.id}&session=div2` : `/races?race=${recap.race.id}`
+  );
   const showPoints = points && (points.entries.length > 0 || points.pending?.length > 0);
   const leave = () => (pending ? navigate(-1) : navigate(resultsLink));
 
@@ -257,7 +261,7 @@ export default function RaceRecapPage() {
       )}
       {season && standings?.after && (
         <section className="space-y-4 sm:space-y-5">
-          <Chapter n={ch()} title="Championship" sub={recap.race.number != null ? `The table after round ${recap.race.number}` : "The table"} />
+          <Chapter n={ch()} title="Championship" sub={recap.race.number != null ? `The ${recap.race.division === 2 ? "Division 2 table" : "table"} after round ${recap.race.number}` : "The table"} />
           <div className="grid gap-4 sm:gap-5 lg:grid-cols-[1fr,1.45fr]">
             <StandingsTower standings={standings} team={team} season={season} you={you} />
             <SeasonCurve season={season} />
@@ -314,6 +318,7 @@ function Header({ recap, shown, preview }) {
             you ? "Your race summary" : "Race summary",
             race.seasonNumber != null ? `Season ${race.seasonNumber}` : null,
             race.number != null ? `Round ${race.number}` : null,
+            race.division === 2 ? "Division 2" : null,
             weekend ? "Sprint weekend" : null,
             preview ? "preview" : null,
           ]

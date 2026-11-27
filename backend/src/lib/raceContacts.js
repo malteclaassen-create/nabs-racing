@@ -142,12 +142,15 @@ const roundCache = new Map();
 // asks for the weekend's sprint file rather than the feature race's: the
 // sprint is a race of its own with its own contacts, filed under the same
 // round number (lib/cockpitArchive.js).
-const roundKey = (season, raceNumber, sprint) =>
+// `division` 2 reads the round's Division 2 file (lib/divisions.js), which the
+// archive keeps in a folder of its own under the same round number.
+const roundKey = (season, raceNumber, sprint, division = 1) =>
   (season && typeof season === "object" ? `${season.id ?? ""}|${season.number}|${raceNumber}` : `|${season}|${raceNumber}`) +
-  (sprint ? "|sprint" : "");
+  (sprint ? "|sprint" : "") +
+  (Number(division) === 2 ? "|div2" : "");
 
-export function contactsForRound(season, raceNumber, sprint = false) {
-  const cacheKey = roundKey(season, raceNumber, sprint);
+export function contactsForRound(season, raceNumber, sprint = false, division = 1) {
+  const cacheKey = roundKey(season, raceNumber, sprint, division);
   const hit = roundCache.get(cacheKey);
   if (hit) {
     // Re-insert so the most recently used round is the last to be evicted.
@@ -155,7 +158,7 @@ export function contactsForRound(season, raceNumber, sprint = false) {
     roundCache.set(cacheKey, hit);
     return hit;
   }
-  const built = buildRound(season, raceNumber, sprint);
+  const built = buildRound(season, raceNumber, sprint, division);
   if (!built.archived) return built;
   roundCache.set(cacheKey, built);
   if (roundCache.size > ROUND_CACHE_MAX) roundCache.delete(roundCache.keys().next().value);
@@ -165,12 +168,12 @@ export function contactsForRound(season, raceNumber, sprint = false) {
 // Drop what is cached for one round (or, with no arguments, for every round):
 // the round's file has just been written or replaced, and the next reader must
 // see the new one.
-export function forgetRound(season = null, raceNumber = null, sprint = false) {
+export function forgetRound(season = null, raceNumber = null, sprint = false, division = 1) {
   if (season == null && raceNumber == null) {
     roundCache.clear();
     return;
   }
-  roundCache.delete(roundKey(season, raceNumber, sprint));
+  roundCache.delete(roundKey(season, raceNumber, sprint, division));
 }
 
 // When the round's session started, as unix seconds, or null when the round has
@@ -238,10 +241,10 @@ export function guidsByNameForRound(season, raceNumber, sprint = false) {
   return contactsForRound(season, raceNumber, sprint).names || new Map();
 }
 
-function buildRound(season, raceNumber, sprint) {
+function buildRound(season, raceNumber, sprint, division = 1) {
   let data;
   try {
-    data = findArchiveFor(season, raceNumber, { sprint });
+    data = findArchiveFor(season, raceNumber, { sprint, division });
   } catch {
     return { archived: false, start: null, contacts: [], names: new Map() };
   }
@@ -374,8 +377,8 @@ export function reduceRound(data) {
 // The whole round as the contact map reads it: every contact and every wall
 // hit with where it happened, the circuit it was on and who the pace car was.
 // Null when the round has no archived file.
-export function contactSceneForRound(season, raceNumber, sprint = false) {
-  const round = contactsForRound(season, raceNumber, sprint);
+export function contactSceneForRound(season, raceNumber, sprint = false, division = 1) {
+  const round = contactsForRound(season, raceNumber, sprint, division);
   if (!round.archived) return null;
   return { contacts: round.contacts, walls: round.walls || [], track: round.track || null, paceCars: new Set(round.paceCars || []) };
 }
@@ -392,10 +395,10 @@ export function roundHasArchive(season, raceNumber, sprint = false) {
 // their Steam id, which the site already stores on Driver.steamId from the
 // import, so a person and an AC event can be matched without going through a
 // name.
-export function contactsForDriver(season, raceNumber, guid, sprint = false) {
+export function contactsForDriver(season, raceNumber, guid, sprint = false, division = 1) {
   if (!guid) return [];
   const me = String(guid);
-  const { contacts } = contactsForRound(season, raceNumber, sprint);
+  const { contacts } = contactsForRound(season, raceNumber, sprint, division);
   return contacts
     .filter((c) => c.a.guid === me || c.b.guid === me)
     .map((c) => {

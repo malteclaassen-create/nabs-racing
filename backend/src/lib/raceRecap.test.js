@@ -219,39 +219,58 @@ describe("what the round paid, race by race", () => {
   });
 });
 
-// A season with Division 2 runs two races a round, saved one after the other,
-// and the recap tells the main race only. Whoever drove the other one must
-// not be sent it: it would be the wrong race, and the only recap they get.
+// A season with Division 2 runs two races a round, saved one after the other.
+// A recap is shown once, so everybody has to be sent the one of the race they
+// were in, and nobody one before it is known which that is.
 describe("a round with a Division 2 race", () => {
   const drivers = [{ id: "d1", seasonId: "season-9" }];
   const race = { id: "race-1", date: new Date(), seasonId: "season-9" };
   const ask = (opts) => pendingRecapRace(fakePrisma({ drivers, race, division2: true, ...opts }), "d1", "discord-1");
+  const both = (main, second) => ({ div2Child: "race-1-d2", results: { "race-1": main, "race-1-d2": second } });
 
   it("offers the round to a driver who is in the main race's result", async () => {
     expect(await ask({ results: { "race-1": ["d1", "x"] } })).toBe("race-1");
+    expect(await ask(both(["d1", "x"], ["y"]))).toBe("race-1");
   });
 
-  it("sends nothing to a driver with a Division 2 seat, before or after their race is saved", async () => {
+  it("offers the Division 2 race to whoever is in its result", async () => {
+    expect(await ask({ div2Seats: ["d1"], ...both(["x"], ["d1", "y"]) })).toBe("race-1-d2");
+    // A reserve who took a Division 2 seat for the night.
+    expect(await ask(both(["x"], ["d1", "y"]))).toBe("race-1-d2");
+  });
+
+  it("sends a Division 2 driver nothing while only the main race is saved", async () => {
     expect(await ask({ div2Seats: ["d1"], results: { "race-1": ["x"] } })).toBeNull();
-    expect(await ask({ div2Seats: ["d1"], div2Child: "race-1-d2", results: { "race-1": ["x"], "race-1-d2": ["d1"] } })).toBeNull();
+    expect(await ask({ div2Seats: ["d1"], ...both(["x"], []) })).toBeNull();
+  });
+
+  it("tells a Division 2 driver who sat out their own field's race, never the main one", async () => {
+    expect(await ask({ div2Seats: ["d1"], ...both(["x"], ["y"]) })).toBe("race-1-d2");
+    const old = { id: "race-1", date: new Date(Date.now() - 3 * 86_400_000), seasonId: "season-9" };
+    expect(await ask({ race: old, div2Seats: ["d1"], results: { "race-1": ["x"] } })).toBeNull();
   });
 
   it("lets a reserve wait until the Division 2 result is in", async () => {
     expect(await ask({ results: { "race-1": ["x"] } })).toBeNull();
-    expect(await ask({ div2Child: "race-1-d2", results: { "race-1": ["x"], "race-1-d2": [] } })).toBeNull();
-  });
-
-  it("sends nothing to a reserve who drove the Division 2 race", async () => {
-    expect(await ask({ div2Child: "race-1-d2", results: { "race-1": ["x"], "race-1-d2": ["d1", "y"] } })).toBeNull();
+    expect(await ask(both(["x"], []))).toBeNull();
   });
 
   it("offers the round to somebody who drove neither race, once both are in", async () => {
-    expect(await ask({ div2Child: "race-1-d2", results: { "race-1": ["x"], "race-1-d2": ["y"] } })).toBe("race-1");
+    expect(await ask(both(["x"], ["y"]))).toBe("race-1");
   });
 
   it("stops waiting for a Division 2 result that never comes", async () => {
     const old = { id: "race-1", date: new Date(Date.now() - 3 * 86_400_000), seasonId: "season-9" };
     expect(await ask({ race: old, results: { "race-1": ["x"] } })).toBe("race-1");
+  });
+
+  it("does not offer a Division 2 recap that was seen", async () => {
+    expect(await ask({ seen: "race-1-d2", ...both(["x"], ["d1"]) })).toBeNull();
+  });
+
+  it("does not hold a Division 2 recap back for the main field's sprint", async () => {
+    expect(await ask({ format: "SPRINT_FEATURE", ...both(["x"], ["d1"]) })).toBe("race-1-d2");
+    expect(await ask({ format: "SPRINT_FEATURE", ...both(["d1"], ["y"]) })).toBeNull();
   });
 
   it("changes nothing in a season without Division 2", async () => {

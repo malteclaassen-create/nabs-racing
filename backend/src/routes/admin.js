@@ -811,6 +811,9 @@ router.post("/races/commit", async (req, res, next) => {
         sprint: isSprint,
         division: isDiv2 ? 2 : 1,
       });
+      // Division 2's file has its own entry with the contact reader (the
+      // recap reads a Division 2 driver's contacts from it): stale as well.
+      if (isDiv2) forgetRound(season, roundNumber, false, 2);
     }
     if (archiveKey && !isDiv2) {
       const season = await prisma.season.findUnique({ where: { id: race.seasonId || targetSeasonId } });

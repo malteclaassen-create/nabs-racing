@@ -1177,9 +1177,10 @@ export default function Races() {
                           <span className="flex items-center gap-1.5 sm:shrink-0 sm:gap-3">
                             {/* Your recap of this round, read again. The button
                                 decides for itself whether it is for you. */}
+                            {/* On the Division 2 tab it is that race's recap. */}
                             <RaceRecapButton
                               iconOnPhone
-                              raceId={selectedId}
+                              raceId={shownSession === "div2" && div2RaceId ? div2RaceId : selectedId}
                               session={shownSession}
                               ready={!detailIsStale && !!detail?.race?.isCompleted && (detail?.results?.length || 0) > 0}
                             />

@@ -192,7 +192,9 @@ function mayShow(path, raceDate) {
 //
 // `session` is the tab it was pressed from. A sprint weekend's recap holds
 // both races, so pressing Recap on the Sprint tab should open it on the
-// sprint rather than make the reader find it again.
+// sprint rather than make the reader find it again. On the Division 2 tab the
+// page hands over that race's own id: a round with two fields has a recap for
+// each, and the server gives a driver the one of the race they were in.
 // `iconOnPhone`: just the icon below sm (the label stays for screen readers),
 // for a row that has to share its line with a title.
 export function RaceRecapButton({ raceId, ready, session = null, iconOnPhone = false }) {
