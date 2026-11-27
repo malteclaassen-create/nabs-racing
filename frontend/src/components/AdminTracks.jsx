@@ -22,7 +22,7 @@ function MapRow({ label, url, onRemove, busy }) {
 
 // A stored corner as the editor's row (every field a string while typed).
 const toRows = (list) =>
-  (list || []).map((c) => ({ turn: c.turn ?? "", name: c.name || "", at: String(c.at), tip: c.tip || "", image: c.image || "", caption: c.caption || "" }));
+  (list || []).map((c) => ({ turn: c.turn ?? "", name: c.name || "", at: String(c.at), title: c.title || "", story: c.story || "", image: c.image || "" }));
 
 // Admin "Tracks" tab: per-circuit fun facts and an optional custom map image,
 // layered on top of the computed track history shown on the upcoming-race panel
@@ -146,9 +146,9 @@ export default function AdminTracks() {
                 at: Number(String(c.at).replace(",", ".")),
                 turn: c.turn === "" ? null : Number(c.turn),
                 name: c.name,
-                tip: c.tip,
+                title: c.title,
+                story: c.story,
                 image: c.image,
-                caption: c.caption,
               }))
           : null,
       };
@@ -188,7 +188,7 @@ export default function AdminTracks() {
     }
   }
 
-  // A picture for one corner's track tip. It is on the corner once the track
+  // A picture for one corner's highlight. It is on the corner once the track
   // info is saved, like the rest of the row.
   async function uploadCornerImage(i, e) {
     const input = e.target;
@@ -342,7 +342,7 @@ export default function AdminTracks() {
 
           <div>
             <div className="mb-2 flex flex-wrap items-baseline gap-2">
-              <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Corners and track tips</span>
+              <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-light">Corners and highlights</span>
               {!cornersOwn && defaultCorners.length > 0 && <span className="pill bg-surface2 text-light">default</span>}
             </div>
             <p className="mb-2 text-sm text-light">
@@ -351,8 +351,8 @@ export default function AdminTracks() {
               {defaultCorners.length > 0
                 ? " The site ships names for this circuit's Grand Prix layout; edit them to replace them. Other layouts get none."
                 : ""}
-              {" "}The live map can show these corners (the Track tips button on it). A corner with a tip or a picture shows
-              it when a driver points at it: a line on how to take the corner, or a picture of something that happened there.
+              {" "}A corner can also carry a highlight from the league&rsquo;s past: two cars touching there, a title decided.
+              The live map marks only the corners that have one (its Highlights button), with the title, the story and the picture.
             </p>
             <div className="space-y-2">
               {corners.map((c, i) => (
@@ -376,15 +376,15 @@ export default function AdminTracks() {
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <input aria-label={`Corner ${i + 1} track tip`} className="input min-w-60 flex-1 py-1.5 text-sm" placeholder="Track tip (optional), e.g. Brake at the 100 board, stay off the inside kerb" maxLength={280}
-                    value={c.tip} onChange={(e) => editCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, tip: e.target.value } : x)))} />
+                  <input aria-label={`Corner ${i + 1} highlight title`} className="input min-w-40 flex-1 py-1.5 text-sm" placeholder="Highlight (optional), e.g. Season 6 title decider" maxLength={80}
+                    value={c.title} onChange={(e) => editCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, title: e.target.value } : x)))} />
+                  <input aria-label={`Corner ${i + 1} highlight story`} className="input min-w-60 flex-[2] py-1.5 text-sm" placeholder="What happened here" maxLength={280}
+                    value={c.story} onChange={(e) => editCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, story: e.target.value } : x)))} />
                   {c.image ? (
                     <>
                       <img src={c.image} alt="" className="h-9 w-14 rounded border border-border object-cover" />
-                      <input aria-label={`Corner ${i + 1} picture caption`} className="input min-w-40 flex-1 py-1.5 text-sm" placeholder="What the picture shows (optional)" maxLength={120}
-                        value={c.caption} onChange={(e) => editCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, caption: e.target.value } : x)))} />
                       <button type="button" className="text-sm font-semibold text-link hover:underline"
-                        onClick={() => editCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, image: "", caption: "" } : x)))}>
+                        onClick={() => editCorners((cs) => cs.map((x, idx) => (idx === i ? { ...x, image: "" } : x)))}>
                         Remove picture
                       </button>
                     </>
@@ -401,7 +401,7 @@ export default function AdminTracks() {
             <div className="mt-2 flex flex-wrap items-center gap-4">
               {corners.length < 30 && (
                 <button className="transition text-sm font-semibold text-link hover:underline"
-                  onClick={() => editCorners((cs) => [...cs, { turn: "", name: "", at: "", tip: "", image: "", caption: "" }])}>
+                  onClick={() => editCorners((cs) => [...cs, { turn: "", name: "", at: "", title: "", story: "", image: "" }])}>
                   + Add corner
                 </button>
               )}

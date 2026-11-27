@@ -58,17 +58,17 @@ describe("corner names", () => {
     expect(sanitizeCorners(null)).toBeNull();
   });
 
-  it("keeps a corner's tip, and its picture only when the corner upload wrote it", () => {
+  it("keeps a corner's highlight, and its picture only when the corner upload wrote it", () => {
     const image = "/api/uploads/tracks/Monza__corner-ab12cd34.webp?v=17";
     expect(
       sanitizeCorners([
-        { at: 11, turn: 1, name: "Rettifilo", tip: "  Brake at the 150 board ", image, caption: " Lap 1, Season 6 " },
-        { at: 31.5, turn: 4, name: "Roggia", image: "https://example.com/x.webp", caption: "No picture, no caption" },
-        { at: 86, turn: 11, name: "Parabolica", tip: "", image: "/api/uploads/tracks/../teams/x.webp" },
+        { at: 11, turn: 1, name: "Rettifilo", title: " Season 6 title decider ", story: "  Two cars touched on lap 1 ", image },
+        { at: 31.5, turn: 4, name: "Roggia", image: "https://example.com/x.webp", title: "Still a highlight" },
+        { at: 86, turn: 11, name: "Parabolica", story: "", image: "/api/uploads/tracks/../teams/x.webp" },
       ])
     ).toEqual([
-      { at: 11, turn: 1, name: "Rettifilo", tip: "Brake at the 150 board", image, caption: "Lap 1, Season 6" },
-      { at: 31.5, turn: 4, name: "Roggia" },
+      { at: 11, turn: 1, name: "Rettifilo", title: "Season 6 title decider", story: "Two cars touched on lap 1", image },
+      { at: 31.5, turn: 4, name: "Roggia", title: "Still a highlight" },
       { at: 86, turn: 11, name: "Parabolica" },
     ]);
   });

@@ -7086,7 +7086,7 @@ function sweepCornerImages(key, corners) {
 }
 
 // POST /api/admin/tracks/:key/corner-image (multipart "file") -> { url }: a
-// picture for one corner's track tip on the live map. Shrunk to a WebP no
+// picture for one corner's highlight on the live map. Shrunk to a WebP no
 // wider than the card it shows in needs. It belongs to no corner until the
 // track info is saved with this url on one (lib/trackProfile.js).
 const CORNER_IMAGE_MAX = 960;

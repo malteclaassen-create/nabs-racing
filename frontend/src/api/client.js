@@ -1719,7 +1719,7 @@ export const api = {
     fd.append("file", file);
     return request(`/admin/tracks/${key}/outline`, { method: "POST", body: fd, auth: true, form: true });
   },
-  // A picture for one corner's track tip on the live map -> { url }. It is on
+  // A picture for one corner's highlight on the live map -> { url }. It is on
   // the corner once saveTrackInfo stores that url on it.
   uploadCornerImage: (key, file) => {
     const fd = new FormData();
