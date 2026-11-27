@@ -31,6 +31,7 @@ import reportsRoutes from "./routes/reports.js";
 import liveIncidentsRoutes from "./routes/liveIncidents.js";
 import raceControlRoutes from "./routes/raceControl.js";
 import { clearReserveSignupsOnce } from "./lib/reserveSignupCleanup.js";
+import { offerDeclinedDivision2SeatsOnce } from "./lib/division2SeatBackfill.js";
 import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { compressOldBackups } from "./services/backupService.js";
@@ -126,6 +127,11 @@ ensureAppSchema(prisma)
   // Once: the sign-ups reserves had made before they could only get in through
   // the Driver Market are taken off (lib/reserveSignupCleanup.js, flag-guarded).
   .then(() => clearReserveSignupsOnce(prisma))
+  // Once: Division 2 drivers who had declined before their no put the seat on
+  // the Driver Market get it put up now (lib/division2SeatBackfill.js,
+  // flag-guarded). After the line above, so no reserve is told about a seat
+  // while still down as signed up.
+  .then(() => offerDeclinedDivision2SeatsOnce(prisma))
   // One-off feature announcements (broadcasts, deduped so reboots never repeat).
   .then(() => announceFeatures(prisma))
   // Bells rung by filling in a past season's results go again (lib/notifications.js).
