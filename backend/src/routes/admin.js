@@ -33,6 +33,9 @@ import { parseLiveryClosesAt } from "../lib/eventCars.js";
 import { leagueDay } from "../lib/tokenRules.js";
 import { ensureSprintChild, readSprintChildren, readParentIds, withSprintRounds, resultsBellRace } from "../lib/sprintRaces.js";
 import { ensureDivisionChild, writeDriverDivision, readDivisionChildren, writeCapacity2, DIV2_TIER } from "../lib/divisions.js";
+import {
+  DIV1_RULES, writeReserveRule, validCoverIds, readNewDriverRule, writeNewDriverRule,
+} from "../lib/reserveRules.js";
 import { parseHighlightsUrl, writeRaceHighlights } from "../lib/raceHighlights.js";
 import { readRaceHotlaps, writeRaceHotlaps } from "../lib/raceHotlaps.js";
 import { writeRaceHero } from "../lib/raceHero.js";
@@ -3327,7 +3330,10 @@ router.post("/drivers/from-db", async (req, res, next) => {
 
 router.put("/drivers/:id", async (req, res, next) => {
   try {
-    const { name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings, steamId, country, division } = req.body || {};
+    const {
+      name, discordName, teamId, tier, isActive, photoUrl, discordUserId, role, hideFromStandings, steamId, country, division,
+      reserveRule,
+    } = req.body || {};
     // Nationality is normally the driver's own to set, on their profile after a
     // Discord login. Drivers who have never logged in cannot, so they have no
     // flag anywhere on the site and none on the result poster either. This lets
@@ -3353,6 +3359,25 @@ router.put("/drivers/:id", async (req, res, next) => {
       if (!team) return res.status(400).json({ error: "Team not found" });
       if (team.seasonId && current.seasonId && team.seasonId !== current.seasonId) {
         return res.status(400).json({ error: `${team.name} belongs to a different season` });
+      }
+    }
+    // Which seats this driver may take over as a reserve (lib/reserveRules.js):
+    // { div1: "" | "never" | "cover", cover: [driverId], noSubIn }. Any of the
+    // three can be sent alone.
+    let rulePatch = null;
+    if (reserveRule !== undefined) {
+      const r = reserveRule || {};
+      if (r.div1 !== undefined && r.div1 !== "" && r.div1 !== null && !DIV1_RULES.includes(r.div1)) {
+        return res.status(400).json({ error: `reserveRule.div1 must be empty or one of: ${DIV1_RULES.join(", ")}` });
+      }
+      rulePatch = {};
+      if (r.div1 !== undefined) rulePatch.div1 = r.div1 || null;
+      if (r.noSubIn !== undefined) rulePatch.noSubIn = !!r.noSubIn;
+      if (r.cover !== undefined) {
+        if (!Array.isArray(r.cover)) return res.status(400).json({ error: "reserveRule.cover must be a list of driver ids" });
+        // Drivers of this season with a seat of their own; anything else is
+        // dropped rather than refused, so one stale id does not block the save.
+        rulePatch.cover = await validCoverIds(prisma, current, r.cover);
       }
     }
     const steamVal = steamId !== undefined ? String(steamId || "").trim() : undefined;
@@ -3474,6 +3499,10 @@ router.put("/drivers/:id", async (req, res, next) => {
     if (division !== undefined) {
       driver.division = await writeDriverDivision(prisma, driver.id, division);
     }
+    if (rulePatch) {
+      const saved = await writeReserveRule(prisma, driver.id, rulePatch);
+      driver.reserveRule = saved.div1 || saved.noSubIn ? saved : null;
+    }
     // The Steam ID (SteamID64) the result import matches on. Normally captured
     // automatically from the first AC import, or carried over from the member's
     // own Steam link — but a wrong value used to be unfixable, because the
@@ -3508,6 +3537,27 @@ router.put("/drivers/:id", async (req, res, next) => {
   } catch (e) {
     if (e.code === "P2025") return res.status(404).json({ error: "Driver not found" });
     if (e.code === "P2002") return res.status(409).json({ error: "That Discord ID is already linked to another driver" });
+    next(e);
+  }
+});
+
+// GET /api/admin/reserve-rules/new-drivers -> { noDiv1 }
+// PUT /api/admin/reserve-rules/new-drivers  { noDiv1 }
+// Whether a newcomer who signs themselves up starts with "no Division 1 seat"
+// on the Driver Market, in a season that runs Division 2
+// (lib/reserveRules.js). On unless switched off.
+router.get("/reserve-rules/new-drivers", async (req, res, next) => {
+  try {
+    res.json(await readNewDriverRule(prisma));
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put("/reserve-rules/new-drivers", async (req, res, next) => {
+  try {
+    res.json(await writeNewDriverRule(prisma, { noDiv1: !!req.body?.noDiv1 }));
+  } catch (e) {
     next(e);
   }
 });

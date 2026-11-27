@@ -3920,6 +3920,9 @@ function Drivers() {
   const teamGroups = [...(teams || [])].sort(
     (a, b) => tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name)
   );
+  // Everybody with a seat of their own, by name: who a reserve's "only when
+  // one of these is out" rule can name.
+  const seatedDrivers = allDrivers.filter((d) => d.tier !== 0).sort((a, b) => a.name.localeCompare(b.name));
   const q = rosterQuery.trim().toLowerCase();
   const matches = (d) =>
     !q ||
@@ -3934,6 +3937,7 @@ function Drivers() {
     inactive: (d) => !d.isActive,
     noDiscord: (d) => !d.discordUserId && !d.inheritedDiscordUserId,
     noSteam: (d) => !d.steamId,
+    rule: hasReserveRule,
   };
   const passes = (d) =>
     matches(d) &&
@@ -4091,6 +4095,16 @@ function Drivers() {
           >
             No Steam ID
           </FilterChip>
+          {countWith(FLAG_TESTS.rule) > 0 && (
+            <FilterChip
+              on={flags.has("rule")}
+              count={countWith(FLAG_TESTS.rule)}
+              onClick={() => toggleFlag("rule")}
+              title="Reserves who can't take a Division 1 seat, or can't take over a seat at all"
+            >
+              Reserve rule
+            </FilterChip>
+          )}
           {filtering && (
             <button
               type="button"
@@ -4184,6 +4198,7 @@ function Drivers() {
                     onTransfer={(teamId) => setTransfer({ driver: d, teamId })}
                     onPatch={(patch) => patchDriver(d, patch)}
                     onRemove={() => removeDriver(d)}
+                    seated={seatedDrivers}
                   />
                 ))}
               </ul>
@@ -4214,6 +4229,8 @@ function Drivers() {
           </div>
         )}
       </div>
+
+    <ReserveRules drivers={allDrivers} busy={busy} onSet={patchDriver} />
 
     <SafetyCarDrivers drivers={allDrivers} busy={busy} onSet={patchDriver} />
 
@@ -4261,7 +4278,7 @@ function IdMark({ platform, state, title, onClick, open }) {
 // the Reserve pool a scroll of several screens. The team and the tier stay in
 // the row because they are what a roster is read for; the role, (de)activating,
 // hiding, removing and the two ids fold out underneath, one row at a time.
-function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, onOpen, onTransfer, onPatch, onRemove }) {
+function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, onOpen, onTransfer, onPatch, onRemove, seated = [] }) {
   const discordState = d.discordUserId ? "set" : d.inheritedDiscordUserId ? "inherited" : "missing";
   return (
     <li className={`py-1.5 text-sm ${open ? "bg-surface2/40" : ""}`}>
@@ -4280,6 +4297,15 @@ function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, on
           {d.role === "safety" && <SafetyCarBadge compact />}
           {!d.isActive && d.hideFromStandings && (
             <span className="pill bg-surface2 text-light" title="Not shown in the public driver standings">hidden</span>
+          )}
+          {/* What this reserve may not do, readable without opening the row. */}
+          {hasReserveRule(d) && d.reserveRule.div1 && (
+            <span className="pill bg-amber-500/15 text-warn" title={reserveRuleText(d.reserveRule, seated).div1}>
+              {d.reserveRule.div1 === "never" ? "no Div 1 seat" : "Div 1 as cover"}
+            </span>
+          )}
+          {hasReserveRule(d) && d.reserveRule.noSubIn && (
+            <span className="pill bg-amber-500/15 text-warn" title="Can't take over a seat on the Driver Market">no sub-in</span>
           )}
         </span>
         {/* On a phone the two dropdowns take a line of their own under the
@@ -4368,6 +4394,7 @@ function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, on
               Remove
             </button>
           </div>
+          {d.tier === 0 && <ReserveRuleEditor d={d} seated={seated} busy={busy} onPatch={onPatch} />}
           <DriverDiscordId d={d} busy={busy} accounts={accounts}
             onSave={(v) => onPatch({ discordUserId: v })} />
           <DriverSteamId d={d} busy={busy}
@@ -4375,6 +4402,201 @@ function RosterRow({ d, teamGroups, accounts, busy, selected, onSelect, open, on
         </div>
       )}
     </li>
+  );
+}
+
+// Which seats a reserve may take over (lib/reserveRules.js on the server). Only
+// a reserve has a rule that counts: a driver with a seat of their own has no
+// business on the Driver Market's other side.
+const hasReserveRule = (d) => d.tier === 0 && !!d.reserveRule && (!!d.reserveRule.div1 || !!d.reserveRule.noSubIn);
+
+// "13bot, Siggsta, Timmis or Takoda"
+function orNames(names) {
+  if (names.length <= 1) return names[0] || "";
+  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+
+// A rule in words, one sentence per half. `drivers` is where the names of a
+// "cover" list come from.
+function reserveRuleText(rule, drivers) {
+  const nameOf = new Map(drivers.map((x) => [x.id, x.name]));
+  const names = (rule?.cover || []).map((id) => nameOf.get(id)).filter(Boolean);
+  return {
+    div1:
+      rule?.div1 === "never"
+        ? "No Division 1 seat"
+        : rule?.div1 === "cover"
+          ? names.length
+            ? `A Division 1 seat only when ${orNames(names)} is out`
+            : "A Division 1 seat only as cover, with nobody picked yet: none at all"
+          : null,
+    subIn: rule?.noSubIn ? "Can't take over any seat" : null,
+  };
+}
+
+// The rule of one reserve, in the drawer under their roster row.
+//
+// A reserve gets into a race by taking over a seat on the Driver Market, in
+// Division 1 or Division 2. Two separate things here,
+// because the league asked for both: whether they may take a Division 1 seat
+// (never, or only for a round one of the named drivers is missing from), and
+// whether they may take over a seat at all. Saved the moment it is changed,
+// like everything else in the drawer.
+function ReserveRuleEditor({ d, seated, busy, onPatch }) {
+  const rule = d.reserveRule || { div1: null, cover: [], noSubIn: false };
+  const cover = rule.cover || [];
+  const nameOf = new Map(seated.map((x) => [x.id, x]));
+  const save = (patch) => onPatch({ reserveRule: patch });
+  return (
+    <div className="space-y-2 rounded-lg border border-border bg-card p-2.5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <label className="flex items-center gap-2 text-xs font-semibold text-medium">
+          Division 1 seats
+          <select
+            aria-label={`Division 1 seats for ${d.name}`}
+            className="input w-auto py-1 text-xs"
+            value={rule.div1 || ""}
+            disabled={busy}
+            title="Whether this reserve can put their hand up for a Division 1 seat on the Driver Market. Division 2 seats are not affected. In a season with one division every seat is a Division 1 seat."
+            onChange={(e) => save({ div1: e.target.value })}
+          >
+            <option value="">Can take one</option>
+            <option value="never">Can't take one</option>
+            <option value="cover">Only when one of these is out…</option>
+          </select>
+        </label>
+        <label
+          className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-medium"
+          title="Unticked: this reserve can't put their hand up for any seat on the Driver Market, in either division. You can still give them a seat yourself in the Driver Market tab."
+        >
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-primary"
+            checked={!rule.noSubIn}
+            disabled={busy}
+            onChange={(e) => save({ noSubIn: !e.target.checked })}
+          />
+          Can sub in
+        </label>
+      </div>
+      {rule.div1 === "cover" && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {cover.length === 0 && (
+            <span className="text-xs text-warn">Nobody picked yet, so {d.name} can't take any Division 1 seat. Add who they cover for:</span>
+          )}
+          {cover.map((id) => (
+            <span key={id} className="pill inline-flex items-center gap-1 bg-surface2 text-medium">
+              {nameOf.get(id)?.name || id}
+              <button
+                type="button"
+                aria-label={`Take ${nameOf.get(id)?.name || id} off the list`}
+                className="font-bold text-light transition hover:text-rose-500"
+                disabled={busy}
+                onClick={() => save({ cover: cover.filter((x) => x !== id) })}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <select
+            aria-label={`Add a driver ${d.name} covers for`}
+            className="input w-auto py-1 text-xs"
+            value=""
+            disabled={busy}
+            onChange={(e) => e.target.value && save({ cover: [...cover, e.target.value] })}
+          >
+            <option value="">Add a driver…</option>
+            {seated
+              .filter((x) => !cover.includes(x.id))
+              .map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name} · {x.teamLabel}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
+      <p className="text-[11px] leading-relaxed text-light">
+        {rule.div1 === "cover"
+          ? "Out means they said no to the round, or their seat is on the Driver Market for it. "
+          : ""}
+        A seat they already have stays theirs.
+      </p>
+    </div>
+  );
+}
+
+// Who has a rule, and the one switch that is not on a driver's row: what a new
+// driver starts with.
+//
+// The rules themselves are set in the roster, in the reserve's own row. That is
+// the right place to set one and a poor place to answer "who can't get into
+// Division 1 right now", with a Reserve pool of over a hundred. So the answer
+// gets a list of its own, the way the safety car drivers have one. Same field,
+// same endpoint.
+function ReserveRules({ drivers, busy, onSet }) {
+  const ruled = drivers.filter(hasReserveRule).sort((a, b) => a.name.localeCompare(b.name));
+  const { data: newRule, reload } = useApi(useCallback(() => api.newDriverRule(), []));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  async function setNew(noDiv1) {
+    setSaving(true); setError(null);
+    try { await api.setNewDriverRule(noDiv1); reload(); }
+    catch (err) { setError(err.message); } finally { setSaving(false); }
+  }
+
+  return (
+    <div className="card mt-6 space-y-4 p-5">
+      <CardHead eyebrow="Drivers" title="Reserve rules" />
+      <p className="text-xs leading-relaxed text-light">
+        In a season with Division 2, a reserve can&rsquo;t sign up for a round. They get in by taking over a seat
+        on the Driver Market, in Division 1 or Division 2. This is who can&rsquo;t take a Division 1 seat, and who
+        can&rsquo;t take over a seat at all. Set it in the roster above: open a reserve&rsquo;s row with the arrow
+        at its end. A rule only stops what the driver does themselves. You can still put them in a seat by hand.
+      </p>
+
+      <label className="flex cursor-pointer items-start gap-2.5 text-sm text-dark">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-primary"
+          checked={!!newRule?.noDiv1}
+          disabled={saving || !newRule}
+          onChange={(e) => setNew(e.target.checked)}
+        />
+        <span>
+          <span className="font-semibold">New drivers can&rsquo;t take a Division 1 seat</span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-light">
+            Somebody who signs themselves up is put on the reserve list and starts with this rule, in a season that
+            runs Division 2. They can take Division 2 seats. Lift the rule in their row when they are ready for
+            Division 1. Drivers who are already on the list keep what they have.
+          </span>
+        </span>
+      </label>
+      {error && <ErrorBox message={error} />}
+
+      {ruled.length === 0 ? (
+        <p className="text-sm text-light">No reserve has a rule this season.</p>
+      ) : (
+        <ul className="divide-y divide-border border-y border-border">
+          {ruled.map((d) => {
+            const text = reserveRuleText(d.reserveRule, drivers);
+            return (
+              <li key={d.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+                <span className="w-40 min-w-0 truncate font-semibold text-dark">{d.name}</span>
+                <span className="min-w-0 flex-1 text-xs text-medium">{[text.div1, text.subIn].filter(Boolean).join(" · ")}</span>
+                <button
+                  className="transition text-xs font-semibold text-link hover:underline"
+                  disabled={busy}
+                  onClick={() => onSet(d, { reserveRule: { div1: "", noSubIn: false } })}
+                >
+                  Lift
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -6048,7 +6270,7 @@ function Seasons({ gotoRaces, gotoInSeason }) {
       setMsg(
         s.division2
           ? `${s.name} runs one division again.`
-          : `${s.name} now runs Division 2. Give it teams on the Teams tab (tier "Division 2") and put newcomers in them. Reserves stay in the one Reserve pool and race in Division 2 by taking over a seat on the Driver Market.`
+          : `${s.name} now runs Division 2. Give it teams on the Teams tab (tier "Division 2") and put newcomers in them. Reserves stay in the one Reserve pool and get into a race by taking over a seat on the Driver Market, in either division.`
       );
       reload();
     } catch (err) { setError(err.message); } finally { setBusy(false); }

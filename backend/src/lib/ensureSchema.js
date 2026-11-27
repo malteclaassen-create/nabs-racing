@@ -334,6 +334,15 @@ export async function ensureAppSchema(prisma) {
   // Cleared once an admin keeps or links the newcomer. Migration
   // member_newcomer.
   await addColumn(prisma, "Driver", "selfMadeAt", "DATETIME");
+
+  // --- Which seats a reserve may take over on the Driver Market, set per
+  // driver by an admin (migration reserve_rules, lib/reserveRules.js).
+  // div1Rule: null = any Division 1 seat, 'never' = none, 'cover' = only for a
+  // round where one of the drivers in div1Cover (JSON array of driver ids) is
+  // out. noSubIn: no seat at all, in either division.
+  await addColumn(prisma, "Driver", "div1Rule", "TEXT");
+  await addColumn(prisma, "Driver", "div1Cover", "TEXT");
+  await addColumn(prisma, "Driver", "noSubIn", "BOOLEAN NOT NULL DEFAULT 0");
   await prisma.$executeRawUnsafe(
     `CREATE UNIQUE INDEX IF NOT EXISTS "Driver_seasonId_steamId_key" ON "Driver"("seasonId", "steamId")`
   );

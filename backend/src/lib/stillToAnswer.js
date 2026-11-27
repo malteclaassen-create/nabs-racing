@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------
 import { getPersonGroups, discordIdsForDrivers } from "./persons.js";
 import { collapseByPerson, personKey } from "./onePerPerson.js";
+import { seasonHasDivision2 } from "./divisions.js";
 
 // The row's TEAM tier decides, not the driver's own: a Tier-2 driver parked in
 // the Reserve pool is a reserve this season, and that is the roster the grid is
@@ -51,7 +52,13 @@ export async function stillToAnswer(prisma, race) {
     prisma.raceRsvp.findMany({ where: { raceId: race.id }, select: { driverId: true, status: true } }),
     getPersonGroups(prisma).catch(() => ({ byDriver: new Map(), byPerson: new Map() })),
   ]);
-  const { roster, answered, silent } = silentRoster({ rows, rsvps, byDriver: people.byDriver });
+  const all = silentRoster({ rows, rsvps, byDriver: people.byDriver });
+  // In a season with two divisions a reserve does not sign up for a round;
+  // they get in through the Driver Market (lib/reserveRules.js). So they have
+  // nothing to answer, and are neither listed nor reminded.
+  const reservesAnswer = race.isSpecialEvent || !(await seasonHasDivision2(prisma, race.seasonId));
+  const { roster, answered } = all;
+  const silent = reservesAnswer ? all.silent : all.silent.filter((d) => !isReserveRow(d));
   const discordIds = await discordIdsForDrivers(prisma, silent.map((d) => d.id)).catch(() => new Map());
   return { roster, answered, silent, discordIds };
 }

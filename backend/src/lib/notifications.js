@@ -22,6 +22,7 @@ import { getAdminDiscordIds } from "./adminUsers.js";
 import { dbListSeries } from "./series.js";
 import { stillToAnswer, reachableDiscordIds, splitByReach } from "./stillToAnswer.js";
 import { cardUnlockInputs } from "../services/driverProfileService.js";
+import { readReserveRules, seatBlock } from "./reserveRules.js";
 
 // Type keys the frontend maps to icons: RESULTS | REMINDER | DOWNLOAD | MARKET.
 // New kinds (achievements, card frames, ...) just add a key + an icon.
@@ -486,6 +487,24 @@ export async function notifySeatOffered(prisma, { race, teamName, driver }) {
     });
     const reserveIds = new Set(roster.filter((d) => d.team?.tier === 0).map((d) => d.discordUserId));
 
+    // Reserves the admins have kept out of this seat (lib/reserveRules.js): a
+    // bell for a car they are not allowed to take is noise, and an invitation
+    // to press a button that says no.
+    const kept = new Set();
+    try {
+      const reserves = roster.filter((d) => d.team?.tier === 0);
+      const rules = await readReserveRules(prisma, reserves.map((d) => d.id));
+      if (rules.size) {
+        const team = driver?.team || (driver?.teamId ? await prisma.team.findUnique({ where: { id: driver.teamId } }) : null);
+        for (const d of reserves) {
+          const rule = rules.get(d.id);
+          if (rule && (await seatBlock(prisma, race, team, d, { rule }))) kept.add(d.discordUserId);
+        }
+      }
+    } catch {
+      /* the rules are a filter on top; without them everybody is told, as before */
+    }
+
     // Anyone already driving this round. A reserve who has been given a seat is
     // ON the grid, so a second offer for the same race is not an opportunity —
     // it is a message about somebody else's problem, sent to the one person who
@@ -504,6 +523,7 @@ export async function notifySeatOffered(prisma, { race, teamName, driver }) {
     const recipients = members.filter((m) => {
       if (m.discordId === driver?.discordUserId) return false; // not the offerer
       if (seated.has(m.discordId)) return false; // already has a seat this round
+      if (kept.has(m.discordId)) return false; // not a seat they may take
       return audience === "all" || reserveIds.has(m.discordId);
     });
 
@@ -562,6 +582,26 @@ export async function notifySeatReclaimed(prisma, { race, reserve, openSeats = 0
       link: `${prefix}/attendance?race=${race.id}`,
       recipientId: reserve.discordUserId,
       // No dedupe key: taken back twice is two things to hear about.
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
+// A reserve's sign-up from before "reserves get in through the Driver Market"
+// was taken off (lib/reserveSignupCleanup.js). Not muteable: they signed up
+// and would otherwise turn up thinking they are in.
+export async function notifyReserveSignupRemoved(prisma, { race, driverId, recipientId }) {
+  try {
+    if (!recipientId || !race?.id) return;
+    const prefix = await seriesPrefixForSeason(prisma, race.seasonId);
+    await dbCreateNotification(prisma, {
+      type: "MARKET",
+      title: `Your sign-up for ${roundName(race)} was taken off`,
+      body: `Reserves now get into a race through the Driver Market. Put your hand up for a free seat at ${race.track} there, and you are in once you are picked.`,
+      link: `${prefix}/attendance?race=${race.id}`,
+      recipientId,
+      dedupeKey: `reserve-signup-removed:${race.id}:${driverId}`,
     });
   } catch {
     /* best-effort */

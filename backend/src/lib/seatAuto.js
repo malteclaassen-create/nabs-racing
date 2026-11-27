@@ -18,9 +18,14 @@
 // to find out and ask again.
 // ---------------------------------------------------------------------------
 import { notifySeatOffered, notifySeatReclaimed } from "./notifications.js";
+import { seatBlock } from "./reserveRules.js";
+import { DIV2_TIER } from "./divisions.js";
 
-// Same rule the market itself uses: only a Tier 1/2 seat is a seat to offer.
-const hasRealSeat = (team) => team?.tier === 1 || team?.tier === 2;
+// Same rule the market itself uses: a seat to offer is a seat in a team, Tier
+// 1, Tier 2 or Division 2. Division 2 was left out at first; since reserves
+// get into a race through the market only (lib/reserveRules.js), a Division 2
+// driver's no has to put their car up too, or nobody could stand in for them.
+const hasRealSeat = (team) => team?.tier === 1 || team?.tier === 2 || team?.tier === DIV2_TIER;
 
 // The seat a driver has on the market for one race, if any.
 export function standingOffer(prisma, raceId, driverId) {
@@ -64,10 +69,17 @@ export async function reclaimSeat(prisma, race, driverId) {
 
   // First in line for every other seat still open: interest, not a seat.
   // Whoever offered that one still picks.
-  const open = await prisma.seatOffer.findMany({
+  // Only the seats they may take (lib/reserveRules.js): a reserve who was in
+  // for one driver alone is not put down for everybody else's car.
+  const reserve = await prisma.driver.findUnique({ where: { id: bumpedId }, include: { team: true } });
+  const candidates = await prisma.seatOffer.findMany({
     where: { raceId: race.id, status: "OPEN", driverId: { not: bumpedId } },
-    select: { id: true },
+    select: { id: true, team: { select: { tier: true } } },
   });
+  const open = [];
+  for (const o of candidates) {
+    if (!(await seatBlock(prisma, race, o.team, reserve).catch(() => null))) open.push(o);
+  }
   for (const o of open) {
     await prisma.seatInterest
       .upsert({
@@ -78,7 +90,6 @@ export async function reclaimSeat(prisma, race, driverId) {
       .catch(() => {});
   }
 
-  const reserve = await prisma.driver.findUnique({ where: { id: bumpedId } });
   notifySeatReclaimed(prisma, { race, reserve, openSeats: open.length });
   return { reclaimed: true, bumped: bumpedId, movedTo: open.length };
 }

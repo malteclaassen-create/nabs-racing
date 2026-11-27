@@ -19,8 +19,9 @@ import { readNotifySettings } from "../lib/notifications.js";
 import { readAttendanceOverrides, attendanceGate } from "../lib/attendanceGate.js";
 import { readHiddenRaceIds } from "../lib/attendanceHidden.js";
 import { WAITLIST, seatsFor, promoteFromWaitlist } from "../lib/waitlist.js";
-import { seasonHasDivision2, readDivision2Drivers, readCapacity2 } from "../lib/divisions.js";
+import { seasonHasDivision2, readDivision2Drivers, readReserveDrivers, readCapacity2, DIV2_TIER } from "../lib/divisions.js";
 import { offerSeatOnDecline, reclaimSeat } from "../lib/seatAuto.js";
+import { carryReserveRule, signUpBlock } from "../lib/reserveRules.js";
 import { raceKickoff } from "../lib/raceKickoff.js";
 import {
   isEventRace, readCars, writeCar, numberTakenBy, parseCarNumber, parseLiveryUrl, parseLiveryOld, liveryDeadline, carLocked,
@@ -103,6 +104,9 @@ async function addToReservePool(prisma, base, seasonId) {
   } catch {
     /* linking is best-effort; the RSVP itself must not fail on it */
   }
+  // What the admins set for this person as a reserve holds in the new season
+  // too (lib/reserveRules.js).
+  await carryReserveRule(prisma, base.id, driver);
   return driver;
 }
 
@@ -166,17 +170,24 @@ router.get("/", async (req, res, next) => {
     // evening, each with its own size, count and queue. `div2Of` names the
     // Division 2 drivers of each such season; everybody else is Division 1.
     const div2Of = new Map();
+    const reservesOf = new Map();
     for (const sid of new Set(races.map((r) => r.seasonId).filter(Boolean))) {
-      if (await seasonHasDivision2(prisma, sid)) div2Of.set(sid, await readDivision2Drivers(prisma, sid));
+      if (await seasonHasDivision2(prisma, sid)) {
+        div2Of.set(sid, await readDivision2Drivers(prisma, sid));
+        reservesOf.set(sid, await readReserveDrivers(prisma, sid));
+      }
     }
     const capacity2 = await readCapacity2(prisma, races.filter((r) => div2Of.has(r.seasonId)).map((r) => r.id));
-    // One Reserve pool: a reserve is on Division 2's grid only for a race where
-    // they took over a Division 2 team's seat (a filled offer, loaded with the
-    // race below).
-    const filledDiv2 = (race) =>
-      new Set((race.seatOffers || []).filter((o) => o.team?.tier === 3).map((o) => o.filledById));
-    const divisionIn = (race, driverId) =>
-      div2Of.get(race.seasonId)?.has(driverId) || (div2Of.has(race.seasonId) && filledDiv2(race).has(driverId)) ? 2 : 1;
+    // One Reserve pool, and a reserve races in Division 2 (lib/divisions.js):
+    // they are on Division 1's grid only for a race where they took over a
+    // Division 1 team's seat (a filled offer, loaded with the race below).
+    const filledDiv1 = (race) =>
+      new Set((race.seatOffers || []).filter((o) => o.team?.tier !== DIV2_TIER).map((o) => o.filledById));
+    const divisionIn = (race, driverId) => {
+      if (!div2Of.has(race.seasonId)) return 1;
+      if (div2Of.get(race.seasonId).has(driverId)) return 2;
+      return reservesOf.get(race.seasonId).has(driverId) && !filledDiv1(race).has(driverId) ? 2 : 1;
+    };
 
     const openOffers = new Map(); // `${raceId}:${division}` -> count
     for (const row of await prisma.seatOffer.findMany({
@@ -357,7 +368,19 @@ router.get("/", async (req, res, next) => {
         // Division 2's grid (null = the season runs no Division 2), plus who
         // is in it, so the page can tell a signed-in driver which grid they
         // would join before they have answered.
-        division2: hasDiv2 ? { ...grid(2), driverIds: [...div2Of.get(race.seasonId), ...filledDiv2(race)] } : null,
+        // Its teams' drivers and every reserve with an answer on it. A reserve
+        // who has not answered yet is not listed; the page knows they are one.
+        division2: hasDiv2
+          ? {
+              ...grid(2),
+              driverIds: [
+                ...new Set([
+                  ...div2Of.get(race.seasonId),
+                  ...answers.filter((r) => divisionIn(race, r.driverId) === 2).map((r) => r.driverId),
+                ]),
+              ],
+            }
+          : null,
         rsvps: grouped,
       };
     });
@@ -531,6 +554,21 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
       if (!driver) return res.status(403).json({ error: "You're not on this season's roster" });
     }
 
+    // A reserve in a season with two divisions gets into a race through the
+    // Driver Market, not by signing up (lib/reserveRules.js): they can say no
+    // here and nothing else. Pressing the answer they already have changes
+    // nothing and is not refused; an answer from before this rule stays until
+    // somebody changes it.
+    if (driver && status !== "DECLINED") {
+      const current = await prisma.raceRsvp.findUnique({
+        where: { raceId_driverId: { raceId: race.id, driverId: driver.id } },
+        select: { status: true },
+      });
+      const team = driver.team || (await prisma.team.findUnique({ where: { id: driver.teamId } }));
+      const blocked = current?.status === status ? null : await signUpBlock(prisma, race, { ...driver, team });
+      if (blocked) return res.status(403).json({ error: blocked, notAllowed: true });
+    }
+
     // A special event's car (lib/eventCars.js). Checked before anything is
     // written, so a taken number leaves the answer as it was. A driver who
     // declines needs no car; everybody else needs a number, either one they
@@ -564,8 +602,14 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
     // this existed, where nobody is pushed out.
     // Somebody taking their own seat back is not queueing for one: the car was
     // held for them the whole time.
+    //
+    // A newcomer has no row yet, but will be a reserve, and in a season with
+    // two divisions a reserve takes no place on a grid by signing up
+    // (`viaMarket`, settled right after their driver is made further down). So
+    // a full grid is not what they are told about.
+    const viaMarket = newcomer && !race.isSpecialEvent && (await seasonHasDivision2(prisma, race.seasonId));
     const seats = await seatsFor(prisma, race, driver?.id ?? null);
-    if (status === "ACCEPTED" && !reclaimed && seats.mine !== "ACCEPTED" && !seats.free) {
+    if (status === "ACCEPTED" && !reclaimed && seats.mine !== "ACCEPTED" && !seats.free && !viaMarket) {
       return res.status(409).json({
         error: `The grid is full (${seats.accepted}/${seats.capacity}). Join the waiting list and you move up as soon as a seat comes free`,
         gridFull: true,
@@ -599,6 +643,26 @@ router.post("/:id/rsvp", optionalUser, async (req, res, next) => {
       // `recognised`: not new at all. Their Steam account led to the driver
       // they raced as before (lib/newcomers.js recogniseBySteam).
       joined = { driverId: out.driver.id, driverName: out.driver.name, ...(out.recognised ? { recognised: true } : {}) };
+    }
+
+    // The newcomer is a reserve now, and in a season with two divisions a
+    // reserve gets into a race through the Driver Market (lib/reserveRules.js).
+    // Their driver stands: they are on the reserve list, the admins hear about
+    // them, and the page says where to go from here. Nothing is written for
+    // the race. Somebody Steam recognised as a driver with a seat is not a
+    // reserve; their answer goes on, past the grid check that was held back.
+    if (viaMarket && want !== "DECLINED") {
+      const team = driver.team || (await prisma.team.findUnique({ where: { id: driver.teamId } }));
+      const blocked = await signUpBlock(prisma, race, { ...driver, team });
+      if (blocked) return res.json({ ok: true, joined, notSignedUp: blocked });
+      const own = await seatsFor(prisma, race, driver.id);
+      if (want === "ACCEPTED" && own.mine !== "ACCEPTED" && !own.free) {
+        return res.status(409).json({
+          error: `The grid is full (${own.accepted}/${own.capacity}). Join the waiting list and you move up as soon as a seat comes free`,
+          gridFull: true,
+          joined,
+        });
+      }
     }
 
     // Written only when it actually changes. RaceRsvp.updatedAt is the waiting
