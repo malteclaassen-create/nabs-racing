@@ -18,13 +18,15 @@ import { ChevronDown } from "lucide-react";
 
 const capitalise = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
-// "R5 Spa", "R5 Spa Sprint", "Session Most". A sprint row carries no round
-// number of its own; it borrows its event's (the sprintOf link) and says
-// which of the weekend's two races it is.
+// "R5 Spa", "R5 Spa Sprint", "R5 Spa Division 2", "Session Most". A sprint
+// row carries no round number of its own; it borrows its event's (the
+// sprintOf link) and says which of the weekend's two races it is. The
+// Division 2 race of a round does the same through division2Of.
 function raceLabel(r, races = []) {
-  const parent = r.sprintOf ? races.find((x) => x.id === r.sprintOf) : null;
+  const parentId = r.sprintOf || r.division2Of;
+  const parent = parentId ? races.find((x) => x.id === parentId) : null;
   const number = parent ? parent.number : r.number;
-  const which = r.sprintOf ? " Sprint" : r.sprintRaceId ? " Feature" : "";
+  const which = r.division2Of ? " Division 2" : r.sprintOf ? " Sprint" : r.sprintRaceId ? " Feature" : "";
   return `${number != null ? `R${number}` : "Session"} ${r.track}${which}`;
 }
 
@@ -360,7 +362,7 @@ const mmss = (s) => (s == null ? "" : `${Math.floor(s / 60)}:${String(s % 60).pa
 const clock = (unix) =>
   new Date(unix * 1000).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-function NewReport({ races, presetRaceId, onFiled }) {
+function NewReport({ races, allRaces = races, presetRaceId, onFiled }) {
   const [form, setForm] = useState({ raceId: presetRaceId || "", lap: "", accusedDriverId: "", body: "" });
   const [drivers, setDrivers] = useState([]);
   // The contacts Assetto Corsa recorded for this driver in the chosen round.
@@ -381,6 +383,13 @@ function NewReport({ races, presetRaceId, onFiled }) {
       .then((t) => setDrivers((t || []).flatMap((x) => (x.drivers || []).map((d) => ({ ...d, team: x.name })))))
       .catch(() => {});
   }, []);
+
+  // A link that names a round's Division 2 race opens the round: that is what
+  // the list offers, and the server works out the division either way.
+  useEffect(() => {
+    const round = allRaces.find((x) => x.id === form.raceId)?.division2Of;
+    if (round) setForm((f) => ({ ...f, raceId: round }));
+  }, [allRaces, form.raceId]);
 
   // Fetched per round, because that is when the list changes and it is a file
   // read on the server rather than a query.
@@ -755,8 +764,10 @@ export default function MyReports() {
   // last few days of the other series on top, named, for whoever got here from
   // somewhere else than the race they drove in.
   const { data: rounds } = useApi(useCallback(() => api.reportRounds().catch(() => null), []));
+  // A round's Division 2 race is not offered beside it: a driver picks the
+  // round, and the site files the report under the race they drove in.
   const reportable = useMemo(() => {
-    const here = raceList.filter((r) => r.isCompleted || (r.date && new Date(r.date) <= new Date()));
+    const here = raceList.filter((r) => !r.division2Of && (r.isCompleted || (r.date && new Date(r.date) <= new Date())));
     const have = new Set(here.map((r) => r.id));
     return [...(rounds?.races || []).filter((r) => !have.has(r.id)), ...here];
   }, [raceList, rounds]);
@@ -841,6 +852,7 @@ export default function MyReports() {
           {filing && (
             <NewReport
               races={reportable}
+              allRaces={raceList}
               presetRaceId={presetRace}
               onFiled={reload}
             />

@@ -62,6 +62,7 @@ import { stashIncoming, archiveCommitted, refreshArchiveIndex } from "../lib/res
 import { archiveFilesFor } from "../lib/cockpitArchive.js";
 import { forgetRound } from "../lib/raceContacts.js";
 import { rehomeWeekendReports } from "../lib/reportRehome.js";
+import { rehomeDivisionReports } from "../lib/reportDivision.js";
 import { readRatingWeights, writeRatingWeights } from "../lib/ratingWeights.js";
 import { invalidateRatingHistoryCache } from "../services/ratingHistoryService.js";
 import { invalidateCardRatingCache } from "../services/cardRatingService.js";
@@ -834,6 +835,24 @@ router.post("/races/commit", async (req, res, next) => {
         }
       } catch (e) {
         console.error("reports: rehome after import:", e.message);
+      }
+    }
+    // A Division 2 evening's reports all arrived on the round. With a result
+    // file in, the ones filed by drivers of the other field move to that
+    // field's race, where their contacts and their penalties are
+    // (lib/reportDivision.js). After either file, since they come in any
+    // order. Best-effort like the archive itself.
+    if (archiveKey && !isSprint) {
+      try {
+        const parent = isDiv2 ? div2Of : race;
+        const childId = isDiv2 ? race.id : (await readDivisionChildren(prisma, [race.id])).get(race.id);
+        if (childId) {
+          const season = await prisma.season.findUnique({ where: { id: parent.seasonId || targetSeasonId } });
+          const moved = await rehomeDivisionReports(prisma, { season, parent, childId });
+          if (moved) console.log(`reports: moved ${moved} report(s) between round ${parent.number}'s two divisions`);
+        }
+      } catch (e) {
+        console.error("reports: division rehome after import:", e.message);
       }
     }
     // Steam GUID capture is best-effort; any confirmed mapping that would have
@@ -8487,7 +8506,9 @@ router.get("/reports/:id", async (req, res, next) => {
     if (!report) return res.status(404).json({ error: "Report not found" });
     const voices = await dbThreadVoices(prisma, report.id, report);
     // The same replay anchor the list carries, so opening a report never shows
-    // less than the row it was opened from.
+    // less than the row it was opened from. Through withSprintRounds like the
+    // list: a sprint's or a Division 2 race's row has no round number of its
+    // own, and without its round's the anchor had no file to read.
     const race = report.raceId
       ? await prisma.race
           .findUnique({
@@ -8496,7 +8517,7 @@ router.get("/reports/:id", async (req, res, next) => {
           })
           .catch(() => null)
       : null;
-    const [anchored] = await stewardView([report], race ? [race] : []);
+    const [anchored] = await stewardView([report], race ? await withSprintRounds(prisma, [race]) : []);
     res.json({
       report: { ...anchored, reporterTeam: voices.get(String(report.reporterDiscordId || "")) || null },
       // At the desk, "mine" means the office: a PIN admin has no Discord id
@@ -8573,6 +8594,11 @@ router.get("/incident-watch", async (req, res, next) => {
     const { raceIds, sprintChildOf } = await scoringRaces(prisma, rounds);
     const roundOf = new Map(rounds.map((r) => [r.id, r.id]));
     for (const [parentId, childId] of sprintChildOf) roundOf.set(childId, parentId);
+    // The reports of a round's Division 2 race are on that race's own row
+    // (lib/reportDivision.js) and count under the round like the rest.
+    const div2ChildOf = await readDivisionChildren(prisma, rounds.map((r) => r.id));
+    for (const [parentId, childId] of div2ChildOf) roundOf.set(childId, parentId);
+    const reportRaceIds = [...raceIds, ...div2ChildOf.values()];
 
     const ph = raceIds.map(() => "?").join(",");
     // Raw like every telemetry read (lib/telemetryRead.js): the columns come
@@ -8585,11 +8611,11 @@ router.get("/incident-watch", async (req, res, next) => {
             ...raceIds
           )
         : [],
-      raceIds.length
+      reportRaceIds.length
         ? prisma
             .$queryRawUnsafe(
-              `SELECT "raceId", "accusedDriverId", "status" FROM "Report" WHERE "raceId" IN (${ph})`,
-              ...raceIds
+              `SELECT "raceId", "accusedDriverId", "status" FROM "Report" WHERE "raceId" IN (${reportRaceIds.map(() => "?").join(",")})`,
+              ...reportRaceIds
             )
             .catch(() => [])
         : [],

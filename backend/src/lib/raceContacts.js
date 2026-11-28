@@ -180,16 +180,16 @@ export function forgetRound(season = null, raceNumber = null, sprint = false, di
 // no archived result file. The anchor that turns an absolute moment into
 // "N seconds into the race", which is the one figure a replay can be scrubbed
 // to without knowing anybody's timezone.
-export function sessionStartForRound(season, raceNumber, sprint = false) {
-  return contactsForRound(season, raceNumber, sprint).start;
+export function sessionStartForRound(season, raceNumber, sprint = false, division = 1) {
+  return contactsForRound(season, raceNumber, sprint, division).start;
 }
 
 // The session's clock window as unix seconds, { start, end }: the replay's
 // start (above) and the last lap anybody crossed the line on. Null without a
 // file. What tells a sprint weekend's two races apart by the clock
 // (lib/reportRehome.js).
-export function sessionWindowForRound(season, raceNumber, sprint = false) {
-  const round = contactsForRound(season, raceNumber, sprint);
+export function sessionWindowForRound(season, raceNumber, sprint = false, division = 1) {
+  const round = contactsForRound(season, raceNumber, sprint, division);
   if (!round.archived || round.start == null || round.end == null) return null;
   return { start: round.start, end: round.end };
 }
@@ -237,8 +237,23 @@ function nameGuids(data) {
 
 // The round's name -> GUID map, or an empty one when the round has no archived
 // file. Cached with the round's contacts, so asking costs nothing extra.
-export function guidsByNameForRound(season, raceNumber, sprint = false) {
-  return contactsForRound(season, raceNumber, sprint).names || new Map();
+export function guidsByNameForRound(season, raceNumber, sprint = false, division = 1) {
+  return contactsForRound(season, raceNumber, sprint, division).names || new Map();
+}
+
+// Was this driver in the file, and how sure is that: "drove" when the file has
+// a lap or an event of theirs, "listed" when it only names them (the result
+// table and the car list also carry an entry that never left the pits, or
+// never joined at all), null when it does not know them or there is no file.
+// What tells the two fields of a Division 2 evening apart for one driver
+// (lib/reportDivision.js): they drove in exactly one of the two files.
+export function driverInRound(season, raceNumber, guid, sprint = false, division = 1) {
+  if (!guid) return null;
+  const round = contactsForRound(season, raceNumber, sprint, division);
+  if (!round.archived) return null;
+  const me = String(guid);
+  if ((round.drove || []).includes(me)) return "drove";
+  return (round.listed || []).includes(me) ? "listed" : null;
 }
 
 function buildRound(season, raceNumber, sprint, division = 1) {
@@ -360,12 +375,26 @@ export function reduceRound(data) {
     walls.push({ guid, at, lap: lapAt(lapsByGuid.get(e.Driver.Guid) || [], at), kph: Math.round(Number(e.ImpactSpeed) || 0), pos: worldXZ(e) });
   }
 
+  // Who the file knows (driverInRound above). An event counts for both of its
+  // sides, post-flag ones included: this asks who was on that server, not
+  // what counts as a contact.
+  const drove = new Set(lapsByGuid.keys());
+  for (const e of data.Events || []) {
+    if (e?.Driver?.Guid) drove.add(String(e.Driver.Guid));
+    if (e?.OtherDriver?.Guid) drove.add(String(e.OtherDriver.Guid));
+  }
+  const listed = new Set();
+  for (const r of data.Result || []) if (r?.DriverGuid) listed.add(String(r.DriverGuid));
+  for (const c of data.Cars || []) if (c?.Driver?.Guid) listed.add(String(c.Driver.Guid));
+
   return {
     archived: true,
     start,
     end,
     contacts: out,
     names,
+    drove: [...drove].map(String),
+    listed: [...listed],
     walls,
     // The AC track and layout folder, exactly as the game spells them: what the
     // circuit's line is fetched under (lib/trackMaps.js).
@@ -387,8 +416,8 @@ export function contactSceneForRound(season, raceNumber, sprint = false, divisio
 // two completely different things — "the race has not been imported yet, come
 // back tomorrow" and "Assetto Corsa recorded nothing for you in it" — and a
 // driver told the wrong one goes looking for a bug that isn't there.
-export function roundHasArchive(season, raceNumber, sprint = false) {
-  return contactsForRound(season, raceNumber, sprint).archived === true;
+export function roundHasArchive(season, raceNumber, sprint = false, division = 1) {
+  return contactsForRound(season, raceNumber, sprint, division).archived === true;
 }
 
 // The contacts one driver was in, from their side, oldest first. `guid` is

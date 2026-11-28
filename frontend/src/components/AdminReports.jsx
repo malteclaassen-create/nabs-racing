@@ -48,10 +48,11 @@ const uiOf = (s) => STATUS.find((x) => x.key === s) || STATUS[0];
 const WITHDRAWN_UI = { key: "DISMISSED", label: "Withdrawn", cls: "bg-surface2 text-light" };
 const pillOf = (r) => (isWithdrawn(r) ? WITHDRAWN_UI : uiOf(r.status));
 const when = (iso) => (iso ? fmtStamp(iso) : "");
-// "R5 Spa", "R5 Spa Sprint". The desk's races already carry their event's
-// round number and the sprint flag (routes/admin.js, withSprintRounds).
+// "R5 Spa", "R5 Spa Sprint", "R5 Spa Division 2". The desk's races already
+// carry their event's round number, the sprint flag and the division
+// (routes/admin.js, withSprintRounds).
 const raceLabel = (r) =>
-  `${r.number != null ? `R${r.number} ` : ""}${r.track}${r.sprint ? " Sprint" : r.hasSprint ? " Feature" : ""}`;
+  `${r.number != null ? `R${r.number} ` : ""}${r.track}${r.division === 2 ? " Division 2" : r.sprint ? " Sprint" : r.hasSprint ? " Feature" : ""}`;
 
 // A decision as the form edits it, from the stored report. A penalty from
 // before kinds existed comes back from the server as TIME already; the default
