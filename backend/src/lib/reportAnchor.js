@@ -7,7 +7,20 @@
 // result file name the exact contact it is about. See routes/admin.js, which
 // serves what comes out of here, and components/ReplayAnchor.jsx, which draws it.
 // ---------------------------------------------------------------------------
-import { sessionStartForRound, contactsForDriver, guidsByNameForRound } from "./raceContacts.js";
+import { sessionStartForRound, contactsForDriver, guidsByNameForRound, driverInRound, roundHasArchive } from "./raceContacts.js";
+import { seasonHasDivision2 } from "./divisions.js";
+
+// The figure a report already carries, used when the archive cannot supply
+// one. For a report pinned to a contact after the race that IS the archive's
+// own arithmetic and is exact; for one fired from inside the race it was read
+// off the live board mid-session (routes/reports.js POST /ingest) and is
+// right to a second or two, so it is flagged as approximate — a steward
+// scrubbing to it should know whether to expect the incident on the frame or
+// a moment either side of it.
+const stored = (r) =>
+  r.contactSecond != null
+    ? { ...r, sessionSecond: r.contactSecond, sessionSecondApprox: r.source === "INGAME" }
+    : r;
 
 // How far into its round each report happened, in seconds — the figure a
 // steward drags the replay's timeline to.
@@ -22,17 +35,6 @@ export function withSessionSecond(reports, races) {
   const byId = new Map(races.map((r) => [r.id, r]));
   // One archive read per ROUND, not per report: a busy round can carry a dozen.
   const startOf = new Map();
-  // The figure a report already carries, used when the archive cannot supply
-  // one. For a report pinned to a contact after the race that IS the archive's
-  // own arithmetic and is exact; for one fired from inside the race it was read
-  // off the live board mid-session (routes/reports.js POST /ingest) and is
-  // right to a second or two, so it is flagged as approximate — a steward
-  // scrubbing to it should know whether to expect the incident on the frame or
-  // a moment either side of it.
-  const stored = (r) =>
-    r.contactSecond != null
-      ? { ...r, sessionSecond: r.contactSecond, sessionSecondApprox: r.source === "INGAME" }
-      : r;
   return reports.map((r) => {
     const race = r.raceId ? byId.get(r.raceId) : null;
     // Derive from the archive whenever it can be read, and fall back to the
@@ -47,7 +49,9 @@ export function withSessionSecond(reports, races) {
     if (!startOf.has(race.id)) {
       let start = null;
       try {
-        start = sessionStartForRound(race.season, race.number, race.sprint);
+        // A Division 2 row reads Division 2's file: the two fields of an
+        // evening each have a session and a clock of their own.
+        start = sessionStartForRound(race.season, race.number, race.sprint, race.division);
       } catch {
         start = null;
       }
@@ -182,7 +186,7 @@ export async function reporterGuids(prisma, reports, races = []) {
     if (!race || race.number == null || race.season?.number == null) continue;
     let fileNames;
     try {
-      fileNames = guidsByNameForRound(race.season, race.number, race.sprint);
+      fileNames = guidsByNameForRound(race.season, race.number, race.sprint, race.division);
     } catch {
       continue;
     }
@@ -203,10 +207,10 @@ export async function reporterGuids(prisma, reports, races = []) {
 // The LATEST one in the window, not the nearest. A first-corner pile-up is
 // several contacts over a few seconds and the press comes after all of them;
 // the one that finally made the driver reach for the key is the last.
-function contactBehind(season, raceNumber, guid, second, sprint = false) {
+function contactBehind(season, raceNumber, guid, second, sprint = false, division = 1) {
   let mine;
   try {
-    mine = contactsForDriver(season, raceNumber, guid, sprint);
+    mine = contactsForDriver(season, raceNumber, guid, sprint, division);
   } catch {
     return null;
   }
@@ -218,6 +222,28 @@ function contactBehind(season, raceNumber, guid, second, sprint = false) {
     best = c;
   }
   return best;
+}
+
+// The seasons among these races that run two fields (Season.division2), by id.
+async function seasonsWithTwoFields(prisma, races) {
+  const out = new Set();
+  const ids = [...new Set(races.map((r) => r?.season?.id).filter(Boolean))];
+  for (const id of ids) if (await seasonHasDivision2(prisma, id).catch(() => false)) out.add(id);
+  return out;
+}
+
+// Did this reporter not drive in the race's file? Only said of a file that is
+// there. A lap or an event of theirs is what counts: the entry list alone can
+// name a reserve who raced on the other server that night. Without a GUID the
+// name has already been looked up in this very file (reporterGuids), so no
+// GUID means it is not in it either.
+function notInThisFile(race, guid) {
+  try {
+    if (!roundHasArchive(race.season, race.number, race.sprint, race.division)) return false;
+    return !guid || driverInRound(race.season, race.number, guid, race.sprint, race.division) !== "drove";
+  } catch {
+    return false;
+  }
 }
 
 // The read shape both report endpoints hand out: the session figure, and then
@@ -234,14 +260,25 @@ export async function anchorReports(prisma, reports, races, knownGuids = null, {
   );
   if (!candidates.length) return anchored;
   const guids = knownGuids || (await reporterGuids(prisma, candidates, races).catch(() => new Map()));
-  if (!guids.size) return anchored;
+  const twoFields = await seasonsWithTwoFields(prisma, candidates.map((r) => byId.get(r.raceId)));
+  if (!guids.size && !twoFields.size) return anchored;
 
   const wanted = new Set(candidates.map((r) => r.id));
+  const original = new Map(reports.map((r) => [r.id, r]));
   return anchored.map((r) => {
-    const guid = wanted.has(r.id) ? guids.get(r.id) : null;
-    if (!guid) return r;
+    if (!wanted.has(r.id)) return r;
+    const guid = guids.get(r.id) || null;
     const race = byId.get(r.raceId);
-    const hit = contactBehind(race.season, race.number, guid, r.sessionSecond, race.sprint);
+    // The other field's press. On a Division 2 evening every press arrives on
+    // the round, and it stays there until the result files say who raced
+    // where (lib/reportDivision.js moves it then). In between, the round's
+    // own file is somebody else's race: its clock started at another moment
+    // and it holds none of this driver's contacts. Measuring against it gave
+    // a wrong figure and called it exact, so the press keeps what it came in
+    // with off the live board, marked as approximate.
+    if (twoFields.has(race.season?.id) && notInThisFile(race, guid)) return stored(original.get(r.id) || r);
+    if (!guid) return r;
+    const hit = contactBehind(race.season, race.number, guid, r.sessionSecond, race.sprint, race.division);
     if (!hit) return r;
     return {
       ...r,

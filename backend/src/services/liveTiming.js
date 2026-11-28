@@ -2504,9 +2504,13 @@ export function getTrackIds(serverKey) {
 // falls through to the one that is. Two races on air at the same time and no
 // usable assignment is genuinely ambiguous: null, and the report keeps its
 // wall-clock anchor alone until the result file settles the question.
-export function liveRaceSecond(serverKey) {
+//
+// `only` asks that one server and nothing else: for a caller that KNOWS which
+// server the car is on (liveCarForName below), another server's clock is
+// another race's, and no figure is the right answer when this one has none.
+export function liveRaceSecond(serverKey, { only = false } = {}) {
   const preferred = serverKey && relays.has(serverKey) ? relays.get(serverKey).raceSecond() : null;
-  if (preferred != null) return preferred;
+  if (preferred != null || only) return preferred;
   const running = [...relays.values()].map((r) => r.raceSecond()).filter((s) => s != null);
   return running.length === 1 ? running[0] : null;
 }
@@ -2518,6 +2522,16 @@ export function liveGuidForName(name) {
   const found = new Set();
   for (const relay of relays.values()) for (const g of relay.guidsForName(name)) found.add(g);
   return found.size === 1 ? [...found][0] : null;
+}
+
+// The same car with the server it is on: { guid, serverKey }. On a Division 2
+// evening that server is the race the driver is in, which a name alone does
+// not say. Null when no server has the name, when two people share it, or
+// when one person shows on two servers at once.
+export function liveCarForName(name) {
+  const found = [];
+  for (const relay of relays.values()) for (const guid of relay.guidsForName(name)) found.push({ guid, serverKey: relay.key });
+  return found.length === 1 ? found[0] : null;
 }
 
 function normName(s) {

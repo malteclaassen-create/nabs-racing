@@ -8,11 +8,12 @@ import {
 import { serveAttachment, saveAttachment, attachmentUpload } from "../lib/reportFiles.js";
 import { discordIdsForDrivers, getLinkedDriverIds } from "../lib/persons.js";
 import { selfMadeRowIds } from "../lib/members.js";
-import { contactsForDriver, roundHasArchive } from "../lib/raceContacts.js";
+import { contactsForDriver } from "../lib/raceContacts.js";
+import { reportRaceFor, emptyContactsReason } from "../lib/reportDivision.js";
 import { anchorReports } from "../lib/reportAnchor.js";
 import { discordIdsForGuids, linkInGameReporters } from "../lib/reportReporter.js";
 import { RECENT_ROUNDS, recentRoundIds, withinRounds } from "../lib/reportWindow.js";
-import { liveRaceSecond, liveGuidForName } from "../services/liveTiming.js";
+import { liveRaceSecond, liveCarForName, liveGuidForName } from "../services/liveTiming.js";
 import { serverKeyForSeries } from "../lib/liveServers.js";
 import { getPrivateSeasonIds } from "../services/seasonService.js";
 import { clockNote } from "../lib/reportClock.js";
@@ -79,12 +80,18 @@ router.post("/", optionalUser, async (req, res, next) => {
     // from the browser. The lap, the moment and the impact speed are evidence a
     // steward will act on; taking them from the request would let anybody type
     // "lap 4, 80 km/h" into a report about a tap that never happened.
+    //
+    // The round is the one the form sent, on the row of the field this driver
+    // raced in: on a Division 2 evening the form offers the round and the
+    // result files say which of its two races was theirs
+    // (lib/reportDivision.js).
     let pinned = null;
-    if (b.contactId && b.raceId) {
-      const race = await archiveRaceById(String(b.raceId));
-      const guid = race?.season ? await steamIdOf(prisma, me.discordId) : null;
-      if (guid) {
-        const mine = contactsForDriver(race.season, race.number, guid, race.sprint);
+    const guid = b.raceId ? await steamIdOf(prisma, me.discordId) : null;
+    const raceId = b.raceId ? await reportRaceFor(prisma, String(b.raceId), { guid, discordId: me.discordId }) : null;
+    if (b.contactId && raceId) {
+      const race = await archiveRaceById(raceId);
+      if (guid && race?.season) {
+        const mine = contactsForDriver(race.season, race.number, guid, race.sprint, race.division);
         pinned = mine.find((c) => c.id === b.contactId) || null;
       }
       if (!pinned) return res.status(400).json({ error: "That contact is not one of yours in this round" });
@@ -135,7 +142,7 @@ router.post("/", optionalUser, async (req, res, next) => {
     }
 
     const report = await dbCreateReport(prisma, {
-      raceId: b.raceId || null,
+      raceId,
       lap: pinned ? pinned.lap : b.lap,
       accusedDriverId: accused?.id || null,
       accusedName: accused?.name || pinned?.other.name || null,
@@ -237,21 +244,23 @@ router.get("/contacts", optionalUser, async (req, res, next) => {
   try {
     const me = caller(req);
     if (!me.discordId) return res.json({ contacts: [], reason: "signed-out" });
-    const race = await archiveRaceById(String(req.query.raceId || ""));
-    if (!race?.season) return res.json({ contacts: [], reason: "no-race" });
+    const picked = String(req.query.raceId || "");
     const guid = await steamIdOf(prisma, me.discordId);
+    // The race this driver was in that evening: Division 2's own row for a
+    // Division 2 driver, whose contacts are in Division 2's file
+    // (lib/reportDivision.js). The same call the POST above makes, so a
+    // contact picked from this list is found again when the report is sent.
+    const race = await archiveRaceById(await reportRaceFor(prisma, picked, { guid, discordId: me.discordId }));
+    if (!race?.season) return res.json({ contacts: [], reason: "no-race" });
     if (!guid) return res.json({ contacts: [], reason: "no-steam-id" });
-    const contacts = contactsForDriver(race.season, race.number, guid, race.sprint);
+    const contacts = contactsForDriver(race.season, race.number, guid, race.sprint, race.division);
     // An empty list has two very different causes and the driver deserves the
     // right one: the round's result file has not been imported yet (nobody has
     // contacts, come back tomorrow), or it has and Assetto Corsa recorded no
     // contact for THIS driver. Told the wrong one, they go hunting for a fault
     // that isn't there — which is exactly what happened.
     if (contacts.length) return res.json({ contacts, reason: null });
-    res.json({
-      contacts: [],
-      reason: roundHasArchive(race.season, race.number, race.sprint) ? "none-recorded" : "not-imported",
-    });
+    res.json({ contacts: [], reason: await emptyContactsReason(prisma, race, guid) });
   } catch (e) {
     next(e);
   }
@@ -304,7 +313,7 @@ async function withSeries(reports, races) {
   return reports.map((r) => {
     const race = raceOf.get(r.raceId);
     const label = race
-      ? `${race.number != null ? `R${race.number}` : "Session"} ${race.track}${race.sprint ? " Sprint" : race.hasSprint ? " Feature" : ""}`
+      ? `${race.number != null ? `R${race.number}` : "Session"} ${race.track}${race.division === 2 ? " Division 2" : race.sprint ? " Sprint" : race.hasSprint ? " Feature" : ""}`
       : null;
     return { ...r, series: seriesOf.get(r.raceId) || null, raceLabel: label };
   });
@@ -622,7 +631,8 @@ router.post("/ingest", async (req, res, next) => {
     // gets into its stewarding thread. The round's own season is asked first
     // (see discordIdsForGuids).
     let reporterDiscordId = null;
-    const guid = candidates.map((c) => liveGuidForName(c)).find(Boolean);
+    const car = candidates.map((c) => liveCarForName(c)).find(Boolean) || null;
+    const guid = car?.guid || candidates.map((c) => liveGuidForName(c)).find(Boolean) || null;
     if (guid) {
       const seasonId = raceId
         ? (await prisma.race.findUnique({ where: { id: raceId }, select: { seasonId: true } }).catch(() => null))?.seasonId
@@ -691,7 +701,13 @@ router.post("/ingest", async (req, res, next) => {
     // is imported (see lib/reportAnchor.js), first with the same arithmetic
     // measured off the archive and then, where the file can name the contact
     // this report is about, with that contact's own timestamp.
-    const sessionSecond = await liveSessionSecond(raceId);
+    //
+    // Read off the server the car is ON. On a Division 2 evening two races
+    // run at once, each with a clock of its own, and the round's series only
+    // names Division 1's server: a Division 2 press stamped with that clock
+    // sent the steward to the wrong moment of the wrong race. Only a press
+    // whose car no server knows falls back to the series' server.
+    const sessionSecond = car ? liveRaceSecond(car.serverKey, { only: true }) : await liveSessionSecond(raceId);
 
     const report = await dbCreateReport(prisma, {
       body,

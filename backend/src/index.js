@@ -32,6 +32,7 @@ import liveIncidentsRoutes from "./routes/liveIncidents.js";
 import raceControlRoutes from "./routes/raceControl.js";
 import { clearReserveSignupsOnce } from "./lib/reserveSignupCleanup.js";
 import { offerDeclinedDivision2SeatsOnce } from "./lib/division2SeatBackfill.js";
+import { rehomeDivisionReportsOnce } from "./lib/reportDivision.js";
 import devLoginRoutes from "./routes/devLogin.js";
 import { sweepReportFiles } from "./services/reportHousekeeping.js";
 import { compressOldBackups } from "./services/backupService.js";
@@ -132,6 +133,9 @@ ensureAppSchema(prisma)
   // flag-guarded). After the line above, so no reserve is told about a seat
   // while still down as signed up.
   .then(() => offerDeclinedDivision2SeatsOnce(prisma))
+  // Once: the reports Division 2 drivers filed about rounds already raced move
+  // onto their Division 2 race (lib/reportDivision.js, flag-guarded).
+  .then(() => rehomeDivisionReportsOnce(prisma))
   // One-off feature announcements (broadcasts, deduped so reboots never repeat).
   .then(() => announceFeatures(prisma))
   // Bells rung by filling in a past season's results go again (lib/notifications.js).
